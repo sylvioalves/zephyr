@@ -62,7 +62,7 @@ struct pll_cfg {
 #define GET_REG_BANK(module_id)     ((uint32_t)module_id / 32U)
 #define GET_REG_OFFSET(module_id)   ((uint32_t)module_id % 32U)
 
-#define CLOCK_REGS_BANK_COUNT 	    3
+#define CLOCK_REGS_BANK_COUNT       3
 
 const struct control_regs clock_control_regs[CLOCK_REGS_BANK_COUNT] = {
 	[0] = { .clk = DPORT_PERIP_CLK_EN_REG, .rst = DPORT_PERIP_RST_EN_REG },
@@ -266,6 +266,7 @@ static int clock_control_esp32_get_rate(const struct device *dev,
 
 static int clock_control_esp32_init(const struct device *dev)
 {
+#if !CONFIG_BOOTLOADER_ESP_IDF
 	struct esp32_clock_config *cfg = DEV_CFG(dev);
 
 	/* Wait for UART first before changing freq to avoid garbage on console */
@@ -291,6 +292,7 @@ static int clock_control_esp32_init(const struct device *dev)
 	 * New CCOUNT = Current CCOUNT * (new freq / old freq)
 	 */
 	XTHAL_SET_CCOUNT((uint64_t)XTHAL_GET_CCOUNT() * cfg->cpu_freq / xtal_freq[cfg->xtal_freq_sel]);
+#endif
 	return 0;
 }
 
@@ -315,7 +317,7 @@ DEVICE_AND_API_INIT(clk_esp32, DT_INST_LABEL(0),
 		    &clock_control_esp32_api);
 
 BUILD_ASSERT((CONFIG_SYS_CLOCK_HW_CYCLES_PER_SEC) == MHZ(DT_PROP(DT_INST(0, cadence_tensilica_xtensa_lx6), clock_frequency)),
-		"SYS_CLOCK_HW_CYCLES_PER_SEC Value must be equal to CPU_Freq");
+	     "SYS_CLOCK_HW_CYCLES_PER_SEC Value must be equal to CPU_Freq");
 
 BUILD_ASSERT(DT_NODE_HAS_PROP(DT_INST(0, cadence_tensilica_xtensa_lx6), clock_source),
-		"CPU clock-source property must be set to ESP32_CLK_SRC_XTAL or ESP32_CLK_SRC_PLL");
+	     "CPU clock-source property must be set to ESP32_CLK_SRC_XTAL or ESP32_CLK_SRC_PLL");

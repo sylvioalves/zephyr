@@ -25,7 +25,7 @@
 
 # define XTHAL_SET_CCOUNT(v)    do { int __ccount = (int)(v);						   \
 				     __asm__ __volatile__ ("wsr.ccount %0" : : "a" (__ccount) : "memory"); \
-				} while (0)
+} while (0)
 
 /*
  * Get voltage level for CPU to run at 240 MHz, or for flash/PSRAM to run at 80 MHz.

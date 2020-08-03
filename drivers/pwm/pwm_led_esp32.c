@@ -9,7 +9,7 @@
 /* Include esp-idf headers first to avoid redefining BIT() macro */
 #include <esp_intr_alloc.h>
 #include <soc/dport_reg.h>
-#include <rom/gpio.h>
+#include <esp32/rom/gpio.h>
 #include <soc/gpio_sig_map.h>
 #include <soc/ledc_reg.h>
 
@@ -54,11 +54,11 @@ struct pwm_led_esp32_channel {
 
 union pwm_led_esp32_duty {
 	struct {
-		uint32_t start: 1;
-		uint32_t direction: 1;
-		uint32_t num: 3;
-		uint32_t cycle: 3;
-		uint32_t scale: 3;
+		uint32_t start : 1;
+		uint32_t direction : 1;
+		uint32_t num : 3;
+		uint32_t cycle : 3;
+		uint32_t scale : 3;
 	};
 	uint32_t val;
 };
@@ -109,7 +109,7 @@ static const char *esp32_get_gpio_for_pin(int pin)
 /* end Remove after PR 5113 */
 
 static uint8_t pwm_led_esp32_get_gpio_config(uint8_t pin,
-		const struct pwm_led_esp32_channel *ch_cfg)
+					     const struct pwm_led_esp32_channel *ch_cfg)
 {
 	uint8_t i;
 
@@ -319,7 +319,7 @@ static int pwm_led_esp32_pin_set_cycles(const struct device *dev,
 	int channel;
 	int timer;
 	int ret;
-	const struct pwm_led_esp32_config * const config =
+	const struct pwm_led_esp32_config *const config =
 		(const struct pwm_led_esp32_config *) dev->config;
 
 	ARG_UNUSED(period_cycles);
@@ -334,7 +334,7 @@ static int pwm_led_esp32_pin_set_cycles(const struct device *dev,
 		return -EINVAL;
 	}
 	speed_mode = channel < 8 ? PWM_LED_ESP32_HIGH_SPEED :
-				   PWM_LED_ESP32_LOW_SPEED;
+		     PWM_LED_ESP32_LOW_SPEED;
 
 	timer = config->ch_cfg[channel].timer;
 	/* Now we know which speed_mode and timer is set, then we will convert
@@ -348,8 +348,9 @@ static int pwm_led_esp32_pin_set_cycles(const struct device *dev,
 
 	/* Set timer */
 	ret = pwm_led_esp32_timer_set(speed_mode, timer,
-			config->timer_cfg[speed_mode][timer].bit_num,
-			config->timer_cfg[speed_mode][timer].freq);
+				      config->timer_cfg[speed_mode][timer].bit_num,
+				      config->timer_cfg[speed_mode][timer].freq);
+
 	if (ret < 0) {
 		return ret;
 	}
@@ -381,7 +382,7 @@ static int pwm_led_esp32_get_cycles_per_sec(const struct device *dev,
 		return -EINVAL;
 	}
 	speed_mode = channel < 8 ? PWM_LED_ESP32_HIGH_SPEED :
-				   PWM_LED_ESP32_LOW_SPEED;
+		     PWM_LED_ESP32_LOW_SPEED;
 
 	timer = config->ch_cfg[channel].timer;
 

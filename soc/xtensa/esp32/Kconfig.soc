@@ -6,3 +6,8 @@ config SOC_ESP32
 	select XTENSA
 	select CLOCK_CONTROL
 	select CLOCK_CONTROL_ESP32
+
+config IDF_TARGET_ESP32
+	bool "ESP32 as target board"
+	default y
+	depends on SOC_ESP32

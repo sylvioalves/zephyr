@@ -9,7 +9,7 @@
 /* Include esp-idf headers first to avoid redefining BIT() macro */
 #include <soc/dport_reg.h>
 #include <soc/i2c_reg.h>
-#include <rom/gpio.h>
+#include <esp32/rom/gpio.h>
 #include <soc/gpio_sig_map.h>
 
 #include <soc.h>
@@ -161,24 +161,24 @@ static int i2c_esp32_configure_speed(const struct device *dev,
 	period /= 2U; /* Set hold and setup times to 1/2th of period */
 
 	esp32_set_mask32(period << I2C_SCL_LOW_PERIOD_S,
-		   I2C_SCL_LOW_PERIOD_REG(config->index));
+			 I2C_SCL_LOW_PERIOD_REG(config->index));
 	esp32_set_mask32(period << I2C_SCL_HIGH_PERIOD_S,
-		   I2C_SCL_HIGH_PERIOD_REG(config->index));
+			 I2C_SCL_HIGH_PERIOD_REG(config->index));
 
 	esp32_set_mask32(period << I2C_SCL_START_HOLD_TIME_S,
-		   I2C_SCL_START_HOLD_REG(config->index));
+			 I2C_SCL_START_HOLD_REG(config->index));
 	esp32_set_mask32(period << I2C_SCL_RSTART_SETUP_TIME_S,
-		   I2C_SCL_RSTART_SETUP_REG(config->index));
+			 I2C_SCL_RSTART_SETUP_REG(config->index));
 	esp32_set_mask32(period << I2C_SCL_STOP_HOLD_TIME_S,
-		   I2C_SCL_STOP_HOLD_REG(config->index));
+			 I2C_SCL_STOP_HOLD_REG(config->index));
 	esp32_set_mask32(period << I2C_SCL_STOP_SETUP_TIME_S,
-		   I2C_SCL_STOP_SETUP_REG(config->index));
+			 I2C_SCL_STOP_SETUP_REG(config->index));
 
 	period /= 2U; /* Set sample and hold times to 1/4th of period */
 	esp32_set_mask32(period << I2C_SDA_HOLD_TIME_S,
-		   I2C_SDA_HOLD_REG(config->index));
+			 I2C_SDA_HOLD_REG(config->index));
 	esp32_set_mask32(period << I2C_SDA_SAMPLE_TIME_S,
-		   I2C_SDA_SAMPLE_REG(config->index));
+			 I2C_SDA_SAMPLE_REG(config->index));
 
 	return 0;
 }
@@ -675,6 +675,7 @@ static int i2c_esp32_init(const struct device *dev)
 	const struct i2c_esp32_config *config = dev->config;
 	struct i2c_esp32_data *data = dev->data;
 	uint32_t bitrate_cfg = i2c_map_dt_bitrate(config->bitrate);
+
 	data->clock_dev = device_get_binding(config->clock_name);
 
 	__ASSERT_NO_MSG(data->clock_dev);
@@ -690,7 +691,7 @@ static int i2c_esp32_init(const struct device *dev)
 	 * interrupt sources in the I2C controller.
 	 */
 	sys_write32(0, I2C_INT_ENA_REG(config->index));
-	esp32_rom_intr_matrix_set(0, config->irq.source, config->irq.line);
+	intr_matrix_set(0, config->irq.source, config->irq.line);
 
 	config->connect_irq();
 	irq_unlock(key);

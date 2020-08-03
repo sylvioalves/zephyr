@@ -88,7 +88,7 @@ static int pinmux_set(const struct device *dev, uint32_t pin, uint32_t func)
 		return -EINVAL;
 	}
 
-	return set_reg(pin, MCU_SEL_M, func<<MCU_SEL_S | 2<<FUN_DRV_S);
+	return set_reg(pin, MCU_SEL_M, func << MCU_SEL_S | 2 << FUN_DRV_S);
 }
 
 static int pinmux_get(const struct device *dev, uint32_t pin, uint32_t *func)
@@ -167,11 +167,14 @@ static struct pinmux_driver_api api_funcs = {
 
 static int pinmux_initialize(const struct device *device)
 {
+#if !CONFIG_BOOTLOADER_ESP_IDF
 	uint32_t pin;
 
 	for (pin = 0U; pin < ARRAY_SIZE(pin_mux_off); pin++) {
 		pinmux_set(NULL, pin, 0);
 	}
+
+#endif
 
 	ARG_UNUSED(device);
 	return 0;
