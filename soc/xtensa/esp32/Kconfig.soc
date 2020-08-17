@@ -11,3 +11,8 @@ config IDF_TARGET_ESP32
 	bool "ESP32 as target board"
 	default y
 	depends on SOC_ESP32
+
+config ESPTOOLPY_FLASHFREQ_80M
+	bool
+	default y
+	depends on SOC_ESP32
