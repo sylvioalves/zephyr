@@ -8,6 +8,7 @@
 #include "esp_event.h"
 #include "esp_private/wifi.h"
 #include "esp_log.h"
+#include "esp_networking_priv.h"
 
 const char *TAG = "esp_event";
 
@@ -37,13 +38,13 @@ void event_task(void *arg)
 		case SYSTEM_EVENT_STA_START:
 		{
 			ESP_LOGI(TAG, "SYSTEM_EVENT_STA_START");
-			esp_wifi_connect();
 			break;
 		}
 
 		case SYSTEM_EVENT_STA_CONNECTED:
 		{
 			ESP_LOGI(TAG, "SYSTEM_EVENT_STA_CONNECTED");
+			esp_wifi_register_rx_callback();
 			connected_flag = true;
 			break;
 		}
