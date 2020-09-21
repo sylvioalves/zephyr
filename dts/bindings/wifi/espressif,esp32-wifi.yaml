@@ -1,0 +1,19 @@
+# Copyright 2020 Espressif Systems (Shanghai) PTE LTD
+#
+# SPDX-License-Identifier: Apache-2.0
+
+description: ESP32 WiFi SoC interface
+
+compatible: "espressif,esp32-wifi"
+
+include: base.yaml
+
+properties:
+    reg:
+      required: true
+
+    label:
+      required: true
+
+    interrupts:
+      required: false
