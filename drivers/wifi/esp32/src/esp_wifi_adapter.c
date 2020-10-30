@@ -9,6 +9,10 @@
 
 #define CONFIG_POSIX_FS
 
+#define LOG_MODULE_NAME esp32_wifi_adapter
+#include <logging/log.h>
+LOG_MODULE_REGISTER(LOG_MODULE_NAME);
+
 #include "esp_wifi.h"
 #include "stdlib.h"
 #include "string.h"
@@ -26,8 +30,6 @@
 #include "esp_phy_init.h"
 #include "soc/dport_reg.h"
 #include <random/rand32.h>
-
-static const char *TAG = "esp_wifi_adapter";
 
 K_THREAD_STACK_DEFINE(wifi_stack, 4096);
 
@@ -77,14 +79,14 @@ IRAM_ATTR void *wifi_malloc(size_t size)
 	void *ptr = k_malloc(size);
 
 	if (ptr == NULL) {
-		ESP_LOGE(TAG, "Memory allocation failed");
+		LOG_ERR("memory allocation failed");
 	}
 	return ptr;
 }
 
 IRAM_ATTR void *wifi_realloc(void *ptr, size_t size)
 {
-	ESP_LOGE(TAG, "%s not yet supported", __func__);
+	LOG_ERR("%s not yet supported", __func__);
 	return NULL;
 }
 
@@ -141,13 +143,13 @@ _error:
 
 	wifi_msgq_buffer = k_malloc(queue_len * item_size);
 	if (wifi_msgq_buffer == NULL) {
-		ESP_LOGE(TAG, "Msg buffer allocation failed");
+		LOG_ERR("msg buffer allocation failed");
 		return NULL;
 	}
 	queue->handle = k_malloc(sizeof(struct k_msgq));
 	if (queue->handle == NULL) {
 		k_free(wifi_msgq_buffer);
-		ESP_LOGE(TAG, "Queue handle allocation failed");
+		LOG_ERR("queue handle allocation failed");
 		return NULL;
 	}
 	k_msgq_init((struct k_msgq *)queue->handle, wifi_msgq_buffer, item_size, queue_len);
@@ -231,7 +233,6 @@ static void *wifi_thread_semphr_get_wrapper(void)
 		k_sem_init(sem, 0, 1);
 		if (sem) {
 			k_thread_custom_data_set(sem);
-			ESP_LOGV(TAG, "thread sem create: sem=%p", sem);
 		}
 	}
 	return (void *)sem;
@@ -302,6 +303,11 @@ static int32_t IRAM_ATTR mutex_unlock_wrapper(void *mutex)
 static void *queue_create_wrapper(uint32_t queue_len, uint32_t item_size)
 {
 	struct k_queue *queue = (struct k_queue *)k_malloc(sizeof(struct k_queue));
+
+	if (queue == NULL) {
+		LOG_ERR("queue malloc failed");
+		return NULL;
+	}
 
 	k_msgq_init((struct k_msgq *)queue, wifi_msgq_buffer, item_size, queue_len);
 	return (void *)queue;
@@ -425,14 +431,14 @@ static void *IRAM_ATTR malloc_internal_wrapper(size_t size)
 	void *ptr = k_malloc(size);
 
 	if (ptr == NULL) {
-		ESP_LOGE(TAG, "Malloc failed");
+		LOG_ERR("malloc failed");
 	}
 	return ptr;
 }
 
 static void *IRAM_ATTR realloc_internal_wrapper(void *ptr, size_t size)
 {
-	ESP_LOGE(TAG, "%s not yet supported", __func__);
+	LOG_ERR("%s not yet supported", __func__);
 	return NULL;
 }
 
@@ -564,72 +570,72 @@ static void wifi_reset_mac_wrapper(void)
 
 int32_t nvs_set_i8(uint32_t handle, const char *key, int8_t value)
 {
-	ESP_LOGE(TAG, "NVS is not yet supported");
+	LOG_ERR("NVS is not yet supported");
 	return 0;
 }
 
 int32_t nvs_get_i8(uint32_t handle, const char *key, int8_t *out_value)
 {
-	ESP_LOGE(TAG, "NVS is not yet supported");
+	LOG_ERR("NVS is not yet supported");
 	return 0;
 }
 
 int32_t nvs_set_u8(uint32_t handle, const char *key, uint8_t value)
 {
-	ESP_LOGE(TAG, "NVS is not yet supported");
+	LOG_ERR("NVS is not yet supported");
 	return 0;
 }
 
 int32_t nvs_get_u8(uint32_t handle, const char *key, uint8_t *out_value)
 {
-	ESP_LOGE(TAG, "NVS is not yet supported");
+	LOG_ERR("NVS is not yet supported");
 	return 0;
 }
 
 int32_t nvs_set_u16(uint32_t handle, const char *key, uint16_t value)
 {
-	ESP_LOGE(TAG, "NVS is not yet supported");
+	LOG_ERR("NVS is not yet supported");
 	return 0;
 }
 
 int32_t nvs_get_u16(uint32_t handle, const char *key, uint16_t *out_value)
 {
-	ESP_LOGE(TAG, "NVS is not yet supported");
+	LOG_ERR("NVS is not yet supported");
 	return 0;
 }
 
 int32_t nvs_open(const char *name, uint32_t open_mode, uint32_t *out_handle)
 {
-	ESP_LOGE(TAG, "NVS is not yet supported");
+	LOG_ERR("NVS is not yet supported");
 	return 0;
 }
 
 void nvs_close(uint32_t handle)
 {
-	ESP_LOGE(TAG, "NVS is not yet supported");
+	LOG_ERR("NVS is not yet supported");
 }
 
 int32_t nvs_commit(uint32_t handle)
 {
-	ESP_LOGE(TAG, "NVS is not yet supported");
+	LOG_ERR("NVS is not yet supported");
 	return 0;
 }
 
 int32_t nvs_set_blob(uint32_t handle, const char *key, const void *value, size_t length)
 {
-	ESP_LOGE(TAG, "NVS is not yet supported");
+	LOG_ERR("NVS is not yet supported");
 	return 0;
 }
 
 int32_t nvs_get_blob(uint32_t handle, const char *key, void *out_value, size_t *length)
 {
-	ESP_LOGE(TAG, "NVS is not yet supported");
+	LOG_ERR("NVS is not yet supported");
 	return 0;
 }
 
 int32_t nvs_erase_key(uint32_t handle, const char *key)
 {
-	ESP_LOGE(TAG, "NVS is not yet supported");
+	LOG_ERR("NVS is not yet supported");
 	return 0;
 }
 
@@ -711,7 +717,7 @@ wifi_osi_funcs_t g_wifi_osi_funcs = {
 	._random = random,
 	._log_write = esp_log_write,
 	._log_writev = esp_log_writev,
-	._log_timestamp = esp_log_timestamp,
+	._log_timestamp = k_uptime_get_32,
 	._malloc_internal =  malloc_internal_wrapper,
 	._realloc_internal = realloc_internal_wrapper,
 	._calloc_internal = calloc_internal_wrapper,
