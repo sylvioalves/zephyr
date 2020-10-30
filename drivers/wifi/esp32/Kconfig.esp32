@@ -22,6 +22,18 @@ config WIFI_PASSWORD
 	help
 	  WiFi password (WPA or WPA2) for the example to use.
 
+config WIFI_STA_AUTO
+	bool "Automatically connect to configured WiFi SSID"
+	default n
+	help
+	  WiFi driver will automatically connect to SSID
+
+config WIFI_STA_RECONNECT
+	bool "WiFi connection retry"
+	default y
+	help
+	  Set auto WiFI reconnection when disconnected
+
 config EVENT_TASK_STACK_SIZE
 	int "Event Task Stack Size"
 	default 4096

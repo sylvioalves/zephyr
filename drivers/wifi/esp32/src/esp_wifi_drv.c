@@ -94,12 +94,24 @@ pkt_unref:
 	return ESP_FAIL;
 }
 
-void esp_wifi_register_rx_callback(void)
+void esp_wifi_set_net_state(bool state)
 {
-	esp_wifi_internal_reg_rxcb(ESP_IF_WIFI_STA, (wifi_rxcb_t)eth_esp32_rx);
 	struct net_if *iface;
+
 	iface = net_if_get_default();
-	net_if_up(iface);
+
+	if (iface == NULL) {
+		LOG_ERR("network interface unavailable");
+		return;
+	}
+
+	if (state) {
+		esp_wifi_internal_reg_rxcb(ESP_IF_WIFI_STA, (wifi_rxcb_t)eth_esp32_rx);
+		net_if_up(iface);
+	} else {
+		esp_wifi_internal_reg_rxcb(ESP_IF_WIFI_STA, NULL);
+		net_if_down(iface);
+	}
 }
 
 static void eth_esp32_init(struct net_if *iface)
@@ -134,17 +146,20 @@ static int eth_esp32_dev_init(const struct device *dev)
 	esp_err_t ret = esp_wifi_init(&config);
 	ret |= esp_supplicant_init();
 	ret |= esp_wifi_start();
-	ret |= esp_wifi_set_mode(WIFI_MODE_STA);
 
-	wifi_config_t wifi_config = {
-		.sta = {
-			.ssid = CONFIG_WIFI_SSID,
-			.password = CONFIG_WIFI_PASSWORD,
-		},
-	};
+	if (IS_ENABLED(CONFIG_WIFI_STA_AUTO)) {
+		wifi_config_t wifi_config = {
+			.sta = {
+				.ssid = CONFIG_WIFI_SSID,
+				.password = CONFIG_WIFI_PASSWORD,
+			},
+		};
 
-	ret |= esp_wifi_set_config(ESP_IF_WIFI_STA, &wifi_config);
-	ret |= esp_wifi_connect();
+		ret = esp_wifi_set_mode(WIFI_MODE_STA);
+		ret |= esp_wifi_set_config(ESP_IF_WIFI_STA, &wifi_config);
+		ret |= esp_wifi_connect();
+	}
+
 	if (ret != ESP_OK) {
 		LOG_ERR("Connect failed");
 	}
