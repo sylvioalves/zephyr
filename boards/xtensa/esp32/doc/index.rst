@@ -48,21 +48,56 @@ System requirements
 Prerequisites
 =============
 
-Two components are required in order to build this port: the `toolchain`_
-and the `SDK`_.  Both are provided by the SoC manufacturer.
+Some tools need to be installed on the computer before proceeding to the next steps.
+Follow the `installing prerequisites`_ instructions for your OS.
 
-The SDK contains headers and a hardware abstraction layer library
-(provided only as object files) that are required for the port to
-function.
+In order to build this port, the `SDK`_ and the `toolchain`_ need
+to be manually addressed. Both are provided by the SoC manufacturer.
+Cloning ESP_IDF is not necessary as it is automatically fetched in external modules.
 
-The toolchain is available for Linux, Windows, and Mac hosts and
-instructions to obtain and set them up are available in the ESP-IDF
-repository, using the toolchain and SDK links above.
+For the following environment setup, please check `set up the tools`_
+and `set up environment variables`_ guide to get specific OS configurations if needed.
 
 Set up build environment
 ========================
 
-With both the toolchain and SDK installed, the Zephyr build system must be
+Set ESP_IDF_PATH to external ESP_IDF folder:
+
+.. code-block:: console
+
+   # On Linux and macOS:
+   export ESP_IDF_PATH=<zephyr workspace top>/modules/hal/esp-idf"
+
+   # On Windows:
+   set ESP_IDF_PATH=<zephyr workspace top>\modules\hal\esp-idf"
+
+
+Retrieve all ESP-IDF submodules. This might take a while for the first time:
+
+.. code-block:: console
+
+   west espressif update
+
+Install the required toolchains and export environment variables:
+
+On Linux and macOS:
+
+.. code-block:: console
+
+   cd $ESP_IDF_PATH
+   ./install.sh
+   source export.sh
+
+On Windows:
+
+.. code-block:: console
+
+   cd %ESP_IDF_PATH%
+   install.bat
+   export.bat
+
+
+With both the toolchain and environment variables configured, the Zephyr build system must be
 instructed to use this particular variant by setting the
 ``ZEPHYR_TOOLCHAIN_VARIANT`` shell variable.  One more other environment variables
 should also be set, pointing to where the toolchain has been installed:
@@ -219,3 +254,6 @@ References
 .. _`esptool documentation`: https://github.com/espressif/esptool/blob/master/README.md
 .. _`esptool.py`: https://github.com/espressif/esptool
 .. _`ESP-WROVER-32 V3 Getting Started Guide`: https://dl.espressif.com/doc/esp-idf/latest/get-started/get-started-wrover-kit.html
+.. _`installing prerequisites`: https://docs.espressif.com/projects/esp-idf/en/latest/esp32/get-started/index.html#step-1-install-prerequisites
+.. _`set up the tools`: https://docs.espressif.com/projects/esp-idf/en/latest/esp32/get-started/index.html#step-3-set-up-the-tools
+.. _`set up environment variables`: https://docs.espressif.com/projects/esp-idf/en/latest/esp32/get-started/index.html#step-4-set-up-the-environment-variables
