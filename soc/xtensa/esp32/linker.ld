@@ -24,6 +24,8 @@
 #define IRAM_REGION iram0_0_seg :iram0_0_phdr
 #define FLASH_CODE_REGION irom0_0_seg :irom0_0_phdr
 
+PROVIDE ( _heap_sentry = 0x3ffe1320 );
+
 MEMORY
 {
   iram0_0_seg(RX): org = 0x40080000, len = 0x20000
@@ -173,6 +175,8 @@ SECTIONS
     Z_LINK_ITERABLE_GC_ALLOWED(k_sem);
     . = ALIGN(4);
     Z_LINK_ITERABLE_GC_ALLOWED(k_queue);
+    . = ALIGN(4);
+    Z_LINK_ITERABLE_GC_ALLOWED(k_condvar);
   } GROUP_DATA_LINK_IN(RAMABLE_REGION, ROMABLE_REGION)
 
   SECTION_DATA_PROLOGUE(net,, ALIGN(4))
@@ -205,6 +209,11 @@ _net_buf_pool_list = _esp_net_buf_pool_list;
 #pragma pop_macro("Z_ITERABLE_SECTION_RAM_GC_ALLOWED")
 #pragma pop_macro("Z_ITERABLE_SECTION_RAM")
 
+  .tm_clone_table :
+  {
+    *(.tm_clone_table)
+  } GROUP_LINK_IN(RAMABLE_REGION)
+
   .dram0.data :
   {
     _data_start = ABSOLUTE(.);
@@ -236,16 +245,6 @@ _net_buf_pool_list = _esp_net_buf_pool_list;
     *libzephyr.a:log_output.*(.rodata .rodata.*)
     *libdrivers__flash.a:flash_esp32.*(.rodata  .rodata.*)
     *libdrivers__serial.a:uart_esp32.*(.rodata .rodata.*)
-
-   . = ALIGN(4);
-    __esp_log_const_start = .;
-    KEEP(*(SORT(.log_const_*)));
-    __esp_log_const_end = .;
-
-    . = ALIGN(4);
-    __esp_log_backends_start = .;
-    KEEP(*("._log_backend.*"));
-    __esp_log_backends_end = .;
 
     KEEP(*(.jcr))
     *(.dram1 .dram1.*)
@@ -310,10 +309,6 @@ _net_buf_pool_list = _esp_net_buf_pool_list;
 #define ROMABLE_REGION RAMABLE_REGION
 #include <linker/common-rom.ld>
 /* Restore original value for symbols referenced by `common-rom.ld` */
-__log_const_start = __esp_log_const_start;
-__log_const_end = __esp_log_const_end;
-__log_backends_start = __esp_log_backends_start;
-__log_backends_end = __esp_log_backends_end;
 __shell_root_cmds_start = __esp_shell_root_cmds_start;
 __shell_root_cmds_end = __esp_shell_root_cmds_end;
 #pragma pop_macro("ROMABLE_REGION")
@@ -348,6 +343,7 @@ __shell_root_cmds_end = __esp_shell_root_cmds_end;
     *libzephyr.a:log_output.*(.literal .text .literal.* .text.*)
     *libzephyr.a:log_backend_uart.*(.literal .text .literal.* .text.*)
     *liblib__libc__minimal.a:string.*(.literal .text .literal.* .text.*)
+    *liblib__libc__newlib.a.*(.literal .text .literal.* .text.*)
     *libgcov.a:(.literal .text .literal.* .text.*)
 
 #if defined(CONFIG_ESP32_WIFI_IRAM_OPT)
@@ -395,7 +391,7 @@ __shell_root_cmds_end = __esp_shell_root_cmds_end;
   SECTION_DATA_PROLOGUE(_BSS_SECTION_NAME,(NOLOAD),)
   {
     . = ALIGN (8);
-    _bss_start = ABSOLUTE(.);
+    __bss_start = ABSOLUTE(.);
 
     _btdm_bss_start = ABSOLUTE(.);
     *libbtdm_app.a:(.bss .bss.* COMMON)
@@ -417,10 +413,11 @@ __shell_root_cmds_end = __esp_shell_root_cmds_end;
     *(.gnu.linkonce.b.*)
     *(COMMON)
     . = ALIGN (8);
-    _bss_end = ABSOLUTE(.);
+    __bss_end = ABSOLUTE(.);
+    _end = ABSOLUTE(.);
   } GROUP_LINK_IN(RAMABLE_REGION)
 
-  ASSERT(((_bss_end - ORIGIN(dram0_0_seg)) <= LENGTH(dram0_0_seg)),
+  ASSERT(((__bss_end - ORIGIN(dram0_0_seg)) <= LENGTH(dram0_0_seg)),
           "DRAM segment data does not fit.")
 
   SECTION_DATA_PROLOGUE(_NOINIT_SECTION_NAME, (NOLOAD),)
@@ -431,16 +428,45 @@ __shell_root_cmds_end = __esp_shell_root_cmds_end;
     . = ALIGN (8);
   } GROUP_LINK_IN(RAMABLE_REGION_1)
 
+#include <linker/debug-sections.ld>
+
+  .xtensa.info  0 :  { *(.xtensa.info) }
+  .xt.insn 0 :
+  {
+    KEEP (*(.xt.insn))
+    KEEP (*(.gnu.linkonce.x.*))
+  }
+  .xt.prop 0 :
+  {
+    KEEP (*(.xt.prop))
+    KEEP (*(.xt.prop.*))
+    KEEP (*(.gnu.linkonce.prop.*))
+  }
+  .xt.lit 0 :
+  {
+    KEEP (*(.xt.lit))
+    KEEP (*(.xt.lit.*))
+    KEEP (*(.gnu.linkonce.p.*))
+  }
+  .xt.profile_range 0 :
+  {
+    KEEP (*(.xt.profile_range))
+    KEEP (*(.gnu.linkonce.profile_range.*))
+  }
+  .xt.profile_ranges 0 :
+  {
+    KEEP (*(.xt.profile_ranges))
+    KEEP (*(.gnu.linkonce.xt.profile_ranges.*))
+  }
+  .xt.profile_files 0 :
+  {
+    KEEP (*(.xt.profile_files))
+    KEEP (*(.gnu.linkonce.xt.profile_files.*))
+  }
+
 #ifdef CONFIG_GEN_ISR_TABLES
 #include <linker/intlist.ld>
 #endif
-
-#include <linker/debug-sections.ld>
-
-  SECTION_PROLOGUE(.xtensa.info, 0,)
-  {
-    *(.xtensa.info)
-  }
 
 }
 
