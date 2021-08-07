@@ -1,0 +1,18 @@
+mainmenu "simple_http_ota"
+
+# Copyright (c) 2021 Espressif Systems (Shanghai) Co., Ltd.
+# SPDX -License-Identifier: Apache-2.0
+
+config SIMPLE_HTTP_OTA_FILE_URL
+	string "Download URL"
+	default "http://192.168.15.11/hello.bin"
+	help
+	  URL to download.
+
+config SIMPLE_HTTP_OTA_DOWNLOAD_TIMEOUT
+	int "File download timeout"
+	default 30
+	help
+	  Defines the max download time in seconds of the update file before returning error.
+
+source "Kconfig.zephyr"
