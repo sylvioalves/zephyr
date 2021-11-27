@@ -77,7 +77,7 @@ static int map_rom_segments(void)
 			DPORT_APP_CACHE_MASK_DROM0 |
 			DPORT_APP_CACHE_MASK_DRAM1);
 
-	esp32_rom_Cache_Read_Enable(0);
+	esp_rom_Cache_Read_Enable(0);
 	return rc;
 }
 #endif
