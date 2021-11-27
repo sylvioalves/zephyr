@@ -1,0 +1,14 @@
+# ESP32 ADC configuration options
+
+# Copyright (c) 2021 Espressif Systems (Shanghai) Co., Ltd.
+# SPDX-License-Identifier: Apache-2.0
+
+DT_COMPAT_ESP32_ADC := espressif,esp32-adc
+
+config ADC_ESP32
+	bool "ESP32 ADC driver"
+	depends on SOC_ESP32 || SOC_ESP32S2 || SOC_ESP32C3
+	default $(dt_compat_enabled,$(DT_COMPAT_ESP32_ADC))
+	select GPIO_ESP32
+	help
+	  Enable the driver implementation for the ESP32 ADC
