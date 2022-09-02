@@ -3,6 +3,9 @@
 # Copyright (c) 2021 Espressif Systems (Shanghai) Co., Ltd.
 # SPDX-License-Identifier: Apache-2.0
 
+DT_CHOSEN_Z_CONSOLE := zephyr,console
+DT_COMPAT_ESPRESSIF_ESP32_UART := espressif,esp32-uart
+
 if SOC_ESP32C3
 
 if BOOTLOADER_MCUBOOT
@@ -50,5 +53,20 @@ config ATOMIC_OPERATIONS_C
 
 config MINIMAL_LIBC_OPTIMIZE_STRING_FOR_SIZE
 	default n
+
+config ESP_CONSOLE_UART
+	bool
+	default $(dt_chosen_enabled,$(DT_CHOSEN_Z_CONSOLE)) && \
+		$(dt_chosen_has_compat,$(DT_CHOSEN_Z_CONSOLE),$(DT_COMPAT_ESPRESSIF_ESP32_UART))
+	help
+	  Hidden configuration to indicate whether ESP32-C3 uart is used. This is required in
+	  hal_espressif so that UART can be proper flushed during bootloader and sleep events.
+
+config ESP_CONSOLE_UART_NUM
+	int
+	default 0
+	help
+	  Hidden configuration to indicate UART number. During system clock initialization
+	  this config is used to avoid data lost during APB frequency switching.
 
 endif
