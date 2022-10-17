@@ -1,0 +1,11 @@
+/ {
+	chosen {
+		zephyr,console = &usb_serial;
+		zephyr,shell-uart = &usb_serial;
+	};
+};
+
+&usb_serial {
+	/* requires resoldering of resistors on the board */
+	status = "okay";
+};
