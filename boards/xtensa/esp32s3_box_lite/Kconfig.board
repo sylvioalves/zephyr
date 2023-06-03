@@ -1,0 +1,8 @@
+# ESP32S3 DevKitM board configuration
+
+# Copyright (c) 2022 Espressif Systems (Shanghai) Co., Ltd.
+# SPDX-License-Identifier: Apache-2.0
+
+config BOARD_ESP32S3_BOX_LITE
+	bool "ESP32S3 BOX Lite Board"
+	depends on SOC_ESP32S3

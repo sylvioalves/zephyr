@@ -6,10 +6,10 @@
 /dts-v1/;
 
 #include <espressif/esp32s3.dtsi>
-#include "esp32s3_devkitm-pinctrl.dtsi"
+#include "esp32s3_box_lite-pinctrl.dtsi"
 
 / {
-	model = "esp32s3_devkitm";
+	model = "esp32s3_box_lite";
 	compatible = "espressif,esp32s3";
 
 	aliases {
@@ -22,6 +22,7 @@
 		zephyr,console = &usb_serial;
 		zephyr,shell-uart = &usb_serial;
 		zephyr,flash = &flash0;
+		zephyr,display = &st7789v;
 	};
 
 	aliases {
@@ -35,6 +36,10 @@
 			gpios = <&gpio0 0 (GPIO_PULL_UP | GPIO_ACTIVE_LOW)>;
 			label = "BOOT Button";
 		};
+	};
+
+	zephyr,user {
+		io-channels = <&adc0 0>;
 	};
 };
 
@@ -77,21 +82,86 @@
 	pinctrl-names = "default";
 };
 
-&spi2 {
-	#address-cells = <1>;
-	#size-cells = <0>;
-	status = "okay";
-	pinctrl-0 = <&spim2_default>;
-	pinctrl-names = "default";
-};
-
 &spi3 {
 	#address-cells = <1>;
 	#size-cells = <0>;
 	status = "okay";
 	pinctrl-0 = <&spim3_default>;
 	pinctrl-names = "default";
+
+		/* Sitronix ST7789V LCD */
+	st7789v: st7789v@0 {
+		compatible = "sitronix,st7789v";
+		reg = <0>;
+		spi-max-frequency = <80000000>; /* 8MHz */
+		cmd-data-gpios = <&gpio0 4 GPIO_ACTIVE_LOW>;	/* DET */
+		reset-gpios = <&gpio1 16 GPIO_ACTIVE_LOW>;	/* RESX reset */
+
+		// landscape
+		width = <320>;
+		height = <240>;
+		x-offset = <0>;
+		y-offset = <0>;
+		mdac = <0xA7>;
+
+		vcom = <0x19>;
+		gctrl = <0x35>;
+		vrhs = <0x12>;
+		vdvs = <0x20>;
+		gamma = <0x01>;
+		colmod = <0x05>;
+		lcm = <0x2c>;
+		porch-param = [0c 0c 00 33 33];
+		cmd2en-param = [5a 69 02 01];
+		pwctrl1-param = [a4 a1];
+		pvgam-param = [D0 04 0D 11 13 2B 3F 54 4C 18 0D 0B 1F 23];
+		nvgam-param = [D0 04 0C 11 13 2C 3F 44 51 2F 1F 1F 20 23];
+		ram-param = [00 F0];
+		rgb-param = [CD 08 14];
+		// vcom = <0x28>;
+		// gctrl = <0x35>;
+		// vrhs = <0x10>;
+		// vdvs = <0x20>;
+
+		// /* Landscape */
+		// width = <125>;
+		// height = <240>;
+		// x-offset = <52>;
+		// y-offset = <40>;
+		// mdac = <0x08>;
+
+		// gamma = <0x01>;
+		// colmod = <0x55>;
+		// lcm = <0x0C>;
+		// porch-param = [0C 0C 00 33 33];
+		// cmd2en-param = [5A 69 02 01];
+		// pwctrl1-param = [A4 A1];
+		// pvgam-param = [D0 00 02 07 0A 28 32 44 42 06 0E 12 14 17];
+		// nvgam-param = [D0 00 02 07 0A 28 31 54 47 0E 1C 17 1B 1E];
+		// ram-param = [00 E0];
+		// rgb-param = [CD 08 14];
+	};
 };
+
+// &spi3 {
+// 	#address-cells = <1>;
+// 	#size-cells = <0>;
+// 	status = "okay";
+// 	pinctrl-0 = <&spim3_default>;
+// 	pinctrl-names = "default";
+
+// 	ili9341: ili9341@0 {
+// 		compatible = "ilitek,ili9341";
+// 		spi-max-frequency = <25000000>;
+// 		reg = <0>;
+// 		cmd-data-gpios = <&gpio0 4 GPIO_ACTIVE_LOW>;
+// 		reset-gpios = <&gpio1 16 GPIO_ACTIVE_LOW>;
+// 		pixel-format = <1>;
+// 		rotation = <0>;
+// 		width = <240>;
+// 		height = <320>;
+// 	};
+// };
 
 &timer0 {
 	status = "disabled";
@@ -115,6 +185,20 @@
 
 &trng0 {
 	status = "okay";
+};
+
+&adc0 {
+	status = "okay";
+	#address-cells = <1>;
+	#size-cells = <0>;
+
+	channel@0 {
+		reg = <0>;
+		zephyr,gain = "ADC_GAIN_1_4";
+		zephyr,reference = "ADC_REF_INTERNAL";
+		zephyr,acquisition-time = <ADC_ACQ_TIME_DEFAULT>;
+		zephyr,resolution = <13>;
+	};
 };
 
 &flash0 {
