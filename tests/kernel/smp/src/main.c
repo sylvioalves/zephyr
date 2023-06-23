@@ -200,6 +200,7 @@ ZTEST(smp, test_cpu_id_threads)
 
 static void thread_entry(void *p1, void *p2, void *p3)
 {
+	printk("proc num: %d\r\n", arch_curr_cpu()->id);
 	ARG_UNUSED(p2);
 	ARG_UNUSED(p3);
 	int thread_num = POINTER_TO_INT(p1);
@@ -376,7 +377,7 @@ ZTEST(smp, test_coop_resched_threads)
 		      &thread_entry, THREAD_DELAY);
 
 	/* Wait for some time to let other core's thread run */
-	k_busy_wait(DELAY_US);
+	k_msleep(50);
 
 
 	/* Reassure that cooperative thread's are not preempted

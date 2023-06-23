@@ -41,6 +41,48 @@
 
 extern void z_cstart(void);
 
+#ifdef CONFIG_ESP32_NETWORK_CORE
+extern const unsigned char esp32_net_fw_array[];
+extern const int esp_32_net_fw_array_size;
+
+void __attribute__((section(".iram1"))) start_esp32_net_cpu(void)
+{
+	esp_image_header_t *header = (esp_image_header_t *)&esp32_net_fw_array[0];
+	esp_image_segment_header_t *segment =
+		(esp_image_segment_header_t *)&esp32_net_fw_array[sizeof(esp_image_header_t)];
+	uint8_t *segment_payload;
+	uint32_t entry_addr = header->entry_addr;
+	uint32_t idx = sizeof(esp_image_header_t) + sizeof(esp_image_segment_header_t);
+
+	for (int i = 0; i < header->segment_count; i++) {
+		segment_payload = (uint8_t *)&esp32_net_fw_array[idx];
+
+		if (segment->load_addr >= SOC_IRAM_LOW && segment->load_addr < SOC_IRAM_HIGH) {
+			/* IRAM segment only accepts 4 byte access, avoid memcpy usage here */
+			volatile uint32_t *src = (volatile uint32_t *)segment_payload;
+			volatile uint32_t *dst =
+				(volatile uint32_t *)segment->load_addr;
+
+			for (int i = 0; i < segment->data_len/4 ; i++) {
+				dst[i] = src[i];
+			}
+		} else if (segment->load_addr >= SOC_DRAM_LOW &&
+			segment->load_addr < SOC_DRAM_HIGH) {
+
+			memcpy((void *)segment->load_addr,
+				(const void *)segment_payload,
+				segment->data_len);
+		}
+
+		idx += segment->data_len;
+		segment = (esp_image_segment_header_t *)&esp32_net_fw_array[idx];
+		idx += sizeof(esp_image_segment_header_t);
+	}
+
+	start_other_core((void *)entry_addr);
+}
+#endif /* CONFIG_ESP32_NETWORK_CORE */
+
 #ifndef CONFIG_MCUBOOT
 /*
  * This function is a container for SoC patches
@@ -85,7 +127,7 @@ void IRAM_ATTR __esp_platform_start(void)
 	 * initialization code wants a valid _current before
 	 * arch_kernel_init() is invoked.
 	 */
-	__asm__ volatile("wsr.MISC0 %0; rsync" : : "r"(&_kernel.cpus[0]));
+	__asm__ __volatile__("wsr.MISC0 %0; rsync" : : "r"(&_kernel.cpus[0]));
 
 #ifdef CONFIG_MCUBOOT
 	/* MCUboot early initialisation. */
@@ -114,9 +156,21 @@ void IRAM_ATTR __esp_platform_start(void)
 	wdt_hal_disable(&rtc_wdt_ctx);
 	wdt_hal_write_protect_enable(&rtc_wdt_ctx);
 
+#ifndef CONFIG_SOC_ESP32S3_NET
+	/* Configures the CPU clock, RTC slow and fast clocks, and performs
+	 * RTC slow clock calibration.
+	 */
 	esp_clk_init();
+#endif
 
 	esp_timer_early_init();
+
+#if CONFIG_ESP32_NETWORK_CORE
+	/* start the esp32 network core before
+	 * start zephyr
+	 */
+	start_esp32_net_cpu();
+#endif
 
 #if CONFIG_SOC_FLASH_ESP32
 	spi_flash_guard_set(&g_flash_guard_default_ops);
@@ -138,6 +192,7 @@ int IRAM_ATTR arch_printk_char_out(int c)
 		esp_rom_uart_tx_one_char('\r');
 	}
 	esp_rom_uart_tx_one_char(c);
+
 	return 0;
 }
 

@@ -605,7 +605,7 @@ static int esp32_wifi_dev_init(const struct device *dev)
 			CONFIG_ESP32_WIFI_EVENT_TASK_PRIO, K_INHERIT_PERMS,
 			K_NO_WAIT);
 
-	k_thread_name_set(tid, "esp_event");
+	k_thread_name_set(tid, "esp_event_thread");
 
 	if (IS_ENABLED(CONFIG_ESP32_WIFI_STA_AUTO_DHCPV4)) {
 		net_mgmt_init_event_callback(&esp32_dhcp_cb, wifi_event_handler, DHCPV4_MASK);

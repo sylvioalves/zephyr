@@ -8,13 +8,13 @@
 #include <stdio.h>
 
 /* Amount of execution threads to create and run */
-#define THREADS_NUM	16
+#define THREADS_NUM	32
 
 /*
  * Amount of digits of Pi to calculate, must be a multiple of 4,
  * as used algorithm spits 4 digits on every iteration.
  */
-#define DIGITS_NUM	240
+#define DIGITS_NUM	100
 
 #define LENGTH		((DIGITS_NUM / 4) * 14)
 #define STACK_SIZE	((LENGTH * sizeof(int) + 1024))
@@ -35,6 +35,7 @@ void test_thread(void *arg1, void *arg2, void *arg3)
 	atomic_t *counter = (atomic_t *)arg1;
 	char *buffer = (char *)arg2;
 
+	printk("core id: %d proc: %d\r\n", arch_curr_cpu()->id, arch_proc_id());
 	ARG_UNUSED(arg3);
 
 	/*

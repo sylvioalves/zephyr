@@ -22,6 +22,9 @@ config IDF_TARGET_ESP32S3
 	bool "ESP32S3 as target board"
 	default y
 
+config ESP32_NETWORK_CORE
+	bool "Uses the ESP32 APP_CPU as Network dedicated core"
+
 config ESPTOOLPY_FLASHFREQ_80M
 	bool
 	default y
@@ -276,5 +279,9 @@ config MAC_BB_PD
 	  by a small amount but increases RAM use by approximat
 
 endmenu  # Cache config
+
+config ESP_TIMER_STACK_SIZE
+	int "ESP Timer Stack Size"
+	default 1024
 
 endif # SOC_ESP32S3

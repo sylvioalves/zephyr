@@ -15,7 +15,8 @@
 #include <zephyr/device.h>
 #include <zephyr/kernel.h>
 #include <zephyr/spinlock.h>
-#include <zephyr/kernel_structs.h>
+#include <zephyr/device.h>
+#include "hal/cpu_ll.h"
 
 #define Z_REG(base, off) (*(volatile uint32_t *)((base) + (off)))
 
@@ -63,20 +64,20 @@ static struct k_spinlock loglock;
 void smp_log(const char *msg)
 {
 #ifndef CONFIG_ESP32_NETWORK_CORE
-	k_spinlock_key_t key = k_spin_lock(&loglock);
+	// k_spinlock_key_t key = k_spin_lock(&loglock);
 
-	while (*msg) {
-		esp_rom_uart_tx_one_char(*msg++);
-	}
-	esp_rom_uart_tx_one_char('\r');
-	esp_rom_uart_tx_one_char('\n');
-
-	k_spin_unlock(&loglock, key);
+	// while (*msg) {
+	// 	esp_rom_uart_tx_one_char(*msg++);
+	// }
+	// esp_rom_uart_tx_one_char('\r');
+	// esp_rom_uart_tx_one_char('\n');
+	ets_printf(msg);
+	// k_spin_unlock(&loglock, key);
 #endif
 }
 
 #ifdef CONFIG_SMP
-static void appcpu_entry2(void)
+static void IRAM_ATTR appcpu_entry2(void)
 {
 	volatile int ps, ie;
 
@@ -100,6 +101,17 @@ static void appcpu_entry2(void)
 	 * code, not in the ESP-32 layer
 	 */
 	_cpu_t *cpu = &_kernel.cpus[1];
+	ets_set_appcpu_boot_addr(0);
+
+	DPORT_REG_SET_BIT(DPORT_APP_CPU_RECORD_CTRL_REG, DPORT_APP_CPU_PDEBUG_ENABLE | DPORT_APP_CPU_RECORD_ENABLE);
+	DPORT_REG_CLR_BIT(DPORT_APP_CPU_RECORD_CTRL_REG, DPORT_APP_CPU_RECORD_ENABLE);
+
+    uint32_t core_id = cpu_ll_get_core_id();
+	ets_printf("core: %d\r\n", core_id);
+    for (int i = 0; i < ETS_MAX_INTR_SOURCE; i++) {
+        intr_matrix_set(core_id, i, ETS_INVALID_INUM);
+    }
+
 
 	__asm__ volatile("wsr.MISC0 %0" : : "r"(cpu));
 
@@ -164,7 +176,7 @@ __asm__("\n"
  * app linkage and tells us nothing about it until we're already
  * running.
  */
-static void appcpu_entry1(void)
+static void IRAM_ATTR appcpu_entry1(void)
 {
 	z_appcpu_stack_switch(appcpu_top, appcpu_entry2);
 }
@@ -247,20 +259,18 @@ void arch_start_cpu(int cpu_num, k_thread_stack_t *stack, int sz,
 		    arch_cpustart_t fn, void *arg)
 {
 	volatile struct cpustart_rec sr;
-	int vb;
+	extern uint32_t _init_start;
 	volatile int alive_flag;
 
 	__ASSERT(cpu_num == 1, "ESP-32 supports only two CPUs");
 
-	__asm__ volatile("rsr.VECBASE %0\n\t" : "=r"(vb));
-
 	alive_flag = 0;
 
-	sr.cpu = cpu_num;
+	sr.cpu = 1;
 	sr.fn = fn;
 	sr.stack_top = Z_KERNEL_STACK_BUFFER(stack) + sz;
 	sr.arg = arg;
-	sr.vecbase = vb;
+	sr.vecbase = _init_start;
 	sr.alive = &alive_flag;
 
 	appcpu_top = Z_KERNEL_STACK_BUFFER(stack) + sz;
@@ -273,7 +283,7 @@ void arch_start_cpu(int cpu_num, k_thread_stack_t *stack, int sz,
 	}
 
 	cpus_active[0] = true;
-	cpus_active[cpu_num] = true;
+	cpus_active[1] = true;
 
 	esp_intr_alloc(DT_IRQN(DT_NODELABEL(ipi0)),
 		ESP_INTR_FLAG_IRAM,

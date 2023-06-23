@@ -117,7 +117,7 @@ void __attribute__((section(".iram1"))) __esp_platform_start(void)
 	 * initialization code wants a valid _current before
 	 * arch_kernel_init() is invoked.
 	 */
-	__asm__ volatile("wsr.MISC0 %0; rsync" : : "r"(&_kernel.cpus[0]));
+	__asm__ __volatile__("wsr.MISC0 %0; rsync" : : "r"(&_kernel.cpus[0]));
 
 #ifdef CONFIG_MCUBOOT
 	/* MCUboot early initialisation. */
@@ -139,10 +139,10 @@ void __attribute__((section(".iram1"))) __esp_platform_start(void)
 	/* Configures the CPU clock, RTC slow and fast clocks, and performs
 	 * RTC slow clock calibration.
 	 */
-	esp_clk_init();
+	// esp_clk_init();
 #endif
 
-	esp_timer_early_init();
+	// esp_timer_early_init();
 
 #if CONFIG_ESP32_NETWORK_CORE
 	/* start the esp32 network core before

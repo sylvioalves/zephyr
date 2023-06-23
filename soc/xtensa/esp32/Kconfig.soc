@@ -47,7 +47,7 @@ config ESP_HEAP_MEM_POOL_REGION_1_SIZE
 	int "Internal DRAM region 1 mempool size"
 	default 0 if MCUBOOT
 	default 1024 if ESP32_NETWORK_CORE
-	default 49152
+	default 1024
 	help
 	  ESP32 has two banks of size 192K and 128K which can be used
 	  as DRAM, system heap allocates area from region 0.
@@ -416,5 +416,9 @@ config ETH_DMA_TX_BUFFER_NUM
 	  Larger number of buffers could increase throughput somehow.
 
 endif # ESP32_EMAC
+
+config ESP_TIMER_STACK_SIZE
+	int "ESP Timer Stack Size"
+	default 1024
 
 endif # SOC_ESP32

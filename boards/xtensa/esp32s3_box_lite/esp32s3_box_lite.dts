@@ -118,50 +118,8 @@
 		nvgam-param = [D0 04 0C 11 13 2C 3F 44 51 2F 1F 1F 20 23];
 		ram-param = [00 F0];
 		rgb-param = [CD 08 14];
-		// vcom = <0x28>;
-		// gctrl = <0x35>;
-		// vrhs = <0x10>;
-		// vdvs = <0x20>;
-
-		// /* Landscape */
-		// width = <125>;
-		// height = <240>;
-		// x-offset = <52>;
-		// y-offset = <40>;
-		// mdac = <0x08>;
-
-		// gamma = <0x01>;
-		// colmod = <0x55>;
-		// lcm = <0x0C>;
-		// porch-param = [0C 0C 00 33 33];
-		// cmd2en-param = [5A 69 02 01];
-		// pwctrl1-param = [A4 A1];
-		// pvgam-param = [D0 00 02 07 0A 28 32 44 42 06 0E 12 14 17];
-		// nvgam-param = [D0 00 02 07 0A 28 31 54 47 0E 1C 17 1B 1E];
-		// ram-param = [00 E0];
-		// rgb-param = [CD 08 14];
 	};
 };
-
-// &spi3 {
-// 	#address-cells = <1>;
-// 	#size-cells = <0>;
-// 	status = "okay";
-// 	pinctrl-0 = <&spim3_default>;
-// 	pinctrl-names = "default";
-
-// 	ili9341: ili9341@0 {
-// 		compatible = "ilitek,ili9341";
-// 		spi-max-frequency = <25000000>;
-// 		reg = <0>;
-// 		cmd-data-gpios = <&gpio0 4 GPIO_ACTIVE_LOW>;
-// 		reset-gpios = <&gpio1 16 GPIO_ACTIVE_LOW>;
-// 		pixel-format = <1>;
-// 		rotation = <0>;
-// 		width = <240>;
-// 		height = <320>;
-// 	};
-// };
 
 &timer0 {
 	status = "disabled";

@@ -57,6 +57,16 @@
 			reg = <0x3fc88000 0x77FFF>;
 		};
 
+		ipmmem0: memory@3ffe5230 {
+			compatible = "mmio-sram";
+			reg = <0x3FFE5230 0x400>;
+		};
+
+		shm0: memory@3ffe5630 {
+			compatible = "mmio-sram";
+			reg = <0x3FFE5630 0x3C00>;
+		};
+
 		intc: interrupt-controller@600c2000 {
 			#interrupt-cells = <1>;
 			compatible = "espressif,esp32-intc";
@@ -95,6 +105,30 @@
 				erase-block-size = <4096>;
 				write-block-size = <4>;
 			};
+		};
+
+		ipm0: ipm@3ffed238 {
+			compatible = "espressif,esp32-ipm";
+			reg = <0x3FFED238 0x8>;
+			status = "disabled";
+			shared-memory = <&ipmmem0>;
+			shared-memory-size = <0x400>;
+			interrupts = <FROM_CPU_INTR0_SOURCE FROM_CPU_INTR1_SOURCE>;
+			interrupt-parent = <&intc>;
+		};
+
+		ipi0: ipi@3f4c0058 {
+			compatible = "espressif,crosscore-interrupt";
+			reg = <0x3f4c0058 0x4>;
+			interrupts = <FROM_CPU_INTR0_SOURCE>;
+			interrupt-parent = <&intc>;
+		};
+
+		ipi1: ipi@3f4c005c {
+			compatible = "espressif,crosscore-interrupt";
+			reg = <0x3f4c005c 0x4>;
+			interrupts = <FROM_CPU_INTR1_SOURCE>;
+			interrupt-parent = <&intc>;
 		};
 
 		uart0: uart@60000000 {

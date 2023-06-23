@@ -36,7 +36,7 @@ config ESP32_WIFI_STA_RECONNECT
 
 config ESP32_WIFI_EVENT_TASK_STACK_SIZE
 	int "Event Task Stack Size"
-	default 4096
+	default 1024
 
 config ESP32_WIFI_EVENT_TASK_PRIO
 	int "Event Task Priority"

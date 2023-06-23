@@ -33,17 +33,11 @@
 
 #define DRAM0_0_SEG_LEN I_D_SRAM_SIZE
 
-#define FLASH_CODE_REGION irom0_0_seg
-#define RODATA_REGION drom0_0_seg
+#define FLASH_CODE_REGION iram0_0_seg
+#define RODATA_REGION dram0_0_seg
 #define IRAM_REGION iram0_0_seg
 #define RAMABLE_REGION dram0_0_seg
-#define ROMABLE_REGION ROM
-
-#ifdef CONFIG_FLASH_SIZE
-#define FLASH_SIZE CONFIG_FLASH_SIZE
-#else
-#define FLASH_SIZE 0x800000
-#endif
+#define ROMABLE_REGION iram0_0_seg
 
 #ifdef CONFIG_BOOTLOADER_ESP_IDF
 #define IROM_SEG_ORG 0x42000020
@@ -57,36 +51,8 @@
 
 MEMORY
 {
-  mcuboot_hdr (RX): org = 0x0, len = 0x20
-  metadata (RX): org = 0x20, len = 0x20
-  ROM (RX): org = 0x40, len = FLASH_SIZE - 0x40
-#ifndef CONFIG_ESP32_NETWORK_CORE
-  iram0_0_seg(RX): org = SRAM_IRAM_ORG, len = 0x37000
-  dram0_0_seg(RW): org = SRAM_DRAM_ORG, len = 0x40000
-#else
-  iram0_0_seg(RX): org = SRAM_IRAM_ORG, len = SRAM_IRAM_SIZE
-  dram0_0_seg(RW): org = SRAM_DRAM_ORG, len = DRAM0_0_SEG_LEN
-#endif
-  irom0_0_seg(RX): org = IROM_SEG_ORG, len = IROM_SEG_LEN
-
-  /* DROM is the first segment placed in generated binary.
-   * MCUboot binary for ESP32 has image header of 0x20 bytes.
-   * Additional load header of 0x20 bytes are appended to the image.
-   * Hence, an offset of 0x40 is added to DROM segment origin.
-   */
-  drom0_0_seg(R): org = 0x3C000040, len = FLASH_SIZE - 0x40
-
-  /* RTC fast memory (executable). Persists over deep sleep.
-   */
-  rtc_iram_seg(RWX): org = 0x600fe000, len = 0x2000
-
-  /* RTC fast memory (same block as above), viewed from data bus
-   */
-  rtc_data_seg(RW): org = 0x600fe000, len = 0x2000
-
-  /* RTC slow memory (data accessible). Persists over deep sleep.
-   */
-  rtc_slow_seg(RW): org = 0x50000000, len = 0x2000
+  iram0_0_seg(RX): org = SRAM_IRAM_ORG + 0x37000, len = SRAM_IRAM_SIZE - 0x37000
+  dram0_0_seg(RW): org = SRAM_DRAM_ORG + 0x40000, len = DRAM0_0_SEG_LEN - 0x40000
 
 #ifdef CONFIG_GEN_ISR_TABLES
   IDT_LIST(RW): org = 0x3ebfe010, len = 0x2000
@@ -94,45 +60,10 @@ MEMORY
 }
 
 /*  Default entry point:  */
-ENTRY(CONFIG_KERNEL_ENTRY)
+ENTRY(__app_cpu_start)
 
 SECTIONS
 {
-  /* Reserve space for MCUboot header in the binary */
-  .mcuboot_header :
-  {
-    QUAD(0x0)
-    QUAD(0x0)
-    QUAD(0x0)
-    QUAD(0x0)
-  } > mcuboot_hdr
-  .metadata :
-  {
-    /* Magic byte for load header */
-    LONG(0xace637d3)
-
-    /* Application entry point address */
-    KEEP(*(.entry_addr))
-
-    /* IRAM metadata:
-     * - Destination address (VMA) for IRAM region
-     * - Flash offset (LMA) for start of IRAM region
-     * - Size of IRAM region
-     */
-    LONG(ADDR(.iram0.vectors))
-    LONG(LOADADDR(.iram0.vectors))
-    LONG(LOADADDR(.iram0.text) + SIZEOF(.iram0.text) - LOADADDR(.iram0.vectors))
-
-    /* DRAM metadata:
-     * - Destination address (VMA) for DRAM region
-     * - Flash offset (LMA) for start of DRAM region
-     * - Size of DRAM region
-     */
-    LONG(ADDR(.dram0.data))
-    LONG(LOADADDR(.dram0.data))
-    LONG(LOADADDR(.dram0.end) + SIZEOF(.dram0.end) - LOADADDR(.dram0.data))
-  } > metadata
-
   #include <zephyr/linker/rel-sections.ld>
 
   _image_drom_start = LOADADDR(_RODATA_SECTION_NAME);
@@ -341,11 +272,11 @@ SECTIONS
   /* This section is required to skip .iram0.text area because iram0_0_seg and
    * dram0_0_seg reflect the same address space on different buses.
    */
-  .dram0.dummy (NOLOAD):
+  /* .dram0.dummy (NOLOAD):
   {
     . = ALIGN (8);
     . = ORIGIN(dram0_0_seg) + MAX(_iram_end, SRAM_DIRAM_I_START) - SRAM_DIRAM_I_START;
-  } GROUP_LINK_IN(RAMABLE_REGION)
+  } GROUP_LINK_IN(RAMABLE_REGION) */
 
   /* Shared RAM */
   SECTION_DATA_PROLOGUE(_BSS_SECTION_NAME,(NOLOAD),)
