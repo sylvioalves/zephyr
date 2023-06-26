@@ -7,6 +7,7 @@ config SOC_ESP32S3_NET
 	select CLOCK_CONTROL
 	select DYNAMIC_INTERRUPTS
 	select HAS_ESPRESSIF_HAL
+	select PINCTRL
 
 if SOC_ESP32S3_NET
 
@@ -21,11 +22,6 @@ config IDF_TARGET_ESP32S3
 config ESPTOOLPY_FLASHFREQ_80M
 	bool
 	default y
-
-config ESP32_BT_RESERVE_DRAM
-	hex "Bluetooth controller reserved RAM region"
-	default 0xdb5c if BT
-	default 0
 
 choice ESP32_UNIVERSAL_MAC_ADDRESSES
 	bool "Number of universally administered (by IEEE) MAC address"
@@ -76,8 +72,166 @@ config ESP32_UNIVERSAL_MAC_ADDRESSES
 	default 2 if ESP32_UNIVERSAL_MAC_ADDRESSES_TWO
 	default 4 if ESP32_UNIVERSAL_MAC_ADDRESSES_FOUR
 
+config ESP32_PHY_MAX_WIFI_TX_POWER
+	int "Max WiFi/BLE TX power (dBm)"
+	range 10 20
+	default 20
+	help
+		Set maximum transmit power for WiFi radio. Actual transmit power for high
+		data rates may be lower than this setting.
+
+config ESP32_PHY_MAX_TX_POWER
+	int
+	default ESP32_PHY_MAX_WIFI_TX_POWER
+
 config ESP_TIMER_STACK_SIZE
 	int "ESP Timer Stack Size"
 	default 1024
+
+	menu "Cache config"
+
+		choice ESP32S3_INSTRUCTION_CACHE_SIZE
+			prompt "Instruction cache size"
+			default ESP32S3_INSTRUCTION_CACHE_16KB
+			help
+			  Instruction cache size to be set on application startup.
+			  If you use 16KB instruction cache rather than 32KB instruction cache,
+			  then the other 16KB will be managed by heap allocator.
+
+			config ESP32S3_INSTRUCTION_CACHE_16KB
+				bool "16KB"
+			config ESP32S3_INSTRUCTION_CACHE_32KB
+				bool "32KB"
+		endchoice
+
+		config ESP32S3_INSTRUCTION_CACHE_SIZE
+			hex
+			default 0x4000 if ESP32S3_INSTRUCTION_CACHE_16KB
+			default 0x8000 if ESP32S3_INSTRUCTION_CACHE_32KB
+
+		choice ESP32S3_ICACHE_ASSOCIATED_WAYS
+			prompt "Instruction cache associated ways"
+			default ESP32S3_INSTRUCTION_CACHE_8WAYS
+			help
+			  Instruction cache associated ways to be set on application startup.
+
+			config ESP32S3_INSTRUCTION_CACHE_4WAYS
+				bool "4 ways"
+			config ESP32S3_INSTRUCTION_CACHE_8WAYS
+				bool "8 ways"
+		endchoice
+
+		config ESP32S3_ICACHE_ASSOCIATED_WAYS
+			int
+			default 4 if ESP32S3_INSTRUCTION_CACHE_4WAYS
+			default 8 if ESP32S3_INSTRUCTION_CACHE_8WAYS
+
+		choice ESP32S3_INSTRUCTION_CACHE_LINE_SIZE
+			prompt "Instruction cache line size"
+			default ESP32S3_INSTRUCTION_CACHE_LINE_32B
+			help
+			  Instruction cache line size to be set on application startup.
+
+			config ESP32S3_INSTRUCTION_CACHE_LINE_16B
+				bool "16 Bytes"
+				depends on ESP32S3_INSTRUCTION_CACHE_16KB
+			config ESP32S3_INSTRUCTION_CACHE_LINE_32B
+				bool "32 Bytes"
+		endchoice
+
+		config ESP32S3_INSTRUCTION_CACHE_LINE_SIZE
+			int
+			default 16 if ESP32S3_INSTRUCTION_CACHE_LINE_16B
+			default 32 if ESP32S3_INSTRUCTION_CACHE_LINE_32B
+
+		config ESP32S3_INSTRUCTION_CACHE_WRAP
+			bool "Define instruction cache wrap mode"
+			help
+			  If enabled, instruction cache will use wrap mode to read spi flash or spi ram.
+			  The wrap length equals to ESP32S3_INSTRUCTION_CACHE_LINE_SIZE.
+			  However, it depends on complex conditions.
+
+		choice ESP32S3_DATA_CACHE_SIZE
+			prompt "Data cache size"
+			default ESP32S3_DATA_CACHE_32KB
+			help
+			  Data cache size to be set on application startup.
+			  If you use 32KB data cache rather than 64KB data cache,
+			  the other 32KB will be added to the heap.
+
+			config ESP32S3_DATA_CACHE_16KB
+				bool "16KB"
+			config ESP32S3_DATA_CACHE_32KB
+				bool "32KB"
+			config ESP32S3_DATA_CACHE_64KB
+				bool "64KB"
+		endchoice
+
+		config ESP32S3_DATA_CACHE_SIZE
+			hex
+			# For 16KB the actual configuration is 32kb cache, but 16kb will be reserved for heap at startup
+			default 0x8000 if ESP32S3_DATA_CACHE_16KB
+			default 0x8000 if ESP32S3_DATA_CACHE_32KB
+			default 0x10000 if ESP32S3_DATA_CACHE_64KB
+
+		choice ESP32S3_DCACHE_ASSOCIATED_WAYS
+			prompt "Data cache associated ways"
+			default ESP32S3_DATA_CACHE_8WAYS
+			help
+			  Data cache associated ways to be set on application startup.
+
+			config ESP32S3_DATA_CACHE_4WAYS
+				bool "4 ways"
+			config ESP32S3_DATA_CACHE_8WAYS
+				bool "8 ways"
+		endchoice
+
+		config ESP32S3_DCACHE_ASSOCIATED_WAYS
+			int
+			default 4 if ESP32S3_DATA_CACHE_4WAYS
+			default 8 if ESP32S3_DATA_CACHE_8WAYS
+
+		choice ESP32S3_DATA_CACHE_LINE_SIZE
+			prompt "Data cache line size"
+			default ESP32S3_DATA_CACHE_LINE_32B
+			help
+			  Data cache line size to be set on application startup.
+
+			config ESP32S3_DATA_CACHE_LINE_16B
+				bool "16 Bytes"
+				depends on ESP32S3_DATA_CACHE_16KB || ESP32S3_DATA_CACHE_32KB
+			config ESP32S3_DATA_CACHE_LINE_32B
+				bool "32 Bytes"
+			config ESP32S3_DATA_CACHE_LINE_64B
+				bool "64 Bytes"
+		endchoice
+
+		config ESP32S3_DATA_CACHE_LINE_SIZE
+			int
+			default 16 if ESP32S3_DATA_CACHE_LINE_16B
+			default 32 if ESP32S3_DATA_CACHE_LINE_32B
+			default 64 if ESP32S3_DATA_CACHE_LINE_64B
+
+		config ESP32S3_DATA_CACHE_WRAP
+			bool "Define data cache wrap mode"
+			help
+			  If enabled, data cache will use wrap mode to read spi flash or spi ram.
+			  The wrap length equals to ESP32S3_DATA_CACHE_LINE_SIZE.
+			  However, it depends on complex conditions.
+
+		config MAC_BB_PD
+			bool "Power down MAC and baseband of Wi-Fi and Bluetooth when PHY is disabled"
+			depends on SOC_ESP32S3 && TICKLESS_KERNEL
+			default n
+			help
+			  If enabled, the MAC and baseband of Wi-Fi and Bluetooth will be powered
+			  down when PHY is disabled. Enabling this setting reduces power consumption
+			  by a small amount but increases RAM use by approximat
+
+		endmenu  # Cache config
+
+config ESP_NETWORK_CORE_IRAM
+	hex "ESP CPU Network core IRAM size"
+	default 0x10000
 
 endif # SOC_ESP32

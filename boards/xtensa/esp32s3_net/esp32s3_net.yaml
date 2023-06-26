@@ -1,5 +1,5 @@
 identifier: esp32s3_net
-name: ESP32_NET
+name: ESP32S3_NET
 type: mcu
 arch: xtensa
 toolchain:

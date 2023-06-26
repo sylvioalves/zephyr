@@ -6,14 +6,16 @@
 /dts-v1/;
 
 #include <espressif/esp32s3.dtsi>
-
+#include "esp32s3_net-pinctrl.dtsi"
 / {
 	model = "esp32s3_net";
-	compatible = "espressif,esp32_net";
+	compatible = "espressif,esp32s3_net";
+
 
 	chosen {
 		zephyr,sram = &sram0;
 	};
+
 };
 
 &cpu0 {
@@ -24,6 +26,8 @@
 	clock-frequency = <ESP32_CLK_CPU_240M>;
 };
 
-&trng0 {
-	status = "okay";
+&i2c1 {
+	clock-frequency = <I2C_BITRATE_STANDARD>;
+	pinctrl-0 = <&i2c0_default>;
+	pinctrl-names = "default";
 };

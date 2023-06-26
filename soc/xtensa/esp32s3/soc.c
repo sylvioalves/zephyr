@@ -60,18 +60,17 @@ void __attribute__((section(".iram1"))) start_esp32_net_cpu(void)
 		if (segment->load_addr >= SOC_IRAM_LOW && segment->load_addr < SOC_IRAM_HIGH) {
 			/* IRAM segment only accepts 4 byte access, avoid memcpy usage here */
 			volatile uint32_t *src = (volatile uint32_t *)segment_payload;
-			volatile uint32_t *dst =
-				(volatile uint32_t *)segment->load_addr;
-
-			for (int i = 0; i < segment->data_len/4 ; i++) {
+			volatile uint32_t *dst = (volatile uint32_t *)segment->load_addr;
+			// ets_printf("loading IRAM at %p (len=%d)\r\n", segment->load_addr, segment->data_len);
+			for (int i = 0; i < segment->data_len / 4; i++) {
 				dst[i] = src[i];
 			}
-		} else if (segment->load_addr >= SOC_DRAM_LOW &&
-			segment->load_addr < SOC_DRAM_HIGH) {
 
-			memcpy((void *)segment->load_addr,
-				(const void *)segment_payload,
-				segment->data_len);
+		} else if (segment->load_addr >= SOC_DRAM_LOW &&
+			   segment->load_addr < SOC_DRAM_HIGH) {
+			// ets_printf("loading DRAM at %p (len=%d)\r\n", segment->load_addr, segment->data_len);
+			memcpy((void *)segment->load_addr, (const void *)segment_payload,
+			       segment->data_len);
 		}
 
 		idx += segment->data_len;
@@ -79,6 +78,7 @@ void __attribute__((section(".iram1"))) start_esp32_net_cpu(void)
 		idx += sizeof(esp_image_segment_header_t);
 	}
 
+	// ets_printf("loading IRAM/DRAM completed!\r\n");
 	start_other_core((void *)entry_addr);
 }
 #endif /* CONFIG_ESP32_NETWORK_CORE */
@@ -143,8 +143,10 @@ void IRAM_ATTR __esp_platform_start(void)
 	 */
 	esp_config_data_cache_mode();
 
+#ifndef CONFIG_ESP32_NETWORK_CORE
 	/* Apply SoC patches */
 	esp_errata();
+#endif
 
 	/* ESP-IDF/MCUboot 2nd stage bootloader enables RTC WDT to check on startup sequence
 	 * related issues in application. Hence disable that as we are about to start
@@ -156,12 +158,7 @@ void IRAM_ATTR __esp_platform_start(void)
 	wdt_hal_disable(&rtc_wdt_ctx);
 	wdt_hal_write_protect_enable(&rtc_wdt_ctx);
 
-#ifndef CONFIG_SOC_ESP32S3_NET
-	/* Configures the CPU clock, RTC slow and fast clocks, and performs
-	 * RTC slow clock calibration.
-	 */
 	esp_clk_init();
-#endif
 
 	esp_timer_early_init();
 

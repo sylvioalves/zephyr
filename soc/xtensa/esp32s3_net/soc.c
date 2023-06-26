@@ -1,5 +1,5 @@
 /*
- * Copyright (c) 2022 Espressif Systems (Shanghai) Co., Ltd.
+ * Copyright (c) 2017 Intel Corporation
  *
  * SPDX-License-Identifier: Apache-2.0
  */
@@ -18,19 +18,37 @@
 #include <zephyr/types.h>
 #include <zephyr/linker/linker-defs.h>
 #include <kernel_internal.h>
+#include <zephyr/sys/util.h>
 
 #include "esp_private/system_internal.h"
-#include "esp32/rom/cache.h"
+#include "esp32s3/rom/cache.h"
+#include "esp32s3/rom/rtc.h"
+#include "soc/syscon_reg.h"
 #include "hal/soc_ll.h"
+#include "hal/wdt_hal.h"
 #include "soc/cpu.h"
 #include "soc/gpio_periph.h"
 #include "esp_spi_flash.h"
 #include "esp_err.h"
-#include "esp32/spiram.h"
+#include "esp_timer.h"
 #include "esp_app_format.h"
+#include "esp_clk_internal.h"
+
+#ifdef CONFIG_MCUBOOT
+#include "bootloader_init.h"
+#endif /* CONFIG_MCUBOOT */
 #include <zephyr/sys/printk.h>
 
 extern void z_cstart(void);
+
+static void core_intr_matrix_clear(void)
+{
+    uint32_t core_id = cpu_hal_get_core_id();
+
+    for (int i = 0; i < 99; i++) {
+        intr_matrix_set(core_id, i, ETS_INVALID_INUM);
+    }
+}
 
 /*
  * This is written in C rather than assembly since, during the port bring up,
@@ -39,17 +57,12 @@ extern void z_cstart(void);
  */
 void IRAM_ATTR __app_cpu_start(void)
 {
-	ets_printf("---S1---\r\n");
-	ets_delay_us(1000000);
-	ets_delay_us(1000000);
 	extern uint32_t _init_start;
 	extern uint32_t _bss_start;
 	extern uint32_t _bss_end;
 
 	/* Move the exception vector table to IRAM. */
 	__asm__ __volatile__("wsr %0, vecbase" : : "r"(&_init_start));
-
-    ets_set_appcpu_boot_addr(0);
 
 	/* Zero out BSS.  Clobber _bss_start to avoid memset() elision. */
 	z_bss_zero();
@@ -65,7 +78,12 @@ void IRAM_ATTR __app_cpu_start(void)
 	 */
 	__asm__ __volatile__("wsr.MISC0 %0; rsync" : : "r"(&_kernel.cpus[1]));
 
+	core_intr_matrix_clear();
+
 	esp_intr_initialize();
+
+	ets_delay_us(100000);
+
 	/* Start Zephyr */
 	z_cstart();
 
@@ -86,5 +104,97 @@ void sys_arch_reboot(int type)
 
 void IRAM_ATTR esp_restart_noos(void)
 {
-	while (true);
+	/* disable interrupts */
+	z_xt_ints_off(0xFFFFFFFF);
+
+	/* enable RTC watchdog for 1 second */
+	wdt_hal_context_t wdt_ctx;
+	uint32_t timeout_ticks = (uint32_t)(1000ULL * rtc_clk_slow_freq_get_hz() / 1000ULL);
+
+	wdt_hal_init(&wdt_ctx, WDT_RWDT, 0, false);
+	wdt_hal_write_protect_disable(&wdt_ctx);
+	wdt_hal_config_stage(&wdt_ctx, WDT_STAGE0, timeout_ticks, WDT_STAGE_ACTION_RESET_SYSTEM);
+	wdt_hal_config_stage(&wdt_ctx, WDT_STAGE1, timeout_ticks, WDT_STAGE_ACTION_RESET_RTC);
+
+	/* enable flash boot mode so that flash booting after restart is protected by the RTC WDT */
+	wdt_hal_set_flashboot_en(&wdt_ctx, true);
+	wdt_hal_write_protect_enable(&wdt_ctx);
+
+	/* disable TG0/TG1 watchdogs */
+	wdt_hal_context_t wdt0_context = {.inst = WDT_MWDT0, .mwdt_dev = &TIMERG0};
+
+	wdt_hal_write_protect_disable(&wdt0_context);
+	wdt_hal_disable(&wdt0_context);
+	wdt_hal_write_protect_enable(&wdt0_context);
+
+	wdt_hal_context_t wdt1_context = {.inst = WDT_MWDT1, .mwdt_dev = &TIMERG1};
+
+	wdt_hal_write_protect_disable(&wdt1_context);
+	wdt_hal_disable(&wdt1_context);
+	wdt_hal_write_protect_enable(&wdt1_context);
+
+	/* Flush any data left in UART FIFOs */
+	esp_rom_uart_tx_wait_idle(0);
+	esp_rom_uart_tx_wait_idle(1);
+	esp_rom_uart_tx_wait_idle(2);
+
+	/* Disable cache */
+	Cache_Disable_ICache();
+	Cache_Disable_DCache();
+
+	const uint32_t core_id = cpu_hal_get_core_id();
+#if CONFIG_SMP
+	const uint32_t other_core_id = (core_id == 0) ? 1 : 0;
+
+	soc_ll_reset_core(other_core_id);
+	soc_ll_stall_core(other_core_id);
+#endif
+
+	/* 2nd stage bootloader reconfigures SPI flash signals. */
+	/* Reset them to the defaults expected by ROM */
+	WRITE_PERI_REG(GPIO_FUNC0_IN_SEL_CFG_REG, 0x30);
+	WRITE_PERI_REG(GPIO_FUNC1_IN_SEL_CFG_REG, 0x30);
+	WRITE_PERI_REG(GPIO_FUNC2_IN_SEL_CFG_REG, 0x30);
+	WRITE_PERI_REG(GPIO_FUNC3_IN_SEL_CFG_REG, 0x30);
+	WRITE_PERI_REG(GPIO_FUNC4_IN_SEL_CFG_REG, 0x30);
+	WRITE_PERI_REG(GPIO_FUNC5_IN_SEL_CFG_REG, 0x30);
+
+	/* Reset wifi/bluetooth/ethernet/sdio (bb/mac) */
+	SET_PERI_REG_MASK(SYSTEM_CORE_RST_EN_REG,
+			  SYSTEM_BB_RST | SYSTEM_FE_RST | SYSTEM_MAC_RST | SYSTEM_BT_RST |
+				  SYSTEM_BTMAC_RST | SYSTEM_SDIO_RST | SYSTEM_SDIO_HOST_RST |
+				  SYSTEM_EMAC_RST | SYSTEM_MACPWR_RST | SYSTEM_RW_BTMAC_RST |
+				  SYSTEM_RW_BTLP_RST | SYSTEM_BLE_REG_RST | SYSTEM_PWR_REG_RST);
+	REG_WRITE(SYSTEM_CORE_RST_EN_REG, 0);
+
+	/* Reset timer/spi/uart */
+	SET_PERI_REG_MASK(SYSTEM_PERIP_RST_EN0_REG, SYSTEM_TIMERS_RST | SYSTEM_SPI01_RST |
+							    SYSTEM_UART_RST | SYSTEM_SYSTIMER_RST);
+	REG_WRITE(SYSTEM_PERIP_RST_EN0_REG, 0);
+
+	/* Reset DMA */
+	SET_PERI_REG_MASK(SYSTEM_PERIP_RST_EN1_REG, SYSTEM_DMA_RST);
+	REG_WRITE(SYSTEM_PERIP_RST_EN1_REG, 0);
+
+	SET_PERI_REG_MASK(SYSTEM_EDMA_CTRL_REG, SYSTEM_EDMA_RESET);
+	CLEAR_PERI_REG_MASK(SYSTEM_EDMA_CTRL_REG, SYSTEM_EDMA_RESET);
+
+	rtc_clk_cpu_freq_set_xtal();
+
+	/* Reset CPUs */
+	if (core_id == 0) {
+		/* Running on PRO CPU: APP CPU is stalled. Can reset both CPUs. */
+		soc_ll_reset_core(1);
+		soc_ll_reset_core(0);
+	} else {
+		/* Running on APP CPU: need to reset PRO CPU and unstall it, */
+		/* then reset APP CPU */
+		soc_ll_reset_core(0);
+		soc_ll_stall_core(0);
+		soc_ll_reset_core(1);
+	}
+
+	while (true) {
+		;
+	}
 }

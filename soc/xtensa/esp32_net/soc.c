@@ -37,40 +37,31 @@ extern void z_cstart(void);
  * Zephyr is being booted by the Espressif bootloader.  With it, the C stack
  * is already set up.
  */
-void __app_cpu_start(void)
+void IRAM_ATTR __app_cpu_start(void)
 {
 	extern uint32_t _init_start;
 	extern uint32_t _bss_start;
 	extern uint32_t _bss_end;
 
 	/* Move the exception vector table to IRAM. */
-	__asm__ __volatile__ (
-		"wsr %0, vecbase"
-		:
-		: "r"(&_init_start));
+	__asm__ __volatile__("wsr %0, vecbase" : : "r"(&_init_start));
 
 	/* Zero out BSS.  Clobber _bss_start to avoid memset() elision. */
 	z_bss_zero();
 
-	__asm__ __volatile__ (
-		""
-		:
-		: "g"(&__bss_start)
-		: "memory");
+	__asm__ __volatile__("" : : "g"(&__bss_start) : "memory");
 
 	/* Disable normal interrupts. */
-	__asm__ __volatile__ (
-		"wsr %0, PS"
-		:
-		: "r"(PS_INTLEVEL(XCHAL_EXCM_LEVEL) | PS_UM | PS_WOE));
+	__asm__ __volatile__("wsr %0, PS" : : "r"(PS_INTLEVEL(XCHAL_EXCM_LEVEL) | PS_UM | PS_WOE));
 
 	/* Initialize the architecture CPU pointer.  Some of the
 	 * initialization code wants a valid _current before
 	 * arch_kernel_init() is invoked.
 	 */
-	__asm__ volatile("wsr.MISC0 %0; rsync" : : "r"(&_kernel.cpus[0]));
+	__asm__ __volatile__("wsr.MISC0 %0; rsync" : : "r"(&_kernel.cpus[1]));
 
 	esp_intr_initialize();
+
 	/* Start Zephyr */
 	z_cstart();
 
@@ -120,20 +111,18 @@ void IRAM_ATTR esp_restart_noos(void)
 
 	/* Reset wifi/bluetooth/ethernet/sdio (bb/mac) */
 	DPORT_SET_PERI_REG_MASK(DPORT_CORE_RST_EN_REG,
-				DPORT_BB_RST | DPORT_FE_RST | DPORT_MAC_RST |
-				DPORT_BT_RST | DPORT_BTMAC_RST |
-				DPORT_SDIO_RST | DPORT_SDIO_HOST_RST |
-				DPORT_EMAC_RST | DPORT_MACPWR_RST |
-				DPORT_RW_BTMAC_RST | DPORT_RW_BTLP_RST);
+				DPORT_BB_RST | DPORT_FE_RST | DPORT_MAC_RST | DPORT_BT_RST |
+					DPORT_BTMAC_RST | DPORT_SDIO_RST | DPORT_SDIO_HOST_RST |
+					DPORT_EMAC_RST | DPORT_MACPWR_RST | DPORT_RW_BTMAC_RST |
+					DPORT_RW_BTLP_RST);
 	DPORT_REG_WRITE(DPORT_CORE_RST_EN_REG, 0);
 
 	/* Reset timer/spi/uart */
-	DPORT_SET_PERI_REG_MASK(
-		DPORT_PERIP_RST_EN_REG,
-		/* UART TX FIFO cannot be reset correctly on ESP32, */
-		/* so reset the UART memory by DPORT here. */
-		DPORT_TIMERS_RST | DPORT_SPI01_RST | DPORT_UART_RST |
-		DPORT_UART1_RST | DPORT_UART2_RST | DPORT_UART_MEM_RST);
+	DPORT_SET_PERI_REG_MASK(DPORT_PERIP_RST_EN_REG,
+				/* UART TX FIFO cannot be reset correctly on ESP32, */
+				/* so reset the UART memory by DPORT here. */
+				DPORT_TIMERS_RST | DPORT_SPI01_RST | DPORT_UART_RST |
+					DPORT_UART1_RST | DPORT_UART2_RST | DPORT_UART_MEM_RST);
 	DPORT_REG_WRITE(DPORT_PERIP_RST_EN_REG, 0);
 
 	/* Clear entry point for APP CPU */

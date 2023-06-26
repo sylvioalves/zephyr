@@ -284,4 +284,8 @@ config ESP_TIMER_STACK_SIZE
 	int "ESP Timer Stack Size"
 	default 1024
 
+config ESP_NETWORK_CORE_IRAM
+	hex "ESP CPU Network core IRAM size"
+	default 0x10000
+
 endif # SOC_ESP32S3

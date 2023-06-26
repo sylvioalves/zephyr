@@ -126,6 +126,7 @@ static int sys_clock_driver_init(void)
 	IRQ_CONNECT(TIMER_IRQ, 0, ccompare_isr, 0, 0);
 	set_ccompare(ccount() + CYC_PER_TICK);
 	irq_enable(TIMER_IRQ);
+
 	return 0;
 }
 

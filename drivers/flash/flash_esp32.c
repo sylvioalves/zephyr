@@ -39,7 +39,7 @@
 #include "soc/spi_mem_reg.h"
 #include "esp32s2/rom/cache.h"
 #include "esp32s2/rom/spi_flash.h"
-#elif defined(CONFIG_SOC_ESP32S3)
+#elif defined(CONFIG_SOC_ESP32S3) || defined(CONFIG_SOC_ESP32S3_NET)
 #include "soc/spi_mem_reg.h"
 #include "esp32s3/rom/cache.h"
 #include "esp32s3/rom/spi_flash.h"

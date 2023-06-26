@@ -351,7 +351,7 @@ static int IRAM_ATTR spi_esp32_configure(const struct device *dev,
 	 * Workaround for ESP32S3 and ESP32C3 SoC. This dummy transaction is needed to sync CLK and
 	 * software controlled CS when SPI is in mode 3
 	 */
-#if defined(CONFIG_SOC_ESP32S3) || defined(CONFIG_SOC_ESP32C3)
+#if defined(CONFIG_SOC_ESP32S3) || defined(CONFIG_SOC_ESP32C3) || defined(CONFIG_SOC_ESP32S3_NET)
 	if (ctx->num_cs_gpios && (hal_dev->mode & (SPI_MODE_CPOL | SPI_MODE_CPHA))) {
 		spi_esp32_transfer(dev);
 	}

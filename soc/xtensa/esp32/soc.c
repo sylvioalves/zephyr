@@ -57,7 +57,7 @@ void __attribute__((section(".iram1"))) start_esp32_net_cpu(void)
 
 	for (int i = 0; i < header->segment_count; i++) {
 		segment_payload = (uint8_t *)&esp32_net_fw_array[idx];
-
+		ets_printf("loading IRAM at %p (len=%d)\r\n", segment->load_addr, egment->data_len);
 		if (segment->load_addr >= SOC_IRAM_LOW && segment->load_addr < SOC_IRAM_HIGH) {
 			/* IRAM segment only accepts 4 byte access, avoid memcpy usage here */
 			volatile uint32_t *src = (volatile uint32_t *)segment_payload;
@@ -69,6 +69,7 @@ void __attribute__((section(".iram1"))) start_esp32_net_cpu(void)
 			}
 		} else if (segment->load_addr >= SOC_DRAM_LOW &&
 			segment->load_addr < SOC_DRAM_HIGH) {
+			ets_printf("loading DRAM at %p (len=%d)\r\n", segment->load_addr, egment->data_len);
 
 			memcpy((void *)segment->load_addr,
 				(const void *)segment_payload,
@@ -80,6 +81,7 @@ void __attribute__((section(".iram1"))) start_esp32_net_cpu(void)
 		idx += sizeof(esp_image_segment_header_t);
 	}
 
+	ets_printf("loading IRAM/DRAM completed!\r\n");
 	esp_appcpu_start((void *)entry_addr);
 }
 #endif /* CONFIG_ESP32_NETWORK_CORE */
@@ -139,10 +141,10 @@ void __attribute__((section(".iram1"))) __esp_platform_start(void)
 	/* Configures the CPU clock, RTC slow and fast clocks, and performs
 	 * RTC slow clock calibration.
 	 */
-	// esp_clk_init();
+	esp_clk_init();
 #endif
 
-	// esp_timer_early_init();
+	esp_timer_early_init();
 
 #if CONFIG_ESP32_NETWORK_CORE
 	/* start the esp32 network core before

@@ -43,8 +43,6 @@ void smp_log(const char *msg)
  */
 void start_other_core(void *entry_point)
 {
-	smp_log("ESP32S3: starting CPU1");
-
 	soc_ll_unstall_core(1);
 
 	if (!REG_GET_BIT(SYSTEM_CORE_1_CONTROL_0_REG, SYSTEM_CONTROL_CORE_1_CLKGATE_EN)) {
@@ -56,11 +54,11 @@ void start_other_core(void *entry_point)
 
 	esp_rom_ets_set_appcpu_boot_addr((void *)entry_point);
 
-	esp_rom_delay_us(100000);
+	ets_delay_us(50000);
 
-	esp_rom_uart_tx_one_char('\r');
-	esp_rom_uart_tx_one_char('\r');
-	esp_rom_uart_tx_one_char('\n');
+	// esp_rom_uart_tx_one_char('\r');
+	// esp_rom_uart_tx_one_char('\r');
+	// esp_rom_uart_tx_one_char('\n');
 
-	smp_log("ESP32S3: CPU1 start sequence complete");
+	// smp_log("ESP32S3: CPU1 start sequence complete");
 }

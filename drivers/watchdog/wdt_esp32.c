@@ -131,7 +131,7 @@ static int wdt_esp32_install_timeout(const struct device *dev,
 		break;
 
 	case WDT_FLAG_RESET_CPU_CORE:
-		data->mode = WDT_STAGE_ACTION_RESET_CPU;
+		data->mode = WDT_STAGE_ACTION_INT;
 		LOG_DBG("Configuring reset CPU mode");
 		break;
 
@@ -204,6 +204,8 @@ static void wdt_esp32_isr(void *arg)
 	const struct device *dev = (const struct device *)arg;
 	const struct wdt_esp32_config *config = dev->config;
 	struct wdt_esp32_data *data = dev->data;
+
+	ets_printf("wdt cb!\r\n");
 
 	if (data->callback) {
 		data->callback(dev, 0);

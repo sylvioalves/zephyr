@@ -53,7 +53,7 @@ struct dma_esp32_channel {
 	dma_callback_t cb;
 	void *user_data;
 	dma_descriptor_t desc;
-#if defined(CONFIG_SOC_ESP32S3)
+#if defined(CONFIG_SOC_ESP32S3) || defined(CONFIG_SOC_ESP32S3_NET)
 	struct intr_handle_data_t *intr_handle;
 #endif
 };

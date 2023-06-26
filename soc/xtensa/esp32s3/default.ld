@@ -18,11 +18,11 @@
 #define SRAM_IRAM_START     0x40370000
 #define SRAM_DIRAM_I_START  0x40378000
 #define SRAM_IRAM_END       0x403BA000
-#define I_D_SRAM_OFFSET     (SRAM_DIRAM_I_START - SRAM_DRAM_START)
+#define I_D_SRAM_OFFSET     (SRAM_DIRAM_I_START - SRAM_DRAM_START) /* 0x6F0000 */
 
 #define SRAM_DRAM_START     0x3FC88000
-#define SRAM_DRAM_END       (SRAM_IRAM_END - I_D_SRAM_OFFSET)
-#define I_D_SRAM_SIZE       (SRAM_DRAM_END - SRAM_DRAM_START)
+#define SRAM_DRAM_END       (SRAM_IRAM_END - I_D_SRAM_OFFSET) /* 0x3FCCA000*/
+#define I_D_SRAM_SIZE       (SRAM_DRAM_END - SRAM_DRAM_START) /* 0x42000 */
 
 #define ICACHE_SIZE         0x8000
 #define SRAM_IRAM_ORG       (SRAM_IRAM_START + CONFIG_ESP32S3_INSTRUCTION_CACHE_SIZE)
@@ -60,9 +60,10 @@ MEMORY
   mcuboot_hdr (RX): org = 0x0, len = 0x20
   metadata (RX): org = 0x20, len = 0x20
   ROM (RX): org = 0x40, len = FLASH_SIZE - 0x40
-#ifndef CONFIG_ESP32_NETWORK_CORE
-  iram0_0_seg(RX): org = SRAM_IRAM_ORG, len = 0x37000
-  dram0_0_seg(RW): org = SRAM_DRAM_ORG, len = 0x40000
+#ifdef CONFIG_ESP32_NETWORK_CORE
+  iram0_0_seg(RX): org = SRAM_IRAM_ORG, len = SRAM_IRAM_SIZE - CONFIG_ESP_NETWORK_CORE_IRAM - 0x10000
+  dram0_0_seg(RW): org = SRAM_DRAM_ORG, len = DRAM0_0_SEG_LEN - 0x8000
+  /* dram0_shm0_seg(RW): org = IPM_AREA_REGION, len = IPM_AREA_SIZE */
 #else
   iram0_0_seg(RX): org = SRAM_IRAM_ORG, len = SRAM_IRAM_SIZE
   dram0_0_seg(RW): org = SRAM_DRAM_ORG, len = DRAM0_0_SEG_LEN
@@ -86,7 +87,7 @@ MEMORY
 
   /* RTC slow memory (data accessible). Persists over deep sleep.
    */
-  rtc_slow_seg(RW): org = 0x50000000, len = 0x2000
+  /* rtc_slow_seg(RW): org = 0x50000000, len = 0x2000 */
 
 #ifdef CONFIG_GEN_ISR_TABLES
   IDT_LIST(RW): org = 0x3ebfe010, len = 0x2000
@@ -227,7 +228,6 @@ SECTIONS
   /* Send .iram0 code to iram */
   .iram0.vectors : ALIGN(4)
   {
-    _iram_start = ABSOLUTE(.);
     /* Vectors go to IRAM */
     _init_start = ABSOLUTE(.);
     /* Vectors according to builds/RF-2015.2-win32/esp108_v1_2_s5_512int_2/config.html */
@@ -262,6 +262,9 @@ SECTIONS
     *(.init.literal)
     *(.init)
     _init_end = ABSOLUTE(.);
+
+    _iram_start = ABSOLUTE(.);
+
   } GROUP_DATA_LINK_IN(IRAM_REGION, ROMABLE_REGION)
 
   .iram0.text : ALIGN(4)
@@ -344,7 +347,7 @@ SECTIONS
   .dram0.dummy (NOLOAD):
   {
     . = ALIGN (8);
-    . = ORIGIN(dram0_0_seg) + MAX(_iram_end, SRAM_DIRAM_I_START) - SRAM_DIRAM_I_START;
+    . = ORIGIN(dram0_0_seg) + _iram_end - _iram_start;
   } GROUP_LINK_IN(RAMABLE_REGION)
 
   /* Shared RAM */
@@ -537,17 +540,17 @@ SECTIONS
    * named rtc_wake_stub*.c and the data marked with
    * RTC_DATA_ATTR, RTC_RODATA_ATTR attributes.
    */
-  .rtc.data :
+  /* .rtc.data :
   {
     _rtc_data_start = ABSOLUTE(.);
     *(.rtc.data)
     *(.rtc.rodata)
     *rtc_wake_stub*.o(.data .rodata .data.* .rodata.* .bss .bss.*)
     _rtc_data_end = ABSOLUTE(.);
-  } GROUP_DATA_LINK_IN(rtc_slow_seg, ROMABLE_REGION)
+  } GROUP_DATA_LINK_IN(rtc_slow_seg, ROMABLE_REGION) */
 
   /* RTC bss, from any source file named rtc_wake_stub*.c */
-  .rtc.bss (NOLOAD) :
+  /* .rtc.bss (NOLOAD) :
   {
     _rtc_bss_start = ABSOLUTE(.);
     *rtc_wake_stub*.*(.bss .bss.*)
@@ -557,51 +560,51 @@ SECTIONS
     *(.rtc.rodata)
 
     _rtc_bss_end = ABSOLUTE(.);
-  } GROUP_DATA_LINK_IN(rtc_slow_seg, ROMABLE_REGION)
+  } GROUP_DATA_LINK_IN(rtc_slow_seg, ROMABLE_REGION) */
 
   /* RTC bss, from any source file named rtc_wake_stub*.c */
-  .rtc.bss (NOLOAD) :
+  /* .rtc.bss (NOLOAD) :
   {
     _rtc_bss_start = ABSOLUTE(.);
     *rtc_wake_stub*.*(.bss .bss.*)
     *rtc_wake_stub*.*(COMMON)
 
     _rtc_bss_end = ABSOLUTE(.);
-  } GROUP_DATA_LINK_IN(rtc_slow_seg, ROMABLE_REGION)
+  } GROUP_DATA_LINK_IN(rtc_slow_seg, ROMABLE_REGION) */
 
   /* This section holds data that should not be initialized at power up
    * and will be retained during deep sleep.
    * User data marked with RTC_NOINIT_ATTR will be placed
    * into this section. See the file "esp_attr.h" for more information.
    */
-  .rtc_noinit (NOLOAD):
+  /* .rtc_noinit (NOLOAD):
   {
     . = ALIGN(4);
     _rtc_noinit_start = ABSOLUTE(.);
     *(.rtc_noinit .rtc_noinit.*)
     . = ALIGN(4) ;
     _rtc_noinit_end = ABSOLUTE(.);
-  } GROUP_DATA_LINK_IN(rtc_slow_seg, ROMABLE_REGION)
+  } GROUP_DATA_LINK_IN(rtc_slow_seg, ROMABLE_REGION) */
 
   /* This section located in RTC SLOW Memory area.
    * It holds data marked with RTC_SLOW_ATTR attribute.
    * See the file "esp_attr.h" for more information.
    */
-  .rtc.force_slow :
+  /* .rtc.force_slow :
   {
     . = ALIGN(4);
     _rtc_force_slow_start = ABSOLUTE(.);
     *(.rtc.force_slow .rtc.force_slow.*)
     . = ALIGN(4) ;
     _rtc_force_slow_end = ABSOLUTE(.);
-  } GROUP_DATA_LINK_IN(rtc_slow_seg, ROMABLE_REGION)
+  } GROUP_DATA_LINK_IN(rtc_slow_seg, ROMABLE_REGION) */
 
   /* Get size of rtc slow data based on rtc_data_location alias */
-  _rtc_slow_length = (_rtc_force_slow_end - _rtc_data_start);
-  _rtc_fast_length = (_rtc_force_fast_end - _rtc_fast_start);
+  /* _rtc_slow_length = (_rtc_force_slow_end - _rtc_data_start); */
+  /* _rtc_fast_length = (_rtc_force_fast_end - _rtc_fast_start); */
 
-  ASSERT((_rtc_slow_length <= LENGTH(rtc_slow_seg)), "RTC_SLOW segment data does not fit.")
-  ASSERT((_rtc_fast_length <= LENGTH(rtc_data_seg)), "RTC_FAST segment data does not fit.")
+  /* ASSERT((_rtc_slow_length <= LENGTH(rtc_slow_seg)), "RTC_SLOW segment data does not fit.") */
+  /* ASSERT((_rtc_fast_length <= LENGTH(rtc_data_seg)), "RTC_FAST segment data does not fit.") */
 
 #ifdef CONFIG_GEN_ISR_TABLES
 #include <zephyr/linker/intlist.ld>

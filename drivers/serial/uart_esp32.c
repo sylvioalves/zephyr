@@ -9,7 +9,7 @@
 
 /* Include esp-idf headers first to avoid redefining BIT() macro */
 /* TODO: include w/o prefix */
-#ifdef CONFIG_SOC_ESP32
+#if defined(CONFIG_SOC_ESP32) || defined(CONFIG_SOC_ESP32_NET)
 #include <esp32/rom/ets_sys.h>
 #include <esp32/rom/gpio.h>
 #include <soc/dport_reg.h>
@@ -17,7 +17,7 @@
 #include <esp32s2/rom/ets_sys.h>
 #include <esp32s2/rom/gpio.h>
 #include <soc/dport_reg.h>
-#elif defined(CONFIG_SOC_ESP32S3)
+#elif defined(CONFIG_SOC_ESP32S3) || defined(CONFIG_SOC_ESP32S3_NET)
 #include <esp32s3/rom/ets_sys.h>
 #include <esp32s3/rom/gpio.h>
 #include <zephyr/dt-bindings/clock/esp32s3_clock.h>
