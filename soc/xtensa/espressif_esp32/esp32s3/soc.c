@@ -42,7 +42,6 @@
 #include <esp_clk_internal.h>
 #include <esp_app_format.h>
 
-
 #ifdef CONFIG_MCUBOOT
 #include "bootloader_init.h"
 #endif /* CONFIG_MCUBOOT */
@@ -172,22 +171,23 @@ void IRAM_ATTR __esp_platform_start(void)
 
 
 #if CONFIG_ESP_SPIRAM
-	esp_err_t err = esp_spiram_init();
+	esp_err_t err = esp_psram_init();
 
 	if (err != ESP_OK) {
 		printk("Failed to Initialize external RAM, aborting.\n");
 		abort();
 	}
 
-	esp_spiram_init_cache();
-	if (esp_spiram_get_size() < CONFIG_ESP_SPIRAM_SIZE) {
+	if (esp_psram_get_size() < CONFIG_ESP_SPIRAM_SIZE) {
 		printk("External RAM size is less than configured, aborting.\n");
 		abort();
 	}
 
-	if (!esp_spiram_test()) {
-		printk("External RAM failed memory test!\n");
-		abort();
+	if (esp_psram_is_initialized()) {
+		if (!esp_psram_extram_test()) {
+			printk("External RAM failed memory test!");
+			abort();
+		}
 	}
 
 	memset(&_ext_ram_bss_start, 0,
