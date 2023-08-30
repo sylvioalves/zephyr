@@ -328,6 +328,7 @@ static void esp32_clock_perip_init(void)
 #if defined(CONFIG_SOC_SERIES_ESP32S3)
 static void esp32_clock_perip_init(void)
 {
+#if defined(CONFIG_SOC_ESP32S3)
 	uint32_t common_perip_clk, hwcrypto_perip_clk, wifi_bt_sdio_clk = 0;
 	uint32_t common_perip_clk1 = 0;
 
@@ -422,6 +423,8 @@ static void esp32_clock_perip_init(void)
 
 	esp_rom_uart_tx_wait_idle(0);
 	esp_rom_uart_set_clock_baudrate(0, UART_CLK_FREQ_ROM, 115200);
+#endif
+
 }
 #endif /* CONFIG_SOC_SERIES_ESP32S3 */
 
