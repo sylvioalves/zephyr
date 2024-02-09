@@ -134,7 +134,7 @@ static i2c_clock_source_t i2c_get_clk_src(uint32_t clk_freq)
 {
 	i2c_clock_source_t clk_srcs[] = SOC_I2C_CLKS;
 
-	for (size_t i = 0; i < ARRAY_SIZE(clk_srcs) / sizeof(clk_srcs[0]); i++) {
+	for (size_t i = 0; i < ARRAY_SIZE(clk_srcs); i++) {
 		/* I2C SCL clock frequency should not larger than clock source frequency/20 */
 		if (clk_freq <= (i2c_get_src_clk_freq(clk_srcs[i]) / 20)) {
 			return clk_srcs[i];
