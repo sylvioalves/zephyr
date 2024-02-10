@@ -319,7 +319,7 @@ static const struct adc_driver_api api_esp32_driver_api = {
 #define ESP32_ADC_INIT(inst)							\
 										\
 	static const struct adc_esp32_conf adc_esp32_conf_##inst = {		\
-		.unit = DT_PROP(DT_DRV_INST(inst), unit),			\
+		.unit = DT_PROP(DT_DRV_INST(inst), unit) - 1,			\
 		.channel_count = DT_PROP(DT_DRV_INST(inst), channel_count),	\
 	};									\
 										\
