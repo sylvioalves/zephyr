@@ -3,9 +3,6 @@
 
 if BOARD_ESP32_DEVKITC_WROVER
 
-config BOARD
-	default "esp32_devkitc_wrover"
-
 config HEAP_MEM_POOL_ADD_SIZE_BOARD
 	int
 	default 65535 if WIFI && BT
@@ -20,9 +17,6 @@ endchoice
 endif # BOARD_ESP32_DEVKITC_WROVER
 
 if BOARD_ESP32_DEVKITC_WROVER_APPCPU
-
-config BOARD
-	default "esp32_devkitc_wrover_appcpu"
 
 config HEAP_MEM_POOL_ADD_SIZE_BOARD
 	default 4096
