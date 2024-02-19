@@ -40,11 +40,11 @@ There are two version hardware of this board. The difference between them is the
      :align: center
      :alt: esp32c3_luatos_core
 
-2. USB-C connect to esp32 chip directly(esp32c3_luatos_core_usb)
+2. USB-C connect to esp32 chip directly(esp32c3_luatos_core/esp32c3/usb)
 
 .. image:: img/esp32c3_luatos_core_usb.jpg
      :align: center
-     :alt: esp32c3_luatos_core_usb
+     :alt: esp32c3_luatos_core/esp32c3/usb
 
 Supported Features
 ==================
