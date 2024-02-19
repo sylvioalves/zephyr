@@ -1,0 +1,9 @@
+boards:
+  - name: esp32_devkitc_wroom
+    vendor: espressif
+    socs:
+      - name: esp32
+  - name: esp32_devkitc_wroom_appcpu
+    vendor: espressif
+    socs:
+      - name: esp32
