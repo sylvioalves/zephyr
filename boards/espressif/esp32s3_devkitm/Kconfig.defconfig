@@ -5,9 +5,6 @@
 
 if BOARD_ESP32S3_DEVKITM
 
-config BOARD
-	default "esp32s3_devkitm"
-
 config HEAP_MEM_POOL_ADD_SIZE_BOARD
 	int
 	default 65535 if WIFI && BT
@@ -19,12 +16,9 @@ choice BT_HCI_BUS_TYPE
 	default BT_ESP32 if BT
 endchoice
 
-endif
+endif # BOARD_ESP32S3_DEVKITM
 
 if BOARD_ESP32S3_DEVKITM_APPCPU
-
-config BOARD
-	default "esp32s3_devkitm_appcpu"
 
 config HEAP_MEM_POOL_ADD_SIZE_BOARD
 	def_int 4096

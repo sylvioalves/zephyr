@@ -1,0 +1,9 @@
+boards:
+  - name: esp32s3_devkitm
+    vendor: espressif
+    socs:
+      - name: esp32s3
+  - name: esp32s3_devkitm_appcpu
+    vendor: espressif
+    socs:
+      - name: esp32s3

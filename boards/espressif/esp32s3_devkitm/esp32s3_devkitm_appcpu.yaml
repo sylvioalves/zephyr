@@ -24,3 +24,4 @@ testing:
     - cmsis_rtos
     - jwt
     - zdsp
+vendor: espressif
