@@ -2,12 +2,6 @@
 # Copyright (c) 2023 Martin Kiepfer <mrmarteng@teleschirm.org>
 # SPDX-License-Identifier: Apache-2.0
 
-if BOARD_M5STACK_ATOMS3_LITE
-
-config BOARD
-	default "m5stack_atoms3_lite"
-	depends on BOARD_M5STACK_ATOMS3_LITE
-
 config ENTROPY_GENERATOR
 	default y
 
@@ -23,4 +17,3 @@ config KERNEL_MEM_POOL
 choice BT_HCI_BUS_TYPE
 	default BT_ESP32 if BT
 endchoice
-endif # BOARD_M5STACK_ATOMS3_LITE
