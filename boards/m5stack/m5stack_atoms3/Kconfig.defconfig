@@ -2,12 +2,6 @@
 # Copyright (c) 2023 Benjamin Cabé <benjamin@zephyrproject.org>
 # SPDX-License-Identifier: Apache-2.0
 
-if BOARD_M5STACK_ATOMS3
-
-config BOARD
-	default "m5stack_atoms3"
-	depends on BOARD_M5STACK_ATOMS3
-
 config ENTROPY_GENERATOR
 	default y
 
@@ -28,4 +22,3 @@ endchoice
 config LV_COLOR_16_SWAP
 	default y if LVGL
 
-endif # BOARD_M5STACK_ATOMS3

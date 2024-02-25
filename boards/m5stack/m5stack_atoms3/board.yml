@@ -1,0 +1,5 @@
+board:
+  name: m5stack_atoms3
+  vendor: M5Stack
+  socs:
+  - name: esp32s3
