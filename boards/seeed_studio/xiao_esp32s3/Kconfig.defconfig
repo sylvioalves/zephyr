@@ -1,10 +1,6 @@
 # Copyright (c) 2023 Seeed Studio inc.
 # SPDX-License-Identifier: Apache-2.0
 
-config BOARD
-	default "xiao_esp32s3"
-	depends on BOARD_XIAO_ESP32S3
-
 config ENTROPY_GENERATOR
 	default y
 
