@@ -1,0 +1,17 @@
+identifier: firebeatle_esp32c6/esp32c6/hpcore
+name: Firebeatle ESP32-C6 HP Core
+vendor: others
+type: mcu
+arch: riscv
+toolchain:
+  - zephyr
+supported:
+  - gpio
+  - watchdog
+  - uart
+  - dma
+  - pwm
+  - spi
+  - counter
+  - entropy
+  - i2c

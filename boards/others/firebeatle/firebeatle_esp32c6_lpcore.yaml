@@ -1,0 +1,19 @@
+identifier: firebeatle_esp32c6/esp32c6/hpcore
+name: name: Firebeatle ESP32-C6 LP Core
+type: mcu
+arch: riscv
+toolchain:
+  - zephyr
+supported:
+  - cpu
+  - uart
+  - serial
+testing:
+  only_tags:
+    - introduction
+  ignore_tags:
+    - kernel
+    - posix
+    - chre
+    - cpp
+vendor: others

@@ -1,0 +1,6 @@
+board:
+  name: firebeatle_esp32c6
+  full_name: FIREBEATLE-ESP32C6
+  vendor: dfrobot
+  socs:
+  - name: esp32c6
