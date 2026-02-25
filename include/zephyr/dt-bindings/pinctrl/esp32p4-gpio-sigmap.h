@@ -187,4 +187,14 @@
 #define ESP_EMAC_MDC_O 108 /**< EMAC MDIO clock output */
 #define ESP_EMAC_MDO_O 109 /**< EMAC MDIO data output */
 
+/* RMT */
+#define ESP_RMT_SIG_IN0 246 /**< RMT channel 0 input */
+#define ESP_RMT_SIG_OUT0 246 /**< RMT channel 0 output */
+#define ESP_RMT_SIG_IN1 247 /**< RMT channel 1 input */
+#define ESP_RMT_SIG_OUT1 247 /**< RMT channel 1 output */
+#define ESP_RMT_SIG_IN2 248 /**< RMT channel 2 input */
+#define ESP_RMT_SIG_OUT2 248 /**< RMT channel 2 output */
+#define ESP_RMT_SIG_IN3 249 /**< RMT channel 3 input */
+#define ESP_RMT_SIG_OUT3 249 /**< RMT channel 3 output */
+
 #endif /* ZEPHYR_INCLUDE_DT_BINDINGS_PINCTRL_ESP32P4_GPIO_SIGMAP_H_ */
