@@ -17,10 +17,6 @@
 	};
 };
 
-&mbox0 {
-	shared-memory-size = <0x8>;
-};
-
 &lp_uart {
 	status = "okay";
 };
