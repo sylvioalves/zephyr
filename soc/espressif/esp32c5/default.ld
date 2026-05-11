@@ -445,6 +445,7 @@ SECTIONS
 
     /* [mapping:esp_psram] */
     *libzephyr.a:esp_psram_impl_ap_quad.*(.literal .literal.* .text .text.*)
+    *libzephyr.a:esp_psram.*(.literal .literal.* .text .text.*)
     *libzephyr.a:mspi_timing_config.*(.literal .literal.* .text .text.*)
     *libzephyr.a:mspi_timing_tuning.*(.literal .literal.* .text .text.*)
     *libzephyr.a:mspi_timing_by_mspi_delay.*(.literal .literal.* .text .text.*)
@@ -643,6 +644,7 @@ SECTIONS
 
     /* [mapping:esp_psram] */
     *libzephyr.a:esp_psram_impl_ap_quad.*(.rodata .rodata.* .srodata .srodata.*)
+    *libzephyr.a:esp_psram.*(.rodata .rodata.* .srodata .srodata.*)
     *libzephyr.a:mspi_timing_config.*(.rodata .rodata.* .srodata .srodata.*)
     *libzephyr.a:mspi_timing_tuning.*(.rodata .rodata.* .srodata .srodata.*)
     *libzephyr.a:mspi_timing_by_mspi_delay.*(.rodata .rodata.* .srodata .srodata.*)
@@ -906,6 +908,12 @@ SECTIONS
   {
     . = ALIGN(CACHE_ALIGN);
   } GROUP_LINK_IN(ROMABLE_REGION)
+
+  /* Move drom0 after .text region to allow proper memory mapping. */
+  .flash_rodata_dummy (NOLOAD) :
+  {
+    . += ALIGN(_instruction_reserved_end - _instruction_reserved_start, CACHE_ALIGN);
+  } GROUP_LINK_IN(RODATA_REGION)
 
   /* Symbols used during the application memory mapping */
   _image_drom_start = LOADADDR(.flash.rodata);
