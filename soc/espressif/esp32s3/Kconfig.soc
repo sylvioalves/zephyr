@@ -113,6 +113,7 @@ config SOC_ESP32S3_WROOM_N16R2
 config SOC_ESP32S3
 	bool
 	select SOC_SERIES_ESP32S3
+	select CPU_HAS_DCACHE
 	help
 	  ESP32S3
 

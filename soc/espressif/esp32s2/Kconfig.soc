@@ -95,6 +95,7 @@ config SOC_ESP32S2_WROVER_N16R2
 config SOC_ESP32S2
 	bool
 	select SOC_SERIES_ESP32S2
+	select CPU_HAS_DCACHE
 	help
 	  ESP32S2
 
