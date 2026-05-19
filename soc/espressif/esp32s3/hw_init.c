@@ -52,15 +52,16 @@ int hardware_init(void)
 	print_banner();
 #endif /* CONFIG_ESP_CONSOLE */
 
+	cache_hal_config_t cache_config = {
+		.core_nums = 1,
+	};
+	cache_hal_init(&cache_config);
+
 	/*
 	 * Initialize MMU context and page size but skip mmu_hal_unmap_all().
 	 * In simple boot mode, ROM bootloader has already set up MMU mappings
 	 * for flash access. Calling mmu_hal_unmap_all() would invalidate those
 	 * mappings and break access to flash-based code and data (IROM/DROM).
-	 *
-	 * Note: cache_hal_init() is NOT called here because soc.c will call
-	 * esp_config_instruction_cache_mode() and esp_config_data_cache_mode()
-	 * which configure the cache appropriately.
 	 */
 	mmu_hal_config_t mmu_config = {
 		.core_nums = 1,
