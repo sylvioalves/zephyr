@@ -1,0 +1,22 @@
+sample:
+  name: Behavior Sandbox
+  description: >
+    Runs dynamic behavior policies in an isolated user-mode sandbox thread that
+    reaches hardware only through a whitelisted capability surface, supervised
+    by a task watchdog. Demonstrates containment and supervision guarantees.
+common:
+  tags: userspace sandbox
+  harness: console
+  depends_on:
+    - gpio
+    - userspace
+tests:
+  sample.subsys.behavior_sandbox:
+    platform_allow:
+      - esp32c6_devkitc/esp32c6/hpcore
+    integration_platforms:
+      - esp32c6_devkitc/esp32c6/hpcore
+    harness_config:
+      type: one_line
+      regex:
+        - "all demos complete: supervisor survived every sandbox"
