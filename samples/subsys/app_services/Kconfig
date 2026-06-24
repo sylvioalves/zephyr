@@ -1,0 +1,17 @@
+# SPDX-License-Identifier: Apache-2.0
+
+source "Kconfig.zephyr"
+
+config APP_GROUP_MAX
+	int "Maximum number of concurrent app groups"
+	default 4
+	help
+	  Size of the static pool of app groups (isolated user-mode apps).
+
+config APP_WIFI_SSID
+	string "Wi-Fi SSID for the M2 network service"
+	default "Internet"
+
+config APP_WIFI_PSK
+	string "Wi-Fi PSK for the M2 network service"
+	default "netsemfio123456"
