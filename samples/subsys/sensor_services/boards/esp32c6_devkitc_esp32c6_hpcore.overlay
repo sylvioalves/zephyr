@@ -1,0 +1,10 @@
+/*
+ * Copyright (c) 2026 Espressif Systems (Shanghai) Co., Ltd.
+ *
+ * SPDX-License-Identifier: Apache-2.0
+ */
+
+/* Enable the on-chip temperature sensor so the temperature service is present. */
+&coretemp {
+	status = "okay";
+};
