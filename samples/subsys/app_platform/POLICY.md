@@ -19,7 +19,7 @@ classification, not new mechanism.
 |-------|---------|-----------------|
 | **Open** | Read-only, shared, any app may call. | `sensor` catalog |
 | **Scoped** | App granted one named instance via its manifest; broker enforces before any access. | scoped `i2c` |
-| **Namespaced-scoped** | App gets a sandboxed subtree/keyspace it cannot escape. | filesystem (to build) |
+| **Namespaced-scoped** | App gets a sandboxed subtree/keyspace it cannot escape. | `app_fs_sandbox` |
 | **Brokered connection** | Stateful link the broker owns; events delivered to the app via its queue. | BLE, MQTT |
 | **Arbitrated pool** | Scarce fixed pool (N instances); broker hands out, denies the N+1th. | BLE connections |
 | **Admin** | System configuration; succeeds only for an app holding the admin capability. | Wi-Fi credentials |
@@ -146,6 +146,6 @@ The work is not hundreds of driver wrappers. It is:
    describes what hardware exists; an app's manifest claims a subset, validated
    against DT, so per-app grants are partly generated, not hand-written.
 
-The platform's *mechanisms* are complete (six of seven shapes proven on
-hardware). Extending to a new subsystem is choosing its row above, then writing
+The platform's *mechanisms* are complete - all seven shapes are proven on
+hardware. Extending to a new subsystem is choosing its row above, then writing
 one wrapper in the already-proven shape.
