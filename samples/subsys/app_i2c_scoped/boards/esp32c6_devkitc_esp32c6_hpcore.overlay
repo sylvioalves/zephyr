@@ -1,0 +1,10 @@
+/*
+ * Copyright (c) 2026 Espressif Systems (Shanghai) Co., Ltd.
+ *
+ * SPDX-License-Identifier: Apache-2.0
+ */
+
+/* The platform owns i2c0; apps reach devices on it only via the broker. */
+&i2c0 {
+	status = "okay";
+};
