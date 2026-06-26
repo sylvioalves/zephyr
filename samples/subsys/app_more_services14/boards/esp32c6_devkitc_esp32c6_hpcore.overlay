@@ -1,0 +1,10 @@
+/*
+ * Copyright (c) 2026 Espressif Systems (Shanghai) Co., Ltd.
+ *
+ * SPDX-License-Identifier: Apache-2.0
+ */
+
+/* Enable the IEEE 802.15.4 radio for the messaging service. */
+&ieee802154 {
+	status = "okay";
+};
