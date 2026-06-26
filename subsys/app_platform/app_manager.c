@@ -126,6 +126,15 @@ static void reclaim(struct running_app *a)
 	LOG_INF("app '%s' reclaimed; system + other apps alive", a->name);
 }
 
+int app_platform_stop(int id)
+{
+	if (id < 0 || id >= MAX_APPS || !apps[id].active) {
+		return -EINVAL;
+	}
+	reclaim(&apps[id]);
+	return 0;
+}
+
 static void supervisor(void *a, void *b, void *c)
 {
 	ARG_UNUSED(a); ARG_UNUSED(b); ARG_UNUSED(c);

@@ -90,6 +90,17 @@ int app_platform_launch_llext(const char *name, struct llext *ext,
 void app_platform_heartbeat(void);
 
 /**
+ * @brief Stop a running application group and free its slot.
+ *
+ * Aborts the group's thread and releases its watchdog and slot, the same way a
+ * faulting group is reclaimed - but on request, e.g. to update or remove it.
+ *
+ * @param id Group id returned by a launch call.
+ * @retval 0 on success, -EINVAL if @p id is not an active group.
+ */
+int app_platform_stop(int id);
+
+/**
  * @brief The grant mask of the currently running application (0 if none).
  *
  * A service uses this to enforce the application's capabilities.
