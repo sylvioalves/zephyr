@@ -177,14 +177,16 @@ static int launch(const char *name, app_entry_t entry, uint32_t caps,
 		a->wdt_fired = false;
 		k_mem_domain_init(&a->domain, 0, NULL);
 
-		if (ext != NULL) {
+		if (IS_ENABLED(CONFIG_LLEXT) && ext != NULL) {
 #ifdef Z_LIBC_PARTITION_EXISTS
 			k_mem_domain_add_partition(&a->domain, &z_libc_partition);
 #endif
+#ifdef CONFIG_LLEXT
 			if (llext_add_domain(ext, &a->domain) != 0) {
 				LOG_ERR("could not map '%s' into its domain", name);
 				return -ENOSPC;
 			}
+#endif
 		}
 
 		k_tid_t t = k_thread_create(&a->thread, app_stacks[i], APP_STACK,
@@ -207,8 +209,10 @@ int app_platform_launch(const struct app_def *def)
 	return launch(def->name, def->entry, def->caps, NULL);
 }
 
+#ifdef CONFIG_LLEXT
 int app_platform_launch_llext(const char *name, struct llext *ext,
 			      app_entry_t entry, uint32_t caps)
 {
 	return launch(name, entry, caps, ext);
 }
+#endif
