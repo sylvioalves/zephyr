@@ -22,6 +22,7 @@
 
 extern int manager_init(void);
 extern int manager_launch(const struct app_def *def);
+extern int loader_install(const char *name, uint32_t caps);
 
 int main(void)
 {
@@ -70,6 +71,10 @@ int main(void)
 		}
 		manager_launch(def);
 	}
+
+	/* Install a runtime-downloaded llext app: verify, load, isolate, run. */
+	printk("\ninstalling a runtime-loaded app (llext):\n");
+	loader_install("installed-llext", CAP_GPIO);
 
 	/* Let the system run: good apps tick, the buggy one is reclaimed. */
 	printk("\n--- platform running ---\n");

@@ -20,7 +20,7 @@
  * app would fill, so the app-store path slots in without changing the manager.
  */
 
-#define PLATFORM_MAX_APPS 4
+#define PLATFORM_MAX_APPS 5
 
 enum app_source {
 	APP_BUILTIN = 0,   /* compiled into the firmware            */

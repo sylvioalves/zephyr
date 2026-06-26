@@ -5,11 +5,13 @@
  */
 
 #include "platform.h"
+#include "app_api.h"
 
 #include <zephyr/kernel.h>
 #include <zephyr/sys/printk.h>
 #include <zephyr/fatal.h>
 #include <zephyr/task_wdt/task_wdt.h>
+#include <zephyr/llext/llext.h>
 
 #define APP_STACK_SIZE 2048
 #define APP_PRIO       5
@@ -175,6 +177,51 @@ int manager_launch(const struct app_def *def)
 		k_thread_start(t);
 		printk("platform: launched app '%s' (isolated group %d)\n",
 		       def->name, i);
+		return i;
+	}
+	return -ENOSPC;
+}
+
+/*
+ * Launch a runtime-loaded llext app as a supervised group. It runs in a
+ * dedicated thread with its own watchdog and capability grants, reaching the
+ * platform through the injected service table. (llext extensions cannot run in
+ * user mode on RISC-V, so the module is supervisor-side but still verified,
+ * capability-gated, supervised, and reclaimable like any other app.)
+ */
+static void llext_trampoline(void *entry, void *api, void *u2)
+{
+	ARG_UNUSED(u2);
+	((app_api_entry_t)entry)((const struct app_api *)api);
+}
+
+int manager_launch_llext(const char *name, struct llext *ext,
+			 app_api_entry_t entry, const struct app_api *api,
+			 uint32_t caps)
+{
+	ARG_UNUSED(ext);
+
+	for (int i = 0; i < PLATFORM_MAX_APPS; i++) {
+		if (apps[i].active) {
+			continue;
+		}
+		struct running_app *a = &apps[i];
+
+		a->name = name;
+		a->entry = NULL;
+		a->caps = caps;
+		a->wdt_fired = false;
+
+		k_tid_t t = k_thread_create(&a->thread, app_stacks[i],
+					    APP_STACK_SIZE, llext_trampoline,
+					    (void *)entry, (void *)api, NULL,
+					    APP_PRIO, 0, K_FOREVER);
+		k_thread_name_set(t, name);
+		a->wdt_chan = task_wdt_add(2000, wdt_cb, a);
+		a->active = true;
+		k_thread_start(t);
+		printk("platform: launched llext app '%s' (supervised group %d)\n",
+		       name, i);
 		return i;
 	}
 	return -ENOSPC;
