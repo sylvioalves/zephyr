@@ -15,6 +15,7 @@
 
 #include <zephyr/kernel.h>
 #include <zephyr/sys/printk.h>
+#include <errno.h>
 
 #define STACK_SIZE 2048
 #define APP_PRIO   5
@@ -26,17 +27,23 @@ static void app_entry(void *p1, void *p2, void *p3)
 {
 	ARG_UNUSED(p1); ARG_UNUSED(p2); ARG_UNUSED(p3);
 
-	/* SPI: full-duplex transfer. */
+	/* SPI: full-duplex transfer on the granted chip-select (CS 0). */
 	uint8_t tx[4] = { 0xDE, 0xAD, 0xBE, 0xEF };
 	uint8_t rx[4] = { 0 };
-	int rc = svc_spi_xfer(tx, rx, sizeof(tx));
+	int rc = svc_spi_xfer(0, tx, rx, sizeof(tx));
 
 	if (rc >= 0) {
-		printk("  [app] SPI sent DE AD BE EF, received %02x %02x %02x %02x\n",
+		printk("  [app] SPI cs0 sent DE AD BE EF, received %02x %02x %02x %02x\n",
 		       rx[0], rx[1], rx[2], rx[3]);
 	} else {
-		printk("  [app] SPI xfer rc=%d\n", rc);
+		printk("  [app] SPI cs0 xfer rc=%d\n", rc);
 	}
+
+	/* SPI: chip-select 1 was NOT granted - rejected at the boundary. */
+	int rc1 = svc_spi_xfer(1, tx, rx, sizeof(tx));
+
+	printk("  [app] SPI cs1 xfer -> rc=%d (expected -EPERM=%d, ungranted)\n",
+	       rc1, -EPERM);
 
 	/* hwinfo: unique device id. */
 	uint8_t id[8] = { 0 };
@@ -61,6 +68,9 @@ static void app_entry(void *p1, void *p2, void *p3)
 int main(void)
 {
 	printk("\n*** more services 4: SPI + system info (C6) ***\n");
+
+	/* Grant the app chip-select 0 only; chip-select 1 stays denied. */
+	svc_spi_grant(BIT(0));
 
 	k_tid_t t = k_thread_create(&app_thread, app_stack, STACK_SIZE, app_entry,
 				    NULL, NULL, NULL, APP_PRIO, K_USER, K_FOREVER);

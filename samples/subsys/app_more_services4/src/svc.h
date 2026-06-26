@@ -10,23 +10,28 @@
 #include <zephyr/kernel.h>
 
 /*
- * A fourth batch: the SPI bus (scoped, like I2C) and system hardware info.
+ * A fourth batch: the SPI bus (now multi chip-select with per-target grants) and
+ * system hardware info.
  *
- *   svc_spi_xfer  - full-duplex SPI transfer on the platform-owned bus. Scoped
- *                   in a real system to a granted chip-select; the platform owns
- *                   the controller, the app sends/receives bytes.
+ *   svc_spi_xfer  - full-duplex transfer on a granted chip-select. The platform
+ *                   owns the controller and all chip-selects; the app may only
+ *                   talk to the targets it was granted, the rest are rejected at
+ *                   the syscall boundary.
  *   svc_device_id - the chip's unique hardware id (open, read-only).
  *   svc_reset_cause - why the device last reset (open, read-only system info).
  */
 
-/* Scoped: full-duplex transfer @len bytes (tx -> rx). */
-__syscall int svc_spi_xfer(const uint8_t *tx, uint8_t *rx, size_t len);
+/* Scoped: full-duplex @len bytes on granted chip-select @cs (tx -> rx). */
+__syscall int svc_spi_xfer(int cs, const uint8_t *tx, uint8_t *rx, size_t len);
 
 /* Open: copy up to @len bytes of the unique device id into @buf; returns count. */
 __syscall int svc_device_id(uint8_t *buf, size_t len);
 
 /* Open: the reset cause bitmask from the last reset. */
 __syscall int svc_reset_cause(uint32_t *cause);
+
+/* Supervisor-only: grant the app a set of chip-selects (bit N = CS index N). */
+void svc_spi_grant(uint32_t cs_mask);
 
 #include <zephyr/syscalls/svc.h>
 
