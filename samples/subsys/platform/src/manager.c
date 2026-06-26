@@ -23,6 +23,7 @@ struct running_app {
 	int                 wdt_chan;
 	bool                wdt_fired;
 	app_entry_t         entry;
+	uint32_t            caps;
 };
 
 static struct running_app apps[PLATFORM_MAX_APPS];
@@ -49,6 +50,13 @@ int manager_id_of_current(void)
 	struct running_app *a = app_of_thread(k_current_get());
 
 	return a ? (int)(a - apps) : -1;
+}
+
+uint32_t manager_caps_of_current(void)
+{
+	struct running_app *a = app_of_thread(k_current_get());
+
+	return a ? a->caps : 0U;
 }
 
 /* Fault containment: a faulting app is reclaimed, the system survives. */
@@ -151,6 +159,7 @@ int manager_launch(const struct app_def *def)
 
 		a->name = def->name;
 		a->entry = def->entry;
+		a->caps = def->caps;
 		a->wdt_fired = false;
 		k_mem_domain_init(&a->domain, 0, NULL);
 

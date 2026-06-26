@@ -15,6 +15,7 @@
 
 #include "platform.h"
 #include "app_registry.h"
+#include "svc.h"
 
 #include <zephyr/kernel.h>
 #include <zephyr/sys/printk.h>
@@ -31,6 +32,9 @@ int main(void)
 		return 0;
 	}
 
+	/* Bring up the brokered devices before any app can call a service. */
+	svc_devices_init();
+
 	/* Load what is installed (persisted across reboots). */
 	if (app_registry_load() != 0) {
 		printk("platform: registry load failed\n");
@@ -39,8 +43,9 @@ int main(void)
 
 	if (app_registry_count() == 0) {
 		printk("\nfirst boot: installing apps...\n");
-		app_registry_install("thermostat", true);
-		app_registry_install("logger", true);
+		app_registry_install("climate", true);
+		app_registry_install("datalogger", true);
+		app_registry_install("blinker", true);
 		app_registry_install("buggy", true);
 	} else {
 		printk("\nreboot: %d app(s) already installed\n",

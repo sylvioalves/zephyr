@@ -32,7 +32,7 @@ struct reg_file {
 	uint32_t next_seq;
 	struct app_record apps[APP_REG_MAX];
 };
-#define REG_MAGIC 0x41505052   /* "APPR" */
+#define REG_MAGIC 0x41505072   /* "APPr" - v2 catalog (capability apps) */
 
 static struct reg_file reg;
 
