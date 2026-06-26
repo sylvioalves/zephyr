@@ -21,8 +21,24 @@ static const struct adc_dt_spec adc_ch[] = {
 };
 #define ADC_COUNT ARRAY_SIZE(adc_ch)
 
-/* PWM output. */
-static const struct pwm_dt_spec pwm_out = PWM_DT_SPEC_GET(DT_ALIAS(app_pwm));
+/* PWM outputs: two channels the app can drive, if granted. */
+static const struct pwm_dt_spec pwm_ch[] = {
+	PWM_DT_SPEC_GET(DT_ALIAS(app_pwm0)),
+	PWM_DT_SPEC_GET(DT_ALIAS(app_pwm1)),
+};
+#define PWM_COUNT ARRAY_SIZE(pwm_ch)
+
+/*
+ * Per-channel grant: bit N set means the app may drive PWM channel N. The
+ * platform sets this before launching the app; the syscall boundary rejects any
+ * channel whose bit is clear, the same way a kobject permission would.
+ */
+static uint32_t pwm_grant;
+
+void svc_pwm_grant(uint32_t channel_mask)
+{
+	pwm_grant = channel_mask;
+}
 
 void svc_init(void)
 {
@@ -50,17 +66,17 @@ int z_impl_svc_adc_read(int ch)
 	return (rc == 0) ? (int)raw : rc;
 }
 
-int z_impl_svc_pwm_set(uint8_t percent)
+int z_impl_svc_pwm_set(int ch, uint8_t percent)
 {
-	if (!pwm_is_ready_dt(&pwm_out)) {
+	if (ch < 0 || ch >= (int)PWM_COUNT || !pwm_is_ready_dt(&pwm_ch[ch])) {
 		return -ENODEV;
 	}
 	if (percent > 100) {
 		percent = 100;
 	}
-	uint32_t pulse = (uint32_t)((uint64_t)pwm_out.period * percent / 100);
+	uint32_t pulse = (uint32_t)((uint64_t)pwm_ch[ch].period * percent / 100);
 
-	return pwm_set_pulse_dt(&pwm_out, pulse);
+	return pwm_set_pulse_dt(&pwm_ch[ch], pulse);
 }
 
 #ifdef CONFIG_USERSPACE
@@ -70,9 +86,13 @@ static inline int z_vrfy_svc_adc_read(int ch)
 }
 #include <zephyr/syscalls/svc_adc_read_mrsh.c>
 
-static inline int z_vrfy_svc_pwm_set(uint8_t percent)
+static inline int z_vrfy_svc_pwm_set(int ch, uint8_t percent)
 {
-	return z_impl_svc_pwm_set(percent);
+	/* Reject any channel the app was not granted, at the boundary. */
+	if (ch < 0 || ch >= (int)PWM_COUNT || (pwm_grant & BIT(ch)) == 0U) {
+		return -EPERM;
+	}
+	return z_impl_svc_pwm_set(ch, percent);
 }
 #include <zephyr/syscalls/svc_pwm_set_mrsh.c>
 #endif

@@ -10,21 +10,27 @@
 #include <zephyr/kernel.h>
 
 /*
- * A third batch of services touching the analog and PWM subsystems:
+ * A third batch of services touching the analog and PWM subsystems, now
+ * multi-channel with per-channel grant enforcement:
  *
- *   svc_adc_read - read a raw value from an ADC channel (open: read-only).
- *   svc_pwm_set  - set the PWM duty on the controllable output, 0..100 percent
- *                  (scoped in a real system; the platform owns the channel).
+ *   svc_adc_read - read a raw value from ADC channel index @ch (open).
+ *   svc_pwm_set  - set duty 0..100 percent on PWM channel index @ch. The app may
+ *                  only drive channels in its granted set; an ungranted channel
+ *                  is rejected at the syscall boundary.
  *
- * An app reads analog values and dims an output, reaching the ADC and PWM
- * subsystems only through service syscalls.
+ * The platform owns every channel and grants a subset to the app. An app reads
+ * analog values and dims outputs, reaching the ADC and PWM subsystems only
+ * through service syscalls and only on the channels it was granted.
  */
 
 /* Open: read raw ADC value from channel index @ch. Returns value or negative. */
 __syscall int svc_adc_read(int ch);
 
-/* Set PWM duty 0..100 percent on the controllable channel. */
-__syscall int svc_pwm_set(uint8_t percent);
+/* Scoped: set PWM duty 0..100 percent on granted channel index @ch. */
+__syscall int svc_pwm_set(int ch, uint8_t percent);
+
+/* Supervisor-only: grant the app a set of PWM channels (bit N = channel N). */
+void svc_pwm_grant(uint32_t channel_mask);
 
 #include <zephyr/syscalls/svc.h>
 

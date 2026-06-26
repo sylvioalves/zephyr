@@ -15,6 +15,7 @@
 
 #include <zephyr/kernel.h>
 #include <zephyr/sys/printk.h>
+#include <errno.h>
 
 #define STACK_SIZE 2048
 #define APP_PRIO   5
@@ -35,26 +36,32 @@ static void app_entry(void *p1, void *p2, void *p3)
 		printk("  [app] ADC channel %d = %d\n", ch, v);
 	}
 
-	/* PWM: ramp the output up and down. */
-	printk("  [app] ramping PWM 0..100..0%%\n");
+	/* PWM: ramp the granted channel (0) up and down. */
+	printk("  [app] ramping PWM channel 0 (granted)\n");
 	for (int p = 0; p <= 100; p += 25) {
-		svc_pwm_set((uint8_t)p);
-		printk("  [app] PWM duty = %d%%\n", p);
-		k_msleep(200);
-	}
-	for (int p = 75; p >= 0; p -= 25) {
-		svc_pwm_set((uint8_t)p);
-		printk("  [app] PWM duty = %d%%\n", p);
-		k_msleep(200);
-	}
+		int rc = svc_pwm_set(0, (uint8_t)p);
 
-	printk("  [app] done - read ADC, drove PWM\n");
+		printk("  [app] ch0 duty = %d%% (rc=%d)\n", p, rc);
+		k_msleep(150);
+	}
+	svc_pwm_set(0, 0);
+
+	/* PWM: channel 1 was NOT granted - the boundary rejects it. */
+	int rc1 = svc_pwm_set(1, 50);
+
+	printk("  [app] ch1 duty 50%% -> rc=%d (expected -EPERM=%d, ungranted)\n",
+	       rc1, -EPERM);
+
+	printk("  [app] done - read ADC, drove granted PWM, denied ungranted\n");
 }
 
 int main(void)
 {
 	printk("\n*** more services 3: ADC + PWM (C6) ***\n");
 	svc_init();
+
+	/* Grant the app PWM channel 0 only; channel 1 stays denied. */
+	svc_pwm_grant(BIT(0));
 
 	k_tid_t t = k_thread_create(&app_thread, app_stack, STACK_SIZE, app_entry,
 				    NULL, NULL, NULL, APP_PRIO, K_USER, K_FOREVER);

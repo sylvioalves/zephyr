@@ -14,14 +14,20 @@
 	app_pwm: app_pwm {
 		compatible = "pwm-leds";
 
-		app_pwm_ch: app_pwm_ch {
+		app_pwm_ch0: app_pwm_ch0 {
 			pwms = <&ledc0 0 PWM_HZ(1000) PWM_POLARITY_NORMAL>;
-			label = "app pwm";
+			label = "app pwm ch0";
+		};
+
+		app_pwm_ch1: app_pwm_ch1 {
+			pwms = <&ledc0 1 PWM_HZ(1000) PWM_POLARITY_NORMAL>;
+			label = "app pwm ch1";
 		};
 	};
 
 	aliases {
-		app-pwm = &app_pwm_ch;
+		app-pwm0 = &app_pwm_ch0;
+		app-pwm1 = &app_pwm_ch1;
 	};
 };
 
@@ -48,11 +54,11 @@
 	};
 };
 
-/* PWM: LEDC channel 0 on GPIO2. */
+/* PWM: LEDC channel 0 on GPIO2, channel 1 on GPIO3. */
 &pinctrl {
 	ledc0_default: ledc0_default {
 		group1 {
-			pinmux = <LEDC_CH0_GPIO2>;
+			pinmux = <LEDC_CH0_GPIO2>, <LEDC_CH1_GPIO3>;
 			output-enable;
 		};
 	};
@@ -67,6 +73,11 @@
 
 	channel0@0 {
 		reg = <0x0>;
+		timer = <0>;
+	};
+
+	channel1@1 {
+		reg = <0x1>;
 		timer = <0>;
 	};
 };
