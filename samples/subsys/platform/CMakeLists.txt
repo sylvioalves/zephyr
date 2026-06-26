@@ -29,6 +29,7 @@ add_llext_target(${ext_name}_ext
 )
 llext_include_directories(${ext_name}_ext
   ${CMAKE_CURRENT_SOURCE_DIR}/src
+  ${ZEPHYR_BINARY_DIR}/include/generated
 )
 
 generate_inc_file_for_target(app ${ext_bin} ${ext_inc})

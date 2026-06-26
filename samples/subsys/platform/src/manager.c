@@ -5,13 +5,13 @@
  */
 
 #include "platform.h"
-#include "app_api.h"
 
 #include <zephyr/kernel.h>
 #include <zephyr/sys/printk.h>
 #include <zephyr/fatal.h>
 #include <zephyr/task_wdt/task_wdt.h>
 #include <zephyr/llext/llext.h>
+#include <zephyr/sys/libc-hooks.h>
 
 #define APP_STACK_SIZE 2048
 #define APP_PRIO       5
@@ -183,24 +183,14 @@ int manager_launch(const struct app_def *def)
 }
 
 /*
- * Launch a runtime-loaded llext app as a supervised group. It runs in a
- * dedicated thread with its own watchdog and capability grants, reaching the
- * platform through the injected service table. (llext extensions cannot run in
- * user mode on RISC-V, so the module is supervisor-side but still verified,
- * capability-gated, supervised, and reclaimable like any other app.)
+ * Launch a runtime-loaded llext app as an isolated user-mode group, exactly like
+ * a built-in app: the module is mapped into its own memory domain, runs as a
+ * K_USER thread, and reaches the platform only through capability-gated service
+ * syscalls. It is verified, granted, supervised, and reclaimable like any app.
  */
-static void llext_trampoline(void *entry, void *api, void *u2)
-{
-	ARG_UNUSED(u2);
-	((app_api_entry_t)entry)((const struct app_api *)api);
-}
-
 int manager_launch_llext(const char *name, struct llext *ext,
-			 app_api_entry_t entry, const struct app_api *api,
-			 uint32_t caps)
+			 app_entry_t entry, uint32_t caps)
 {
-	ARG_UNUSED(ext);
-
 	for (int i = 0; i < PLATFORM_MAX_APPS; i++) {
 		if (apps[i].active) {
 			continue;
@@ -208,19 +198,30 @@ int manager_launch_llext(const char *name, struct llext *ext,
 		struct running_app *a = &apps[i];
 
 		a->name = name;
-		a->entry = NULL;
+		a->entry = entry;
 		a->caps = caps;
 		a->wdt_fired = false;
+		k_mem_domain_init(&a->domain, 0, NULL);
+
+#ifdef Z_LIBC_PARTITION_EXISTS
+		k_mem_domain_add_partition(&a->domain, &z_libc_partition);
+#endif
+		if (llext_add_domain(ext, &a->domain) != 0) {
+			printk("platform: could not map '%s' into its domain\n", name);
+			return -ENOSPC;
+		}
 
 		k_tid_t t = k_thread_create(&a->thread, app_stacks[i],
-					    APP_STACK_SIZE, llext_trampoline,
-					    (void *)entry, (void *)api, NULL,
-					    APP_PRIO, 0, K_FOREVER);
+					    APP_STACK_SIZE, trampoline,
+					    (void *)entry, NULL, NULL,
+					    APP_PRIO, K_USER | K_INHERIT_PERMS,
+					    K_FOREVER);
 		k_thread_name_set(t, name);
+		k_mem_domain_add_thread(&a->domain, t);
 		a->wdt_chan = task_wdt_add(2000, wdt_cb, a);
 		a->active = true;
 		k_thread_start(t);
-		printk("platform: launched llext app '%s' (supervised group %d)\n",
+		printk("platform: launched llext app '%s' (isolated user-mode group %d)\n",
 		       name, i);
 		return i;
 	}

@@ -13,7 +13,6 @@
 
 #include "platform.h"
 #include "svc.h"
-#include "app_api.h"
 
 #include <zephyr/kernel.h>
 #include <zephyr/sys/printk.h>
@@ -23,28 +22,7 @@
 #include <string.h>
 
 extern int manager_launch_llext(const char *name, struct llext *ext,
-				app_api_entry_t entry, const struct app_api *api,
-				uint32_t caps);
-
-/*
- * The service table handed to a loadable app. Each wrapper calls the brokered
- * service, which checks the running app's capabilities - so a loadable app is
- * gated exactly like a built-in one, without needing user-mode syscalls (which
- * llext does not support on RISC-V).
- */
-static void api_sleep_ms(uint32_t ms)
-{
-	k_msleep((int32_t)ms);
-}
-
-static const struct app_api app_api = {
-	.log         = z_impl_svc_log,
-	.heartbeat   = z_impl_svc_heartbeat,
-	.sensor_read = z_impl_svc_sensor_read,
-	.led_set     = z_impl_svc_led_set,
-	.pwm_set     = z_impl_svc_pwm_set,
-	.sleep_ms    = api_sleep_ms,
-};
+				app_entry_t entry, uint32_t caps);
 
 static uint8_t module_buf[] = {
 #include "installed_app.inc"
@@ -92,7 +70,7 @@ int loader_install(const char *name, uint32_t caps)
 		return rc;
 	}
 
-	app_api_entry_t entry = llext_find_sym(&ext->exp_tab, "app_main");
+	app_entry_t entry = llext_find_sym(&ext->exp_tab, "app_main");
 
 	if (entry == NULL) {
 		printk("loader: no app_main entry\n");
@@ -100,5 +78,5 @@ int loader_install(const char *name, uint32_t caps)
 		return -ENOENT;
 	}
 
-	return manager_launch_llext(name, ext, entry, &app_api, caps);
+	return manager_launch_llext(name, ext, entry, caps);
 }
