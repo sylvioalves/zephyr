@@ -12,11 +12,24 @@
 #include <zephyr/internal/syscall_handler.h>
 #include <errno.h>
 
-/* The platform owns both the button (input) and the status LED (output). */
+/* The platform owns the button (input) and several status LEDs (outputs). */
 static const struct gpio_dt_spec button =
 	GPIO_DT_SPEC_GET(DT_ALIAS(sw0), gpios);
-static const struct gpio_dt_spec led =
-	GPIO_DT_SPEC_GET(DT_ALIAS(led0), gpios);
+
+static const struct gpio_dt_spec led[] = {
+	GPIO_DT_SPEC_GET(DT_ALIAS(led0), gpios),
+	GPIO_DT_SPEC_GET(DT_ALIAS(led1), gpios),
+	GPIO_DT_SPEC_GET(DT_ALIAS(led2), gpios),
+};
+#define LED_COUNT ARRAY_SIZE(led)
+
+/* Per-pin grant: bit N set means the app may drive LED pin N. */
+static uint32_t led_grant;
+
+void svc_led_grant(uint32_t pin_mask)
+{
+	led_grant = pin_mask;
+}
 
 static struct gpio_callback button_cb;
 
@@ -35,8 +48,10 @@ static void button_pressed(const struct device *dev, struct gpio_callback *cb,
 
 void svc_input_install(void)
 {
-	if (gpio_is_ready_dt(&led)) {
-		(void)gpio_pin_configure_dt(&led, GPIO_OUTPUT_INACTIVE);
+	for (int i = 0; i < (int)LED_COUNT; i++) {
+		if (gpio_is_ready_dt(&led[i])) {
+			(void)gpio_pin_configure_dt(&led[i], GPIO_OUTPUT_INACTIVE);
+		}
 	}
 
 	if (!gpio_is_ready_dt(&button)) {
@@ -60,13 +75,13 @@ int z_impl_svc_button_wait(int32_t timeout_ms)
 	return (int)atomic_get(&press_count);
 }
 
-int z_impl_svc_led_set(int on)
+int z_impl_svc_led_set(int pin, int on)
 {
-	if (!gpio_is_ready_dt(&led)) {
+	if (pin < 0 || pin >= (int)LED_COUNT || !gpio_is_ready_dt(&led[pin])) {
 		return -ENODEV;
 	}
 
-	return gpio_pin_set_dt(&led, on ? 1 : 0);
+	return gpio_pin_set_dt(&led[pin], on ? 1 : 0);
 }
 
 #ifdef CONFIG_USERSPACE
@@ -76,9 +91,13 @@ static inline int z_vrfy_svc_button_wait(int32_t timeout_ms)
 }
 #include <zephyr/syscalls/svc_button_wait_mrsh.c>
 
-static inline int z_vrfy_svc_led_set(int on)
+static inline int z_vrfy_svc_led_set(int pin, int on)
 {
-	return z_impl_svc_led_set(on);
+	/* Reject any LED pin the app was not granted. */
+	if (pin < 0 || pin >= (int)LED_COUNT || (led_grant & BIT(pin)) == 0U) {
+		return -EPERM;
+	}
+	return z_impl_svc_led_set(pin, on);
 }
 #include <zephyr/syscalls/svc_led_set_mrsh.c>
 #endif

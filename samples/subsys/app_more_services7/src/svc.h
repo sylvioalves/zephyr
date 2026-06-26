@@ -18,18 +18,22 @@
  *
  *   svc_button_wait  - block until the next button press; returns the running
  *                      press count, or -EAGAIN on timeout.
- *   svc_led_set      - turn the platform-owned status LED on or off (scoped
- *                      output, paired with the input above).
+ *   svc_led_set      - drive one of several status LEDs (multi-pin output). The
+ *                      app may only drive granted pins; ungranted pins are
+ *                      rejected at the syscall boundary.
  */
 
 /* Brokered event seam: wait up to @timeout_ms for a press; returns press count. */
 __syscall int svc_button_wait(int32_t timeout_ms);
 
-/* Scoped output: drive the status LED (@on != 0 lights it). */
-__syscall int svc_led_set(int on);
+/* Scoped output: drive granted LED @pin (@on != 0 lights it). */
+__syscall int svc_led_set(int pin, int on);
 
-/* Supervisor-only: bind the button irq and the LED before launching the app. */
+/* Supervisor-only: bind the button irq and configure the LEDs. */
 void svc_input_install(void);
+
+/* Supervisor-only: grant the app a set of LED pins (bit N = pin N). */
+void svc_led_grant(uint32_t pin_mask);
 
 #include <zephyr/syscalls/svc.h>
 
