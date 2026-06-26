@@ -1,0 +1,25 @@
+/*
+ * Copyright (c) 2026 Espressif Systems (Shanghai) Co., Ltd.
+ *
+ * SPDX-License-Identifier: Apache-2.0
+ */
+
+/*
+ * The devkit exposes a user button (sw0, GPIO9) but no simple GPIO LED. Define
+ * a status LED on a free pin (GPIO2) so the input-event service has a paired
+ * output to drive.
+ */
+/ {
+	leds {
+		compatible = "gpio-leds";
+
+		status_led: led_0 {
+			gpios = <&gpio0 2 GPIO_ACTIVE_HIGH>;
+			label = "status LED";
+		};
+	};
+
+	aliases {
+		led0 = &status_led;
+	};
+};
