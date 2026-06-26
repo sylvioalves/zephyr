@@ -15,6 +15,7 @@
 
 #include <zephyr/kernel.h>
 #include <zephyr/sys/printk.h>
+#include <errno.h>
 
 #define STACK_SIZE 2048
 #define APP_PRIO   5
@@ -42,23 +43,30 @@ static void app_entry(void *p1, void *p2, void *p3)
 			       round, rc, wd);
 		}
 
-		/* Second UART: emit a line out the scoped port. */
+		/* Granted UART port 0: emit a line out the scoped port. */
 		char line[40];
 		int n = snprintk(line, sizeof(line), "temp=%d.%03dC\r\n",
 				 milli_c / 1000, milli_c % 1000);
-		svc_uart_write((const uint8_t *)line, n);
+		svc_uart_write(0, (const uint8_t *)line, n);
 
-		/* Poll the scoped port for one input byte. */
+		/* Poll the granted port for one input byte. */
 		uint8_t in;
 
-		if (svc_uart_read(&in) == 1) {
+		if (svc_uart_read(0, &in) == 1) {
 			printk("  [app] uart rx byte: 0x%02x\n", in);
 		}
 
 		k_msleep(500);
 	}
 
-	printk("  [app] done - used UART + die temp + watchdog\n");
+	/* UART port 1 was NOT granted - the boundary rejects it. */
+	uint8_t b = 'x';
+	int rcu = svc_uart_write(1, &b, 1);
+
+	printk("  [app] uart port 1 write -> rc=%d (expected -EPERM=%d, ungranted)\n",
+	       rcu, -EPERM);
+
+	printk("  [app] done - granted UART driven, ungranted denied\n");
 }
 
 int main(void)
@@ -66,6 +74,9 @@ int main(void)
 	printk("\n*** more services 5: UART + die temp + watchdog (C6) ***\n");
 
 	svc_wdt_install();
+
+	/* Grant UART port 0 only; port 1 stays denied. */
+	svc_uart_grant(BIT(0));
 
 	k_tid_t t = k_thread_create(&app_thread, app_stack, STACK_SIZE, app_entry,
 				    NULL, NULL, NULL, APP_PRIO, K_USER, K_FOREVER);

@@ -16,8 +16,24 @@
 
 #define UART_MAX 64
 
-/* The platform owns the second UART; the app reaches it only as a byte channel. */
-static const struct device *const uart_dev = DEVICE_DT_GET(DT_NODELABEL(uart1));
+/*
+ * The platform owns the UART ports and grants the app a subset. Port 0 is the
+ * usable second UART (uart1); port 1 is a second managed port left ungranted to
+ * show the boundary. The app reaches a granted port only as a byte channel.
+ */
+static const struct device *const uart_port[] = {
+	DEVICE_DT_GET(DT_NODELABEL(uart1)),
+	DEVICE_DT_GET(DT_NODELABEL(uart0)),
+};
+#define UART_COUNT ARRAY_SIZE(uart_port)
+
+/* Per-port grant: bit N set means the app may use UART port N. */
+static uint32_t uart_grant;
+
+void svc_uart_grant(uint32_t port_mask)
+{
+	uart_grant = port_mask;
+}
 
 /* The platform owns the die-temp sensor (open, read-only to apps). */
 static const struct device *const temp_dev = DEVICE_DT_GET(DT_ALIAS(die_temp0));
@@ -45,23 +61,25 @@ void svc_wdt_install(void)
 	}
 }
 
-int z_impl_svc_uart_write(const uint8_t *buf, size_t len)
+int z_impl_svc_uart_write(int port, const uint8_t *buf, size_t len)
 {
-	if (!device_is_ready(uart_dev) || len > UART_MAX) {
+	if (port < 0 || port >= (int)UART_COUNT ||
+	    !device_is_ready(uart_port[port]) || len > UART_MAX) {
 		return -ENODEV;
 	}
 	for (size_t i = 0; i < len; i++) {
-		uart_poll_out(uart_dev, buf[i]);
+		uart_poll_out(uart_port[port], buf[i]);
 	}
 	return (int)len;
 }
 
-int z_impl_svc_uart_read(uint8_t *out)
+int z_impl_svc_uart_read(int port, uint8_t *out)
 {
-	if (!device_is_ready(uart_dev)) {
+	if (port < 0 || port >= (int)UART_COUNT ||
+	    !device_is_ready(uart_port[port])) {
 		return -ENODEV;
 	}
-	int rc = uart_poll_in(uart_dev, out);
+	int rc = uart_poll_in(uart_port[port], out);
 
 	return (rc == 0) ? 1 : -EAGAIN;
 }
@@ -97,20 +115,26 @@ int z_impl_svc_wdt_feed(void)
 }
 
 #ifdef CONFIG_USERSPACE
-static inline int z_vrfy_svc_uart_write(const uint8_t *buf, size_t len)
+static inline int z_vrfy_svc_uart_write(int port, const uint8_t *buf, size_t len)
 {
+	if (port < 0 || port >= (int)UART_COUNT || (uart_grant & BIT(port)) == 0U) {
+		return -EPERM;
+	}
 	if (len > UART_MAX) {
 		return -EINVAL;
 	}
 	K_OOPS(K_SYSCALL_MEMORY_READ(buf, len));
-	return z_impl_svc_uart_write(buf, len);
+	return z_impl_svc_uart_write(port, buf, len);
 }
 #include <zephyr/syscalls/svc_uart_write_mrsh.c>
 
-static inline int z_vrfy_svc_uart_read(uint8_t *out)
+static inline int z_vrfy_svc_uart_read(int port, uint8_t *out)
 {
+	if (port < 0 || port >= (int)UART_COUNT || (uart_grant & BIT(port)) == 0U) {
+		return -EPERM;
+	}
 	K_OOPS(K_SYSCALL_MEMORY_WRITE(out, sizeof(*out)));
-	return z_impl_svc_uart_read(out);
+	return z_impl_svc_uart_read(port, out);
 }
 #include <zephyr/syscalls/svc_uart_read_mrsh.c>
 

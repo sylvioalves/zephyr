@@ -23,11 +23,14 @@
  *                    owns the watchdog, the app proves liveness through this.
  */
 
-/* Scoped: write @len bytes out the second UART. Returns count sent. */
-__syscall int svc_uart_write(const uint8_t *buf, size_t len);
+/* Scoped: write @len bytes out granted UART @port. Returns count sent. */
+__syscall int svc_uart_write(int port, const uint8_t *buf, size_t len);
 
-/* Scoped: poll one byte in; returns 1 on a byte, -EAGAIN if none. */
-__syscall int svc_uart_read(uint8_t *out);
+/* Scoped: poll one byte from granted UART @port; 1 on a byte, -EAGAIN if none. */
+__syscall int svc_uart_read(int port, uint8_t *out);
+
+/* Supervisor-only: grant the app a set of UART ports (bit N = port N). */
+void svc_uart_grant(uint32_t port_mask);
 
 /* Open: core die temperature in milli-degrees C. */
 __syscall int svc_die_temp(int32_t *milli_c);
