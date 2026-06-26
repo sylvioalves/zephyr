@@ -162,7 +162,7 @@ static inline int z_vrfy_svc_sensor_read(int32_t *milli_c)
 
 static inline void z_vrfy_svc_log(const char *msg)
 {
-	char buf[48];
+	char buf[64];
 
 	if (k_usermode_string_copy(buf, (char *)msg, sizeof(buf)) == 0) {
 		z_impl_svc_log(buf);
