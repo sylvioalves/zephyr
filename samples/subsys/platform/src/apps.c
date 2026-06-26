@@ -9,9 +9,10 @@
  * only through service syscalls, and only the services its capabilities grant.
  */
 
-#include "platform.h"
+#include "app_caps.h"
 #include "svc.h"
 
+#include <zephyr/app_platform/app_platform.h>
 #include <zephyr/kernel.h>
 #include <string.h>
 

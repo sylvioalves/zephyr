@@ -5,7 +5,7 @@
  */
 
 #include "svc.h"
-#include "platform.h"
+#include "app_caps.h"
 
 #include <zephyr/kernel.h>
 #include <zephyr/sys/printk.h>
@@ -16,10 +16,8 @@
 #include <zephyr/drivers/rtc.h>
 #include <zephyr/storage/flash_map.h>
 #include <zephyr/internal/syscall_handler.h>
+#include <zephyr/app_platform/app_platform.h>
 #include <errno.h>
-
-extern int manager_id_of_current(void);
-extern void manager_app_feed(void);
 
 #define FLASH_SLOT_MAX 64
 
@@ -52,19 +50,19 @@ void svc_devices_init(void)
 
 void z_impl_svc_log(const char *msg)
 {
-	printk("    [app %d] %s\n", manager_id_of_current(), msg);
+	printk("    [app %d] %s\n", app_platform_id_current(), msg);
 }
 
 void z_impl_svc_heartbeat(void)
 {
-	manager_app_feed();
+	app_platform_heartbeat();
 }
 
 /* ---- capability-gated services ---- */
 
 int z_impl_svc_sensor_read(int32_t *milli_c)
 {
-	if ((manager_caps_of_current() & CAP_SENSOR) == 0U) {
+	if ((app_platform_caps_current() & CAP_SENSOR) == 0U) {
 		return -EPERM;
 	}
 	if (!device_is_ready(die_temp) || sensor_sample_fetch(die_temp) != 0) {
@@ -81,7 +79,7 @@ int z_impl_svc_sensor_read(int32_t *milli_c)
 
 int z_impl_svc_led_set(int on)
 {
-	if ((manager_caps_of_current() & CAP_GPIO) == 0U) {
+	if ((app_platform_caps_current() & CAP_GPIO) == 0U) {
 		return -EPERM;
 	}
 	if (!gpio_is_ready_dt(&led)) {
@@ -92,7 +90,7 @@ int z_impl_svc_led_set(int on)
 
 int z_impl_svc_pwm_set(uint8_t percent)
 {
-	if ((manager_caps_of_current() & CAP_PWM) == 0U) {
+	if ((app_platform_caps_current() & CAP_PWM) == 0U) {
 		return -EPERM;
 	}
 	if (!pwm_is_ready_dt(&pwm)) {
@@ -108,7 +106,7 @@ int z_impl_svc_pwm_set(uint8_t percent)
 
 int z_impl_svc_flash_write(uint32_t off, const uint8_t *buf, size_t len)
 {
-	if ((manager_caps_of_current() & CAP_FLASH) == 0U) {
+	if ((app_platform_caps_current() & CAP_FLASH) == 0U) {
 		return -EPERM;
 	}
 	if (fa == NULL || len > FLASH_SLOT_MAX ||
@@ -122,7 +120,7 @@ int z_impl_svc_flash_write(uint32_t off, const uint8_t *buf, size_t len)
 
 int z_impl_svc_flash_read(uint32_t off, uint8_t *buf, size_t len)
 {
-	if ((manager_caps_of_current() & CAP_FLASH) == 0U) {
+	if ((app_platform_caps_current() & CAP_FLASH) == 0U) {
 		return -EPERM;
 	}
 	if (fa == NULL || len > FLASH_SLOT_MAX ||
@@ -136,7 +134,7 @@ int z_impl_svc_flash_read(uint32_t off, uint8_t *buf, size_t len)
 
 int z_impl_svc_rtc_now(uint32_t *epoch_sec)
 {
-	if ((manager_caps_of_current() & CAP_RTC) == 0U) {
+	if ((app_platform_caps_current() & CAP_RTC) == 0U) {
 		return -EPERM;
 	}
 	if (!device_is_ready(rtc)) {

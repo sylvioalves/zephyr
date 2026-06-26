@@ -4,17 +4,24 @@
  * SPDX-License-Identifier: Apache-2.0
  */
 
-#include "app_registry.h"
+/*
+ * The installed-application registry, persisted to a littlefs partition so the
+ * set of installed applications survives reboots.
+ */
+
+#include <zephyr/app_platform/app_registry.h>
 
 #include <zephyr/kernel.h>
-#include <zephyr/sys/printk.h>
 #include <zephyr/fs/fs.h>
 #include <zephyr/fs/littlefs.h>
 #include <zephyr/storage/flash_map.h>
+#include <zephyr/logging/log.h>
 #include <string.h>
 #include <errno.h>
 
-#define MOUNT_POINT "/lfs"
+LOG_MODULE_DECLARE(app_platform, CONFIG_APP_PLATFORM_LOG_LEVEL);
+
+#define MOUNT_POINT CONFIG_APP_PLATFORM_REGISTRY_MOUNT_POINT
 #define REG_PATH    MOUNT_POINT "/registry.bin"
 
 FS_LITTLEFS_DECLARE_DEFAULT_CONFIG(lfs_cfg);
@@ -25,14 +32,14 @@ static struct fs_mount_t mnt = {
 	.mnt_point = MOUNT_POINT,
 };
 
-/* On-flash registry: a header count plus the records. */
+/* On-flash registry: a header plus the records. */
 struct reg_file {
 	uint32_t magic;
 	uint32_t count;
 	uint32_t next_seq;
 	struct app_record apps[APP_REG_MAX];
 };
-#define REG_MAGIC 0x41505072   /* "APPr" - v2 catalog (capability apps) */
+#define REG_MAGIC 0x41505072U
 
 static struct reg_file reg;
 
@@ -56,7 +63,7 @@ int app_registry_load(void)
 	int rc = fs_mount(&mnt);
 
 	if (rc != 0 && rc != -EBUSY) {
-		printk("registry: mount failed %d\n", rc);
+		LOG_ERR("mount failed %d", rc);
 		return rc;
 	}
 
@@ -69,8 +76,7 @@ int app_registry_load(void)
 
 		fs_close(&f);
 		if (n == sizeof(reg) && reg.magic == REG_MAGIC) {
-			printk("registry: loaded %u installed app(s) from flash\n",
-			       reg.count);
+			LOG_INF("loaded %u installed app(s) from flash", reg.count);
 			return 0;
 		}
 	}
@@ -79,7 +85,7 @@ int app_registry_load(void)
 	memset(&reg, 0, sizeof(reg));
 	reg.magic = REG_MAGIC;
 	reg.next_seq = 1;
-	printk("registry: no registry found, starting empty (first boot)\n");
+	LOG_INF("no registry found, starting empty (first boot)");
 	return reg_save();
 }
 
@@ -108,8 +114,8 @@ int app_registry_install(const char *name, bool autostart)
 	reg.apps[idx].enabled = 1;
 	reg.apps[idx].autostart = autostart ? 1 : 0;
 	reg.apps[idx].install_seq = reg.next_seq++;
-	printk("registry: installed '%s' (seq %u, autostart=%d)\n",
-	       name, reg.apps[idx].install_seq, reg.apps[idx].autostart);
+	LOG_INF("installed '%s' (seq %u, autostart=%d)", name,
+		reg.apps[idx].install_seq, reg.apps[idx].autostart);
 	return reg_save();
 }
 
@@ -138,6 +144,6 @@ int app_registry_uninstall(const char *name)
 		reg.apps[i] = reg.apps[i + 1];
 	}
 	reg.count--;
-	printk("registry: uninstalled '%s'\n", name);
+	LOG_INF("uninstalled '%s'", name);
 	return reg_save();
 }

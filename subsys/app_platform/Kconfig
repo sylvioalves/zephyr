@@ -1,0 +1,84 @@
+# Copyright (c) 2026 Espressif Systems (Shanghai) Co., Ltd.
+# SPDX-License-Identifier: Apache-2.0
+
+menuconfig APP_PLATFORM
+	bool "Application platform"
+	depends on USERSPACE
+	depends on TASK_WDT
+	help
+	  A runtime that launches applications as isolated, supervised groups:
+	  each application runs as a user-mode thread in its own memory domain,
+	  reaches the system only through application-provided services, and is
+	  reclaimed if it faults or hangs without affecting the system or the
+	  other applications.
+
+if APP_PLATFORM
+
+config APP_PLATFORM_MAX_APPS
+	int "Maximum concurrent application groups"
+	default 4
+	help
+	  Number of application groups that can run at once. Each reserves a
+	  thread stack and a memory domain.
+
+config APP_PLATFORM_APP_STACK_SIZE
+	int "Per-application stack size"
+	default 2048
+
+config APP_PLATFORM_APP_PRIORITY
+	int "Application thread priority"
+	default 5
+
+config APP_PLATFORM_SUPERVISOR_STACK_SIZE
+	int "Supervisor thread stack size"
+	default 2048
+
+config APP_PLATFORM_SUPERVISOR_PRIORITY
+	int "Supervisor thread priority"
+	default 2
+
+config APP_PLATFORM_WDT_TIMEOUT_MS
+	int "Application liveness watchdog timeout (ms)"
+	default 2000
+	help
+	  An application proves liveness by calling app_platform_heartbeat(); a
+	  group that stops feeding within this window is reclaimed.
+
+config APP_PLATFORM_LOADER
+	bool "Verified llext application loader"
+	depends on LLEXT
+	depends on PSA_CRYPTO
+	help
+	  Verify a downloaded module by SHA-256 and load it as an llext, so a
+	  tampered or corrupted module is rejected and never linked. Enable a
+	  PSA crypto provider (for example CONFIG_PSA_CRYPTO and
+	  CONFIG_PSA_WANT_ALG_SHA_256) for the SHA-256 implementation.
+
+config APP_PLATFORM_REGISTRY
+	bool "Persistent installed-application registry"
+	depends on FILE_SYSTEM
+	help
+	  Persist the set of installed applications to a filesystem so it
+	  survives reboots.
+
+if APP_PLATFORM_REGISTRY
+
+config APP_PLATFORM_REGISTRY_MAX_APPS
+	int "Maximum installed applications"
+	default 8
+
+config APP_PLATFORM_REGISTRY_NAME_MAX
+	int "Maximum application name length"
+	default 16
+
+config APP_PLATFORM_REGISTRY_MOUNT_POINT
+	string "Registry filesystem mount point"
+	default "/lfs"
+
+endif # APP_PLATFORM_REGISTRY
+
+module = APP_PLATFORM
+module-str = app_platform
+source "subsys/logging/Kconfig.template.log_config"
+
+endif # APP_PLATFORM

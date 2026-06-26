@@ -13,23 +13,22 @@
  * survive-a-fault story in one image.
  */
 
-#include "platform.h"
-#include "app_registry.h"
+#include "app_caps.h"
 #include "svc.h"
 
+#include <zephyr/app_platform/app_platform.h>
+#include <zephyr/app_platform/app_registry.h>
 #include <zephyr/kernel.h>
 #include <zephyr/sys/printk.h>
 
-extern int manager_init(void);
-extern int manager_launch(const struct app_def *def);
 extern int loader_install(const char *name, uint32_t caps);
 
 int main(void)
 {
 	printk("\n================ Zephyr Application Platform ================\n");
 
-	if (manager_init() != 0) {
-		printk("platform: manager init failed\n");
+	if (app_platform_init() != 0) {
+		printk("platform: init failed\n");
 		return 0;
 	}
 
@@ -69,7 +68,7 @@ int main(void)
 			printk("  (no catalog entry for '%s')\n", r.name);
 			continue;
 		}
-		manager_launch(def);
+		app_platform_launch(def);
 	}
 
 	/* Install a runtime-downloaded llext app: verify, load, isolate, run. */

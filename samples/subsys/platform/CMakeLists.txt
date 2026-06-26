@@ -8,10 +8,8 @@ zephyr_syscall_header(${CMAKE_CURRENT_SOURCE_DIR}/src/svc.h)
 
 target_sources(app PRIVATE
 	src/main.c
-	src/manager.c
 	src/svc.c
 	src/apps.c
-	src/app_registry.c
 	src/loader.c
 )
 
