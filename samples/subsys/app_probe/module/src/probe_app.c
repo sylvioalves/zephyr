@@ -94,6 +94,16 @@ void app_main(void *arg)
 	say("gpio_granted", svc_gpio_set(0, 1));
 	say("gpio_denied", svc_gpio_set(1, 1) == -1 ? 0 : -1);
 
+	/* ipc group: send to our own mailbox and read it back */
+	const char *m = "ping";
+
+	rc = svc_ipc_send(0, m, 5);
+	uint8_t inbox[16] = {0};
+	int got_len = svc_ipc_recv(inbox, sizeof(inbox), 100);
+
+	say("ipc_send", rc);
+	say("ipc_recv", (got_len == 5 && inbox[0] == 'p') ? 0 : -1);
+
 	svc_log("probe: done - all from platform-owned services");
 	for (;;) {
 		svc_heartbeat();

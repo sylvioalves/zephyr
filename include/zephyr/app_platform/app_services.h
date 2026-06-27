@@ -189,6 +189,35 @@ __syscall int svc_gpio_set(int line, int on);
  */
 void app_platform_grant_gpio(int id, uint32_t line_mask);
 
+/**
+ * @brief Send a message to another application's mailbox. Needs @ref APP_CAP_IPC.
+ *
+ * Per-app-keyed: the bytes are copied into the destination application's own
+ * mailbox, so applications exchange messages without sharing memory. Only the
+ * copied bytes cross the boundary.
+ *
+ * @param dest_id Destination application group id.
+ * @param buf     Message bytes.
+ * @param len     Message length (bounded by the platform).
+ * @retval 0 on success, -EPERM without the capability, -EAGAIN if the mailbox is
+ *         full, negative errno otherwise.
+ */
+__syscall int svc_ipc_send(int dest_id, const void *buf, size_t len);
+
+/**
+ * @brief Receive a message from the calling application's mailbox.
+ * Needs @ref APP_CAP_IPC.
+ *
+ * Per-app-keyed: reads only the calling application's own mailbox.
+ *
+ * @param buf        Receives the message bytes.
+ * @param len        Buffer size (bounded by the platform).
+ * @param timeout_ms Milliseconds to wait, or 0 to poll.
+ * @retval >=0 the received length, -EPERM without the capability, -EAGAIN on
+ *         timeout.
+ */
+__syscall int svc_ipc_recv(void *buf, size_t len, uint32_t timeout_ms);
+
 #include <zephyr/syscalls/app_services.h>
 
 /** @} */

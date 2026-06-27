@@ -49,6 +49,24 @@ static K_MUTEX_DEFINE(kv_lock);
 static const struct device *const svc_die_temp = DEVICE_DT_GET(DT_ALIAS(die_temp0));
 #endif
 
+/* Per-application mailbox: a fixed-size message queue, one per group. */
+#define MAX_APPS  CONFIG_APP_PLATFORM_MAX_APPS
+#define IPC_MSG_MAX 64
+
+struct ipc_msg {
+	uint16_t len;
+	uint8_t  data[IPC_MSG_MAX];
+};
+
+K_MSGQ_DEFINE(ipc_q0, sizeof(struct ipc_msg), 4, 4);
+K_MSGQ_DEFINE(ipc_q1, sizeof(struct ipc_msg), 4, 4);
+K_MSGQ_DEFINE(ipc_q2, sizeof(struct ipc_msg), 4, 4);
+K_MSGQ_DEFINE(ipc_q3, sizeof(struct ipc_msg), 4, 4);
+static struct k_msgq *const mailbox[] = { &ipc_q0, &ipc_q1, &ipc_q2, &ipc_q3 };
+
+BUILD_ASSERT(MAX_APPS <= ARRAY_SIZE(mailbox),
+	     "add a mailbox per supported application group");
+
 /* True when the calling application holds every bit in @mask. */
 static inline bool app_has_cap(uint32_t mask)
 {
@@ -226,6 +244,47 @@ int z_impl_svc_flash_read(uint32_t off, uint8_t *buf, size_t len)
 #endif
 }
 
+int z_impl_svc_ipc_send(int dest_id, const void *buf, size_t len)
+{
+	if (!app_has_cap(APP_CAP_IPC)) {
+		return -EPERM;
+	}
+	if (dest_id < 0 || dest_id >= MAX_APPS || len > IPC_MSG_MAX) {
+		return -EINVAL;
+	}
+
+	struct ipc_msg msg;
+
+	msg.len = (uint16_t)len;
+	memcpy(msg.data, buf, len);
+
+	return k_msgq_put(mailbox[dest_id], &msg, K_NO_WAIT) == 0 ? 0 : -EAGAIN;
+}
+
+int z_impl_svc_ipc_recv(void *buf, size_t len, uint32_t timeout_ms)
+{
+	if (!app_has_cap(APP_CAP_IPC)) {
+		return -EPERM;
+	}
+
+	int id = app_platform_id_current();
+
+	if (id < 0 || id >= MAX_APPS) {
+		return -EINVAL;
+	}
+
+	struct ipc_msg msg;
+
+	if (k_msgq_get(mailbox[id], &msg, K_MSEC(timeout_ms)) != 0) {
+		return -EAGAIN;
+	}
+
+	size_t n = MIN(len, (size_t)msg.len);
+
+	memcpy(buf, msg.data, n);
+	return (int)n;
+}
+
 #ifdef CONFIG_USERSPACE
 static inline void z_vrfy_svc_log(const char *msg)
 {
@@ -306,4 +365,18 @@ static inline int z_vrfy_svc_flash_read(uint32_t off, uint8_t *buf, size_t len)
 	return z_impl_svc_flash_read(off, buf, len);
 }
 #include <zephyr/syscalls/svc_flash_read_mrsh.c>
+
+static inline int z_vrfy_svc_ipc_send(int dest_id, const void *buf, size_t len)
+{
+	K_OOPS(K_SYSCALL_MEMORY_READ(buf, len));
+	return z_impl_svc_ipc_send(dest_id, buf, len);
+}
+#include <zephyr/syscalls/svc_ipc_send_mrsh.c>
+
+static inline int z_vrfy_svc_ipc_recv(void *buf, size_t len, uint32_t timeout_ms)
+{
+	K_OOPS(K_SYSCALL_MEMORY_WRITE(buf, len));
+	return z_impl_svc_ipc_recv(buf, len, timeout_ms);
+}
+#include <zephyr/syscalls/svc_ipc_recv_mrsh.c>
 #endif
