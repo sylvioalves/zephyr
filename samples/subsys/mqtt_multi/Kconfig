@@ -1,0 +1,11 @@
+# SPDX-License-Identifier: Apache-2.0
+
+source "Kconfig.zephyr"
+
+config APP_WIFI_SSID
+	string "Wi-Fi SSID"
+	default "Internet"
+
+config APP_WIFI_PSK
+	string "Wi-Fi PSK"
+	default "netsemfio123456"
