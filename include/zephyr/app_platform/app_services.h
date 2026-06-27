@@ -117,6 +117,44 @@ __syscall int svc_kv_get(const char *key, uint32_t *out);
  */
 __syscall int svc_flash_read(uint32_t off, uint8_t *buf, size_t len);
 
+/**
+ * @brief Bring up networking and wait until it is ready. Needs @ref APP_CAP_NET.
+ *
+ * Lock-serialized: the first caller brings up Wi-Fi and resolves the broker;
+ * later callers (from other applications) wait for the same shared link. The
+ * Wi-Fi and network stacks live once in the platform, so an application that
+ * uses networking links none of that code.
+ *
+ * @retval 0 when networking is ready, -EPERM without the capability, negative
+ *         errno on failure.
+ */
+__syscall int svc_net_ready(void);
+
+/**
+ * @brief Open the calling application's MQTT session. Needs @ref APP_CAP_NET.
+ *
+ * Per-app-keyed: each application gets its own session, keyed by its group id,
+ * so applications publish under their own identity and cannot touch each other's
+ * sessions. Call @ref svc_net_ready first.
+ *
+ * @param client_id Broker client id for this application.
+ * @param pub_topic Topic this application publishes to.
+ * @param sub_topic Topic this application subscribes to.
+ * @retval 0 on success, -EPERM without the capability, negative errno otherwise.
+ */
+__syscall int svc_mqtt_open(const char *client_id, const char *pub_topic,
+			    const char *sub_topic);
+
+/**
+ * @brief Publish on the calling application's MQTT session. Needs @ref APP_CAP_NET.
+ *
+ * Per-app-keyed: publishes only on this application's own session.
+ *
+ * @param payload Payload string.
+ * @retval 0 on success, -EPERM without the capability, negative errno otherwise.
+ */
+__syscall int svc_mqtt_publish(const char *payload);
+
 #include <zephyr/syscalls/app_services.h>
 
 /** @} */

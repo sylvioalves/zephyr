@@ -5,22 +5,18 @@
  */
 
 /*
- * A downloadable MQTT app. The supervisor brings up Wi-Fi once and owns the
- * network and MQTT stacks; the die-temperature reporter arrives as a verified
- * llext module, is loaded into its own memory domain, and runs as an isolated
- * user-mode app that subscribes to a command topic and publishes the die
- * temperature every ten seconds through brokered svc_ calls. The module is
- * embedded here to stand in for a downloaded release.
+ * A downloadable MQTT app over the shared service library. The platform owns the
+ * Wi-Fi, network and MQTT stacks and the die-temperature sensor; the reporter
+ * arrives as a verified llext module, runs isolated, and reaches all of it
+ * through capability-gated svc_ calls. The module is embedded here to stand in
+ * for a downloaded release.
  */
-
-#include "svc.h"
 
 #include <zephyr/app_platform/app_platform.h>
 #include <zephyr/app_platform/app_loader.h>
+#include <zephyr/app_platform/app_caps.h>
 #include <zephyr/kernel.h>
 #include <zephyr/sys/printk.h>
-
-extern int net_link_up(void);
 
 static const uint8_t temp_app[] = {
 #include "temp_app.inc"
@@ -31,13 +27,10 @@ static const uint8_t temp_app_hash[32] = {
 
 int main(void)
 {
-	printk("\n*** downloadable MQTT die-temp app (llext, C6) ***\n");
+	printk("\n*** downloadable MQTT die-temp app over shared services (C6) ***\n");
 
 	if (app_platform_init() != 0) {
 		printk("platform init failed\n");
-		return 0;
-	}
-	if (net_link_up() != 0) {
 		return 0;
 	}
 
@@ -51,11 +44,12 @@ int main(void)
 		return 0;
 	}
 
-	int id = app_platform_launch_llext("temp-app", ext, (app_entry_t)entry, 0);
+	uint32_t caps = APP_CAP_LOG | APP_CAP_SENSOR | APP_CAP_NET;
+	int id = app_platform_launch_llext("temp-app", ext, (app_entry_t)entry, caps);
 
 	printk("temp-app launched as isolated group %d\n", id);
 
-	k_msleep(35000);
+	k_msleep(40000);
 
 	printk("\n*** done: a downloadable app published die temp over MQTT ***\n");
 	return 0;

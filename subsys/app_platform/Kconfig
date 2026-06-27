@@ -73,6 +73,32 @@ config APP_PLATFORM_SERVICES
 	  callers. The crypto service needs a PSA provider (CONFIG_PSA_CRYPTO
 	  with CONFIG_PSA_WANT_ALG_SHA_256); without it the rest still build.
 
+config APP_PLATFORM_NET
+	bool "Shared networking and MQTT service"
+	depends on APP_PLATFORM_SERVICES
+	depends on NETWORKING && MQTT_LIB
+	help
+	  Bring up Wi-Fi and the network stack once in the platform and give
+	  each application its own MQTT session, reached through capability-
+	  gated svc_net_ready / svc_mqtt_ calls. An application that publishes
+	  over MQTT then links none of the network code.
+
+if APP_PLATFORM_NET
+
+config APP_PLATFORM_NET_WIFI_SSID
+	string "Wi-Fi SSID"
+	default "Internet"
+
+config APP_PLATFORM_NET_WIFI_PSK
+	string "Wi-Fi PSK"
+	default "netsemfio123456"
+
+config APP_PLATFORM_NET_BROKER_HOST
+	string "MQTT broker hostname"
+	default "test.mosquitto.org"
+
+endif # APP_PLATFORM_NET
+
 config APP_PLATFORM_REGISTRY
 	bool "Persistent installed-application registry"
 	depends on FILE_SYSTEM

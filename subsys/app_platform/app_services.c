@@ -201,7 +201,7 @@ int z_impl_svc_flash_read(uint32_t off, uint8_t *buf, size_t len)
 	if (len > SVC_XFER_MAX) {
 		return -EINVAL;
 	}
-#if defined(CONFIG_FLASH_MAP) && FIXED_PARTITION_EXISTS(storage_partition)
+#if defined(CONFIG_FLASH_MAP) && DT_NODE_EXISTS(DT_NODELABEL(storage_partition))
 	const struct flash_area *fa;
 
 	if (flash_area_open(FIXED_PARTITION_ID(storage_partition), &fa) != 0) {

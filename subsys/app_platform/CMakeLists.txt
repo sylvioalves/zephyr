@@ -7,6 +7,7 @@ zephyr_library_sources(app_manager.c)
 zephyr_library_sources_ifdef(CONFIG_APP_PLATFORM_LOADER   app_loader.c)
 zephyr_library_sources_ifdef(CONFIG_APP_PLATFORM_REGISTRY app_registry.c)
 zephyr_library_sources_ifdef(CONFIG_APP_PLATFORM_SERVICES app_services.c)
+zephyr_library_sources_ifdef(CONFIG_APP_PLATFORM_NET      app_net.c)
 
 if(CONFIG_APP_PLATFORM_SERVICES)
   zephyr_syscall_header(${ZEPHYR_BASE}/include/zephyr/app_platform/app_services.h)

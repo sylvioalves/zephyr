@@ -4,11 +4,8 @@ cmake_minimum_required(VERSION 3.20.0)
 find_package(Zephyr REQUIRED HINTS $ENV{ZEPHYR_BASE})
 project(mqtt_llext)
 
-zephyr_syscall_header(${CMAKE_CURRENT_SOURCE_DIR}/src/svc.h)
-
 target_sources(app PRIVATE
 	src/main.c
-	src/net.c
 )
 
 # Build the die-temp reporter as a loadable llext, embedded and SHA-256 verified.

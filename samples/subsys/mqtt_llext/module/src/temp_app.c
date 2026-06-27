@@ -5,13 +5,14 @@
  */
 
 /*
- * A downloadable die-temperature reporter, built as an llext. It subscribes to a
- * command topic and publishes the SoC die temperature every ten seconds, all
- * through brokered svc_ calls. It links no Wi-Fi, socket or MQTT code, so the
- * loadable module is only a few hundred bytes.
+ * A downloadable die-temperature reporter, built as an llext. It waits for the
+ * platform's shared network link, opens its own MQTT session, subscribes to a
+ * command topic and publishes the SoC die temperature every ten seconds. The
+ * Wi-Fi, socket, MQTT client and sensor all live in the platform's shared
+ * service library, so this module links none of them and stays small.
  */
 
-#include "svc.h"
+#include <zephyr/app_platform/app_services.h>
 
 #include <zephyr/llext/symbol.h>
 #include <zephyr/kernel.h>
@@ -35,6 +36,12 @@ static void fmt_temp(int milli, char *out)
 void app_main(void *arg)
 {
 	ARG_UNUSED(arg);
+
+	svc_log("temp-app: waiting for the shared network link");
+	if (svc_net_ready() != 0) {
+		svc_log("temp-app: network not ready");
+		return;
+	}
 
 	svc_log("temp-app: opening MQTT session");
 	if (svc_mqtt_open("zephyr-temp", "zephyr/c6/temp", "zephyr/c6/cmd") != 0) {
