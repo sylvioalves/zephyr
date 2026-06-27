@@ -23,9 +23,9 @@ static void app_worker(void *arg)
 {
 	ARG_UNUSED(arg);
 
-	svc_log("worker: started");
+	app_log("worker: started");
 	for (;;) {
-		svc_log("worker: tick");
+		app_log("worker: tick");
 		k_msleep(500);
 	}
 }
@@ -56,19 +56,19 @@ void app_manager(void *arg)
 {
 	ARG_UNUSED(arg);
 
-	svc_log("manager: starting worker-a and worker-b");
+	app_log("manager: starting worker-a and worker-b");
 	int a = svc_ctrl_start("worker-a");
 	int b = svc_ctrl_start("worker-b");
 
 	k_msleep(1500);
 
-	svc_log("manager: stopping worker-a");
+	app_log("manager: stopping worker-a");
 	svc_ctrl_stop(a);
 
 	k_msleep(1500);
 
-	svc_log("manager: stopping worker-b");
+	app_log("manager: stopping worker-b");
 	svc_ctrl_stop(b);
 
-	svc_log("manager: done - managed the workers at runtime");
+	app_log("manager: done - managed the workers at runtime");
 }

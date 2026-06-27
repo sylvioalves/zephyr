@@ -10,8 +10,8 @@
 #include <zephyr/kernel.h>
 
 /* Minimal services for the liveness demo apps. */
-__syscall void svc_log(const char *msg);
-__syscall void svc_heartbeat(void);
+__syscall void app_log(const char *msg);
+__syscall void app_beat(void);
 
 #include <zephyr/syscalls/svc.h>
 

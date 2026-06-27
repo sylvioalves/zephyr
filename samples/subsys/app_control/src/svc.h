@@ -15,13 +15,13 @@
  * brokered and gated by a control capability, so only a trusted app can manage
  * the others - an app store / launcher front-end built as just another app.
  *
- *   svc_log        - log a line.
+ *   app_log        - log a line.
  *   svc_ctrl_start - start a worker by catalog name; returns its group id.
  *   svc_ctrl_stop  - stop a running group by id. Needs CAP_CONTROL.
  */
 
-__syscall void svc_log(const char *msg);
-__syscall void svc_heartbeat(void);
+__syscall void app_log(const char *msg);
+__syscall void app_beat(void);
 
 /* Scoped (CAP_CONTROL): start a catalog worker by name. Returns group id. */
 __syscall int svc_ctrl_start(const char *name);

@@ -17,12 +17,12 @@
 /* The catalog of workers the manager app may start, resolved by name. */
 extern const struct app_def *control_catalog_find(const char *name);
 
-void z_impl_svc_log(const char *msg)
+void z_impl_app_log(const char *msg)
 {
 	printk("    [app %d] %s\n", app_platform_id_current(), msg);
 }
 
-void z_impl_svc_heartbeat(void)
+void z_impl_app_beat(void)
 {
 	app_platform_heartbeat();
 }
@@ -50,21 +50,21 @@ int z_impl_svc_ctrl_stop(int id)
 }
 
 #ifdef CONFIG_USERSPACE
-static inline void z_vrfy_svc_log(const char *msg)
+static inline void z_vrfy_app_log(const char *msg)
 {
 	char buf[64];
 
 	if (k_usermode_string_copy(buf, (char *)msg, sizeof(buf)) == 0) {
-		z_impl_svc_log(buf);
+		z_impl_app_log(buf);
 	}
 }
-#include <zephyr/syscalls/svc_log_mrsh.c>
+#include <zephyr/syscalls/app_log_mrsh.c>
 
-static inline void z_vrfy_svc_heartbeat(void)
+static inline void z_vrfy_app_beat(void)
 {
-	z_impl_svc_heartbeat();
+	z_impl_app_beat();
 }
-#include <zephyr/syscalls/svc_heartbeat_mrsh.c>
+#include <zephyr/syscalls/app_beat_mrsh.c>
 
 static inline int z_vrfy_svc_ctrl_start(const char *name)
 {

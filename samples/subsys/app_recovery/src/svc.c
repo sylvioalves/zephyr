@@ -18,7 +18,7 @@
  */
 static uint32_t checkpoints[CONFIG_APP_PLATFORM_MAX_APPS];
 
-void z_impl_svc_log(const char *msg)
+void z_impl_app_log(const char *msg)
 {
 	printk("    [app %d] %s\n", app_platform_id_current(), msg);
 }
@@ -40,15 +40,15 @@ uint32_t z_impl_svc_checkpoint_get(void)
 }
 
 #ifdef CONFIG_USERSPACE
-static inline void z_vrfy_svc_log(const char *msg)
+static inline void z_vrfy_app_log(const char *msg)
 {
 	char buf[64];
 
 	if (k_usermode_string_copy(buf, (char *)msg, sizeof(buf)) == 0) {
-		z_impl_svc_log(buf);
+		z_impl_app_log(buf);
 	}
 }
-#include <zephyr/syscalls/svc_log_mrsh.c>
+#include <zephyr/syscalls/app_log_mrsh.c>
 
 static inline void z_vrfy_svc_checkpoint_set(uint32_t value)
 {

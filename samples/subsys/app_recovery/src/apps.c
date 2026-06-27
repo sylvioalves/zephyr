@@ -22,9 +22,9 @@ void app_worker(void *arg)
 	uint32_t count = svc_checkpoint_get();
 
 	if (count == 0U) {
-		svc_log("worker: fresh start, count = 0");
+		app_log("worker: fresh start, count = 0");
 	} else {
-		svc_log("worker: resumed from checkpoint after a crash");
+		app_log("worker: resumed from checkpoint after a crash");
 	}
 
 	for (;;) {
@@ -32,7 +32,7 @@ void app_worker(void *arg)
 		svc_checkpoint_set(count);
 
 		if (count == 4U) {
-			svc_log("worker: at count 4, about to crash...");
+			app_log("worker: at count 4, about to crash...");
 			/* Deliberate fault: write through a null pointer. */
 			volatile uint32_t *bad = (volatile uint32_t *)0;
 
@@ -40,7 +40,7 @@ void app_worker(void *arg)
 		}
 
 		if (count >= 8U) {
-			svc_log("worker: reached count 8, finished cleanly");
+			app_log("worker: reached count 8, finished cleanly");
 			return;
 		}
 

@@ -24,14 +24,14 @@ void app_busy(void *arg)
 {
 	ARG_UNUSED(arg);
 
-	svc_log("busy: running real work, never heartbeats");
+	app_log("busy: running real work, never heartbeats");
 	for (;;) {
 		volatile uint32_t x = 0;
 
 		for (uint32_t i = 0; i < 200000; i++) {
 			x += i;
 		}
-		svc_log("busy: still working (not reclaimed)");
+		app_log("busy: still working (not reclaimed)");
 		k_msleep(700);
 	}
 }
@@ -40,7 +40,7 @@ void app_crasher(void *arg)
 {
 	ARG_UNUSED(arg);
 
-	svc_log("crasher: about to fault");
+	app_log("crasher: about to fault");
 	k_msleep(300);
 
 	volatile uint32_t *p = NULL;
@@ -51,13 +51,13 @@ void app_hanger(void *arg)
 {
 	ARG_UNUSED(arg);
 
-	svc_log("hanger: monitored, feeding watchdog");
+	app_log("hanger: monitored, feeding watchdog");
 	for (int i = 0; i < 3; i++) {
-		svc_heartbeat();
+		app_beat();
 		k_msleep(500);
 	}
 
-	svc_log("hanger: stopped responding (simulated hang)");
+	app_log("hanger: stopped responding (simulated hang)");
 	for (;;) {
 		k_msleep(K_TICKS_FOREVER);
 	}
