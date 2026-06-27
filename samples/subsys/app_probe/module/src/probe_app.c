@@ -5,12 +5,14 @@
  */
 
 /*
- * A loadable app that probes a spread of brokered services, one per syscall
- * shape, and reports which work from inside an llext module. It links no driver
- * code and uses no printf, so it stays small and free of unexported symbols.
+ * A loadable app that calls the platform's shared service library directly. It
+ * links no driver code and no per-sample service glue: the services, their
+ * capability checks and their syscalls all live in the platform. The app proves
+ * the shared library is reachable, capability-gated and usable from inside an
+ * isolated llext module.
  */
 
-#include "svc.h"
+#include <zephyr/app_platform/app_services.h>
 
 #include <zephyr/llext/symbol.h>
 #include <zephyr/kernel.h>
@@ -50,15 +52,13 @@ void app_main(void *arg)
 {
 	ARG_UNUSED(arg);
 
-	svc_log("probe: testing service shapes from an llext app");
+	svc_log("probe: calling the shared service library from an llext app");
 
-	/* scalar return */
-	say("uptime", svc_uptime() > 0 ? 0 : -1);
+	/* time group */
+	say("uptime", svc_uptime_ms() > 0 ? 0 : -1);
+	say("cycles", svc_cycles() > 0 ? 0 : -1);
 
-	/* sensor scalar */
-	say("die_temp", svc_die_temp_milli() != 0 ? 0 : -1);
-
-	/* write buffer to app */
+	/* random group */
 	uint8_t rnd[16] = {0};
 	int rc = svc_random(rnd, sizeof(rnd));
 	int nonzero = 0;
@@ -68,25 +68,13 @@ void app_main(void *arg)
 	}
 	say("random", (rc == 0 && nonzero) ? 0 : -1);
 
-	/* string in + scalar in, then string in + scalar out */
-	say("kv_set", svc_kv_set("count", 42));
-	uint32_t got = 0;
-
-	rc = svc_kv_get("count", &got);
-	say("kv_get", (rc == 0 && got == 42) ? 0 : -1);
-
-	/* buffer in + buffer out (crypto) */
+	/* crypto group */
 	uint8_t digest[32] = {0};
 
-	rc = svc_sha((const uint8_t *)"hello", 5, digest);
+	rc = svc_sha256((const uint8_t *)"hello", 5, digest);
 	say("sha256", (rc == 0 && digest[0] != 0) ? 0 : -1);
 
-	/* peripheral read into app buffer */
-	uint8_t fbuf[16] = {0};
-
-	say("flash_read", svc_flash_read(0, fbuf, sizeof(fbuf)));
-
-	svc_log("probe: done");
+	svc_log("probe: done - all from platform-owned services");
 	for (;;) {
 		svc_heartbeat();
 		k_msleep(1000);

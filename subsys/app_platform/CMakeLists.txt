@@ -6,5 +6,10 @@ zephyr_library()
 zephyr_library_sources(app_manager.c)
 zephyr_library_sources_ifdef(CONFIG_APP_PLATFORM_LOADER   app_loader.c)
 zephyr_library_sources_ifdef(CONFIG_APP_PLATFORM_REGISTRY app_registry.c)
+zephyr_library_sources_ifdef(CONFIG_APP_PLATFORM_SERVICES app_services.c)
+
+if(CONFIG_APP_PLATFORM_SERVICES)
+  zephyr_syscall_header(${ZEPHYR_BASE}/include/zephyr/app_platform/app_services.h)
+endif()
 
 zephyr_library_link_libraries_ifdef(CONFIG_FILE_SYSTEM_LITTLEFS LITTLEFS)

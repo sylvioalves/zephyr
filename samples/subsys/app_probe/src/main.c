@@ -5,16 +5,17 @@
  */
 
 /*
- * Service-breadth probe. A loadable app is verified, loaded and run isolated;
- * it calls a spread of brokered services covering every syscall boundary shape
- * and reports which work from inside an llext module. This maps how much of the
- * service surface is already reachable from downloadable apps.
+ * Shared service library probe. A loadable app is verified, loaded and run
+ * isolated, granted a set of capabilities, and calls the platform's shared
+ * services (time, random, crypto). The services, their capability checks and
+ * their syscalls all live in the platform, so the app links none of it. This
+ * shows the shared library is reachable and capability-gated from a downloadable
+ * app.
  */
-
-#include "svc.h"
 
 #include <zephyr/app_platform/app_platform.h>
 #include <zephyr/app_platform/app_loader.h>
+#include <zephyr/app_platform/app_caps.h>
 #include <zephyr/kernel.h>
 #include <zephyr/sys/printk.h>
 
@@ -27,7 +28,7 @@ static const uint8_t probe_app_hash[32] = {
 
 int main(void)
 {
-	printk("\n*** service-breadth probe from a loadable app (C6) ***\n");
+	printk("\n*** shared service library probe (llext, C6) ***\n");
 
 	if (app_platform_init() != 0) {
 		printk("platform init failed\n");
@@ -44,10 +45,12 @@ int main(void)
 		return 0;
 	}
 
-	app_platform_launch_llext("probe", ext, (app_entry_t)entry, 0);
+	uint32_t caps = APP_CAP_LOG | APP_CAP_TIME | APP_CAP_RANDOM | APP_CAP_CRYPTO;
+
+	app_platform_launch_llext("probe", ext, (app_entry_t)entry, caps);
 
 	k_msleep(4000);
 
-	printk("\n*** done: probed the service surface from an llext app ***\n");
+	printk("\n*** done: a loadable app used the shared service library ***\n");
 	return 0;
 }

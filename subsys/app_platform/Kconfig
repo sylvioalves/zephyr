@@ -62,6 +62,17 @@ config APP_PLATFORM_LOADER
 	  PSA crypto provider (for example CONFIG_PSA_CRYPTO and
 	  CONFIG_PSA_WANT_ALG_SHA_256) for the SHA-256 implementation.
 
+config APP_PLATFORM_SERVICES
+	bool "Shared capability-gated service library"
+	help
+	  Provide the platform's services (logging, crypto, random, time and
+	  more) as typed, capability-gated syscalls implemented once in the
+	  platform. An application calls them without linking any driver code,
+	  so a loadable application that uses only these stays small. Each
+	  service enforces its capability bit and is safe under concurrent
+	  callers. The crypto service needs a PSA provider (CONFIG_PSA_CRYPTO
+	  with CONFIG_PSA_WANT_ALG_SHA_256); without it the rest still build.
+
 config APP_PLATFORM_REGISTRY
 	bool "Persistent installed-application registry"
 	depends on FILE_SYSTEM

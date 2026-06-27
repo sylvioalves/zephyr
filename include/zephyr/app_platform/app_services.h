@@ -1,0 +1,78 @@
+/*
+ * Copyright (c) 2026 Espressif Systems (Shanghai) Co., Ltd.
+ *
+ * SPDX-License-Identifier: Apache-2.0
+ */
+
+#ifndef ZEPHYR_INCLUDE_APP_PLATFORM_SERVICES_H_
+#define ZEPHYR_INCLUDE_APP_PLATFORM_SERVICES_H_
+
+#include <zephyr/kernel.h>
+#include <zephyr/app_platform/app_caps.h>
+
+/**
+ * @brief Application platform shared services
+ * @defgroup app_platform_services Application platform shared services
+ * @ingroup app_platform
+ * @{
+ *
+ * Typed, capability-gated services that an application reaches as ordinary
+ * syscalls. The implementation lives once in the platform, so a built-in or a
+ * loadable application calls these without linking any driver code; a loadable
+ * application that calls only these stays a few kilobytes.
+ *
+ * Every service enforces its capability bit (see @ref app_platform_caps) at the
+ * syscall boundary and returns -EPERM to an ungranted caller. Each service is
+ * written to be safe under concurrent calls from several isolated applications:
+ * it is either stateless, keyed by the calling application's group id, or
+ * serialized internally.
+ */
+
+/** Log a line, prefixed with the calling application's group id. */
+__syscall void svc_log(const char *msg);
+
+/** Feed the calling application's liveness watchdog (if monitored). */
+__syscall void svc_heartbeat(void);
+
+/**
+ * @brief Compute a SHA-256 digest. Needs @ref APP_CAP_CRYPTO.
+ *
+ * Stateless: safe to call concurrently from any number of applications.
+ *
+ * @param in    Input buffer.
+ * @param len   Input length (bounded by the platform).
+ * @param out32 Receives the 32-byte digest.
+ * @retval 0 on success, -EPERM without the capability, negative errno otherwise.
+ */
+__syscall int svc_sha256(const uint8_t *in, size_t len, uint8_t *out32);
+
+/**
+ * @brief Fill a buffer with random bytes. Needs @ref APP_CAP_RANDOM.
+ *
+ * Stateless: safe under concurrent callers.
+ *
+ * @param buf Receives the random bytes.
+ * @param len Number of bytes (bounded by the platform).
+ * @retval 0 on success, -EPERM without the capability, negative errno otherwise.
+ */
+__syscall int svc_random(uint8_t *buf, size_t len);
+
+/**
+ * @brief Milliseconds since boot. Needs @ref APP_CAP_TIME.
+ *
+ * Stateless.
+ */
+__syscall uint32_t svc_uptime_ms(void);
+
+/**
+ * @brief Free-running CPU cycle count. Needs @ref APP_CAP_TIME.
+ *
+ * Stateless.
+ */
+__syscall uint32_t svc_cycles(void);
+
+#include <zephyr/syscalls/app_services.h>
+
+/** @} */
+
+#endif /* ZEPHYR_INCLUDE_APP_PLATFORM_SERVICES_H_ */
