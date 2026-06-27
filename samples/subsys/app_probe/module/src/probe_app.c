@@ -131,6 +131,24 @@ void app_main(void *arg)
 	say("ipc_send", rc);
 	say("ipc_recv", (got_len == 5 && inbox[0] == 'p') ? 0 : -1);
 
+	/* named addressing: register a name, send to ourselves by name */
+	say("ipc_register", svc_ipc_register("probe"));
+	svc_ipc_send_to("probe", "byname", 7);
+	uint8_t nbx[16] = {0};
+
+	say("ipc_byname", (svc_ipc_recv(nbx, sizeof(nbx), 100) == 7 &&
+			   nbx[0] == 'b') ? 0 : -1);
+	say("ipc_unknown", svc_ipc_send_to("nope", "x", 1) == -2 ? 0 : -1);
+
+	/* pub/sub: subscribe to a topic, publish to it, receive the broadcast */
+	svc_topic_subscribe("sensors/temp");
+	int subs = svc_topic_publish("sensors/temp", "22.5", 5);
+	uint8_t tbx[16] = {0};
+
+	say("topic_pub", subs >= 1 ? 0 : -1);
+	say("topic_recv", (svc_ipc_recv(tbx, sizeof(tbx), 100) == 5 &&
+			   tbx[0] == '2') ? 0 : -1);
+
 	/* can group: loopback send then receive the same frame back */
 	const uint8_t cd[3] = { 0x11, 0x22, 0x33 };
 

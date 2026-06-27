@@ -72,6 +72,26 @@ static struct k_msgq *const mailbox[] = { &ipc_q0, &ipc_q1, &ipc_q2, &ipc_q3 };
 BUILD_ASSERT(MAX_APPS <= ARRAY_SIZE(mailbox),
 	     "add a mailbox per supported application group");
 
+/* Optional name and topic subscription per application, for addressed and
+ * published messaging on top of the mailboxes.
+ */
+#define IPC_NAME_MAX  16
+#define IPC_TOPIC_MAX 24
+
+static char ipc_names[MAX_APPS][IPC_NAME_MAX];
+static char ipc_topics[MAX_APPS][IPC_TOPIC_MAX];
+static K_MUTEX_DEFINE(ipc_dir_lock);
+
+/* Copy a message into one application's mailbox. */
+static int mailbox_put(int dest, const void *buf, size_t len)
+{
+	struct ipc_msg msg;
+
+	msg.len = (uint16_t)len;
+	memcpy(msg.data, buf, len);
+	return k_msgq_put(mailbox[dest], &msg, K_NO_WAIT) == 0 ? 0 : -EAGAIN;
+}
+
 /* True when the calling application holds every bit in @mask. */
 static inline bool app_has_cap(uint32_t mask)
 {
@@ -435,13 +455,7 @@ int z_impl_svc_ipc_send(int dest_id, const void *buf, size_t len)
 	if (dest_id < 0 || dest_id >= MAX_APPS || len > IPC_MSG_MAX) {
 		return -EINVAL;
 	}
-
-	struct ipc_msg msg;
-
-	msg.len = (uint16_t)len;
-	memcpy(msg.data, buf, len);
-
-	return k_msgq_put(mailbox[dest_id], &msg, K_NO_WAIT) == 0 ? 0 : -EAGAIN;
+	return mailbox_put(dest_id, buf, len);
 }
 
 int z_impl_svc_ipc_recv(void *buf, size_t len, uint32_t timeout_ms)
@@ -466,6 +480,91 @@ int z_impl_svc_ipc_recv(void *buf, size_t len, uint32_t timeout_ms)
 
 	memcpy(buf, msg.data, n);
 	return (int)n;
+}
+
+int z_impl_svc_ipc_register(const char *name)
+{
+	if (!app_has_cap(APP_CAP_IPC)) {
+		return -EPERM;
+	}
+
+	int id = app_platform_id_current();
+
+	if (id < 0 || id >= MAX_APPS) {
+		return -EINVAL;
+	}
+	k_mutex_lock(&ipc_dir_lock, K_FOREVER);
+	strncpy(ipc_names[id], name, IPC_NAME_MAX - 1);
+	ipc_names[id][IPC_NAME_MAX - 1] = '\0';
+	k_mutex_unlock(&ipc_dir_lock);
+	return 0;
+}
+
+int z_impl_svc_ipc_send_to(const char *name, const void *buf, size_t len)
+{
+	if (!app_has_cap(APP_CAP_IPC)) {
+		return -EPERM;
+	}
+	if (len > IPC_MSG_MAX) {
+		return -EINVAL;
+	}
+
+	int dest = -1;
+
+	k_mutex_lock(&ipc_dir_lock, K_FOREVER);
+	for (int i = 0; i < MAX_APPS; i++) {
+		if (ipc_names[i][0] != '\0' && strcmp(ipc_names[i], name) == 0) {
+			dest = i;
+			break;
+		}
+	}
+	k_mutex_unlock(&ipc_dir_lock);
+
+	if (dest < 0) {
+		return -ENOENT;
+	}
+	return mailbox_put(dest, buf, len);
+}
+
+int z_impl_svc_topic_subscribe(const char *topic)
+{
+	if (!app_has_cap(APP_CAP_IPC)) {
+		return -EPERM;
+	}
+
+	int id = app_platform_id_current();
+
+	if (id < 0 || id >= MAX_APPS) {
+		return -EINVAL;
+	}
+	k_mutex_lock(&ipc_dir_lock, K_FOREVER);
+	strncpy(ipc_topics[id], topic, IPC_TOPIC_MAX - 1);
+	ipc_topics[id][IPC_TOPIC_MAX - 1] = '\0';
+	k_mutex_unlock(&ipc_dir_lock);
+	return 0;
+}
+
+int z_impl_svc_topic_publish(const char *topic, const void *buf, size_t len)
+{
+	if (!app_has_cap(APP_CAP_IPC)) {
+		return -EPERM;
+	}
+	if (len > IPC_MSG_MAX) {
+		return -EINVAL;
+	}
+
+	int delivered = 0;
+
+	k_mutex_lock(&ipc_dir_lock, K_FOREVER);
+	for (int i = 0; i < MAX_APPS; i++) {
+		if (ipc_topics[i][0] != '\0' && strcmp(ipc_topics[i], topic) == 0) {
+			if (mailbox_put(i, buf, len) == 0) {
+				delivered++;
+			}
+		}
+	}
+	k_mutex_unlock(&ipc_dir_lock);
+	return delivered;
 }
 
 int z_impl_svc_app_count(void)
@@ -649,6 +748,54 @@ static inline int z_vrfy_svc_ipc_recv(void *buf, size_t len, uint32_t timeout_ms
 	return z_impl_svc_ipc_recv(buf, len, timeout_ms);
 }
 #include <zephyr/syscalls/svc_ipc_recv_mrsh.c>
+
+static inline int z_vrfy_svc_ipc_register(const char *name)
+{
+	char buf[IPC_NAME_MAX];
+
+	if (k_usermode_string_copy(buf, (char *)name, sizeof(buf)) != 0) {
+		return -EFAULT;
+	}
+	return z_impl_svc_ipc_register(buf);
+}
+#include <zephyr/syscalls/svc_ipc_register_mrsh.c>
+
+static inline int z_vrfy_svc_ipc_send_to(const char *name, const void *buf,
+					 size_t len)
+{
+	char nbuf[IPC_NAME_MAX];
+
+	if (k_usermode_string_copy(nbuf, (char *)name, sizeof(nbuf)) != 0) {
+		return -EFAULT;
+	}
+	K_OOPS(K_SYSCALL_MEMORY_READ(buf, len));
+	return z_impl_svc_ipc_send_to(nbuf, buf, len);
+}
+#include <zephyr/syscalls/svc_ipc_send_to_mrsh.c>
+
+static inline int z_vrfy_svc_topic_subscribe(const char *topic)
+{
+	char buf[IPC_TOPIC_MAX];
+
+	if (k_usermode_string_copy(buf, (char *)topic, sizeof(buf)) != 0) {
+		return -EFAULT;
+	}
+	return z_impl_svc_topic_subscribe(buf);
+}
+#include <zephyr/syscalls/svc_topic_subscribe_mrsh.c>
+
+static inline int z_vrfy_svc_topic_publish(const char *topic, const void *buf,
+					   size_t len)
+{
+	char tbuf[IPC_TOPIC_MAX];
+
+	if (k_usermode_string_copy(tbuf, (char *)topic, sizeof(tbuf)) != 0) {
+		return -EFAULT;
+	}
+	K_OOPS(K_SYSCALL_MEMORY_READ(buf, len));
+	return z_impl_svc_topic_publish(tbuf, buf, len);
+}
+#include <zephyr/syscalls/svc_topic_publish_mrsh.c>
 
 static inline int z_vrfy_svc_app_count(void)
 {

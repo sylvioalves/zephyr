@@ -300,6 +300,58 @@ __syscall int svc_ipc_send(int dest_id, const void *buf, size_t len);
  */
 __syscall int svc_ipc_recv(void *buf, size_t len, uint32_t timeout_ms);
 
+/**
+ * @brief Register the calling application under a name. Needs @ref APP_CAP_IPC.
+ *
+ * Lets other applications address this one by name (see @ref svc_ipc_send_to)
+ * instead of by numeric group id. The name is copied into the platform.
+ *
+ * @param name Unique application name.
+ * @retval 0 on success, -EPERM without the capability, -EINVAL on a bad name.
+ */
+__syscall int svc_ipc_register(const char *name);
+
+/**
+ * @brief Send a message to a named application. Needs @ref APP_CAP_IPC.
+ *
+ * Resolves @p name to its mailbox and copies the bytes in, the same isolation-
+ * safe delivery as @ref svc_ipc_send but addressed by name.
+ *
+ * @param name Destination application name (see @ref svc_ipc_register).
+ * @param buf  Message bytes.
+ * @param len  Message length (bounded by the platform).
+ * @retval 0 on success, -EPERM without the capability, -ENOENT for an unknown
+ *         name, -EAGAIN if the mailbox is full.
+ */
+__syscall int svc_ipc_send_to(const char *name, const void *buf, size_t len);
+
+/**
+ * @brief Subscribe the calling application to a topic. Needs @ref APP_CAP_IPC.
+ *
+ * A message published to the topic is copied into this application's mailbox and
+ * read with @ref svc_ipc_recv, like any other message. Each application has a
+ * single topic subscription.
+ *
+ * @param topic Topic name.
+ * @retval 0 on success, -EPERM without the capability.
+ */
+__syscall int svc_topic_subscribe(const char *topic);
+
+/**
+ * @brief Publish a message to a topic. Needs @ref APP_CAP_IPC.
+ *
+ * Delivers a copy of the message into the mailbox of every application
+ * subscribed to @p topic - one-to-many broadcast without shared memory, the
+ * isolation-safe equivalent of a publish/subscribe channel.
+ *
+ * @param topic Topic name.
+ * @param buf   Message bytes.
+ * @param len   Message length (bounded by the platform).
+ * @retval >=0 the number of subscribers delivered to, -EPERM without the
+ *         capability.
+ */
+__syscall int svc_topic_publish(const char *topic, const void *buf, size_t len);
+
 /** A user-mode-safe snapshot of one application group. */
 struct svc_app_info {
 	char     name[16];
