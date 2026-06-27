@@ -131,6 +131,28 @@ uint32_t app_platform_caps_current(void);
  */
 int app_platform_id_current(void);
 
+/**
+ * @brief The memory domain of an application group, or NULL if not active.
+ *
+ * Lets a service map memory into an application's domain - for example a region
+ * of external RAM the application accesses directly.
+ */
+struct k_mem_domain *app_platform_domain(int id);
+
+/** A hook called with a group id when that group is reclaimed. */
+typedef void (*app_reclaim_hook_t)(int id);
+
+/**
+ * @brief Register a hook to release per-application resources on reclaim.
+ *
+ * A service that holds resources for an application (a mapped region, a handle)
+ * registers a hook so they are freed when the application is reclaimed.
+ *
+ * @param hook Called with the reclaimed group id.
+ * @retval 0 on success, -ENOSPC if the hook table is full.
+ */
+int app_platform_on_reclaim(app_reclaim_hook_t hook);
+
 /** A snapshot of one application group's identity and resource use. */
 struct app_platform_status {
 	const char *name;          /**< application name (NULL if the slot is free) */

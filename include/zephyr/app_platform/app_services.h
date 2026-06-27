@@ -547,6 +547,32 @@ __syscall int svc_can_recv(uint32_t *id_out, uint8_t *buf, size_t cap,
  */
 __syscall int svc_dma_copy(const uint8_t *src, uint8_t *dst, size_t len);
 
+/**
+ * @brief Map a region of external RAM into the calling app. Needs @ref APP_CAP_PSRAM.
+ *
+ * The platform allocates a region of external RAM (PSRAM) and adds it as a
+ * partition to the calling application's memory domain, so the application
+ * accesses it directly at full speed with no per-access syscall. The size is
+ * rounded up to a power of two for the memory-protection hardware. The region is
+ * released automatically when the application is reclaimed, or by
+ * @ref svc_psram_unmap.
+ *
+ * @param size     Requested size in bytes.
+ * @param out_addr Receives the base address of the mapped region.
+ * @param out_size Receives the actual (rounded-up) size.
+ * @retval 0 on success, -EPERM without the capability, -ENOMEM if external RAM
+ *         is exhausted, -ENOTSUP if no external RAM is present.
+ */
+__syscall int svc_psram_map(size_t size, uintptr_t *out_addr, size_t *out_size);
+
+/**
+ * @brief Release the calling application's mapped external RAM region.
+ * Needs @ref APP_CAP_PSRAM.
+ *
+ * @retval 0 on success, -EPERM without the capability, -EINVAL if nothing mapped.
+ */
+__syscall int svc_psram_unmap(void);
+
 #include <zephyr/syscalls/app_services.h>
 
 /** @} */

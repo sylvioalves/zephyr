@@ -27,6 +27,7 @@
 #include <zephyr/llext/llext.h>
 #include <zephyr/sys/libc-hooks.h>
 #include <zephyr/logging/log.h>
+#include <errno.h>
 
 LOG_MODULE_REGISTER(app_platform, CONFIG_APP_PLATFORM_LOG_LEVEL);
 
@@ -80,6 +81,28 @@ int app_platform_id_current(void)
 	struct running_app *a = app_of_thread(k_current_get());
 
 	return a ? (int)(a - apps) : -1;
+}
+
+struct k_mem_domain *app_platform_domain(int id)
+{
+	if (id < 0 || id >= MAX_APPS || !apps[id].active) {
+		return NULL;
+	}
+	return &apps[id].domain;
+}
+
+/* A hook a service registers to release per-app resources on reclaim. */
+static app_reclaim_hook_t reclaim_hooks[CONFIG_APP_PLATFORM_RECLAIM_HOOKS];
+
+int app_platform_on_reclaim(app_reclaim_hook_t hook)
+{
+	for (int i = 0; i < CONFIG_APP_PLATFORM_RECLAIM_HOOKS; i++) {
+		if (reclaim_hooks[i] == NULL) {
+			reclaim_hooks[i] = hook;
+			return 0;
+		}
+	}
+	return -ENOSPC;
 }
 
 int app_platform_count(void)
@@ -209,6 +232,15 @@ static void reclaim(struct running_app *a)
 		(void)task_wdt_delete(a->wdt_chan);
 		a->wdt_chan = -1;
 	}
+	/* Let services release any per-app resources (e.g. mapped PSRAM). */
+	int id = a - apps;
+
+	for (int i = 0; i < CONFIG_APP_PLATFORM_RECLAIM_HOOKS; i++) {
+		if (reclaim_hooks[i] != NULL) {
+			reclaim_hooks[i](id);
+		}
+	}
+
 	/* Aborting the app makes its death-watcher's join return; reap it too. */
 	k_thread_abort(&a->thread);
 	k_thread_abort(&watchers[a - apps]);
