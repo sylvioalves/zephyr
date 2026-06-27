@@ -82,6 +82,57 @@ int app_platform_id_current(void)
 	return a ? (int)(a - apps) : -1;
 }
 
+int app_platform_count(void)
+{
+	return MAX_APPS;
+}
+
+int app_platform_status(int id, struct app_platform_status *out)
+{
+	if (id < 0 || id >= MAX_APPS || out == NULL) {
+		return -EINVAL;
+	}
+
+	struct running_app *a = &apps[id];
+
+	if (!a->active) {
+		return -EAGAIN;
+	}
+
+	*out = (struct app_platform_status){
+		.name = a->name,
+		.active = a->active,
+		.monitored = a->monitored,
+		.faulted = a->faulted,
+	};
+
+#if defined(CONFIG_INIT_STACKS) && defined(CONFIG_THREAD_STACK_INFO)
+	{
+		size_t unused = 0;
+
+		if (k_thread_stack_space_get(&a->thread, &unused) == 0) {
+			out->stack_size = a->thread.stack_info.size;
+			out->stack_used = out->stack_size - unused;
+		}
+	}
+#endif
+
+#ifdef CONFIG_SCHED_THREAD_USAGE
+	{
+		k_thread_runtime_stats_t mine, all;
+
+		if (k_thread_runtime_stats_get(&a->thread, &mine) == 0) {
+			out->cpu_cycles = mine.total_cycles;
+		}
+		if (k_thread_runtime_stats_all_get(&all) == 0) {
+			out->cpu_total = all.total_cycles;
+		}
+	}
+#endif
+
+	return 0;
+}
+
 /* Fault containment: a faulting app is reclaimed, the system survives. */
 void k_sys_fatal_error_handler(unsigned int reason, const struct arch_esf *esf)
 {

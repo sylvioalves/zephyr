@@ -131,6 +131,40 @@ uint32_t app_platform_caps_current(void);
  */
 int app_platform_id_current(void);
 
+/** A snapshot of one application group's identity and resource use. */
+struct app_platform_status {
+	const char *name;          /**< application name (NULL if the slot is free) */
+	bool        active;        /**< the group is running */
+	bool        monitored;     /**< opted in to hang detection */
+	bool        faulted;       /**< last reclaim was due to a crash or hang */
+	size_t      stack_size;    /**< usable stack bytes */
+	size_t      stack_used;    /**< stack high-water mark in bytes */
+	uint64_t    cpu_cycles;    /**< non-idle cycles attributed to this app */
+	uint64_t    cpu_total;     /**< non-idle cycles across the whole system */
+};
+
+/**
+ * @brief Number of application group slots.
+ *
+ * Group ids run from 0 to this minus one; iterate to inspect every slot.
+ */
+int app_platform_count(void);
+
+/**
+ * @brief Read a snapshot of one application group's status.
+ *
+ * Reports the group's stack high-water mark and the CPU cycles charged to it,
+ * so a privileged inspector can show per-application memory and CPU use without
+ * the application's cooperation. Stack figures need @kconfig{CONFIG_THREAD_STACK_INFO};
+ * CPU figures need @kconfig{CONFIG_THREAD_RUNTIME_STATS} (otherwise reported 0).
+ *
+ * @param id  Group id in the range [0, @ref app_platform_count).
+ * @param out Filled with the snapshot on success.
+ * @retval 0 on success, -EINVAL for a bad @p id or NULL @p out, -EAGAIN if the
+ *         slot is not active.
+ */
+int app_platform_status(int id, struct app_platform_status *out);
+
 /** @} */
 
 #endif /* ZEPHYR_INCLUDE_APP_PLATFORM_H_ */
