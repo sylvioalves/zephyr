@@ -310,6 +310,20 @@ void app_platform_grant_spi(int id, bool allow);
  */
 __syscall int svc_uart_write(const uint8_t *buf, size_t len);
 
+/**
+ * @brief Scan for a BLE peer advertising a given name. Needs @ref APP_CAP_BLE.
+ *
+ * Lock-serialized: the platform owns the controller, so concurrent scans from
+ * several applications are serialized. The application gets only a yes or no and
+ * never touches the BLE stack.
+ *
+ * @param name       Advertised complete or shortened name to match.
+ * @param timeout_ms How long to scan, in milliseconds.
+ * @retval 1 if the peer was seen, 0 if not, -EPERM without the capability,
+ *         negative errno on error.
+ */
+__syscall int svc_ble_scan(const char *name, uint32_t timeout_ms);
+
 #include <zephyr/syscalls/app_services.h>
 
 /** @} */

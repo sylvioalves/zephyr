@@ -130,6 +130,15 @@ config APP_PLATFORM_BUS
 	  only the bus devices it was given. Each service is a no-op when its
 	  devicetree node is absent.
 
+config APP_PLATFORM_BLE
+	bool "Shared BLE service"
+	depends on APP_PLATFORM_SERVICES
+	depends on BT && BT_OBSERVER
+	help
+	  Expose BLE scanning as a capability-gated service. An application
+	  holding APP_CAP_BLE asks the platform to scan for a peer by name and
+	  gets back a yes or no, without linking any of the BLE stack.
+
 config APP_PLATFORM_REGISTRY
 	bool "Persistent installed-application registry"
 	depends on FILE_SYSTEM

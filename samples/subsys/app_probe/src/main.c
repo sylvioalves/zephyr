@@ -50,7 +50,8 @@ int main(void)
 			APP_CAP_CRYPTO | APP_CAP_SENSOR | APP_CAP_KV |
 			APP_CAP_FLASH | APP_CAP_GPIO | APP_CAP_IPC |
 			APP_CAP_INSPECT | APP_CAP_PWM | APP_CAP_ADC |
-			APP_CAP_I2C | APP_CAP_SPI | APP_CAP_UART;
+			APP_CAP_I2C | APP_CAP_SPI | APP_CAP_UART |
+			APP_CAP_BLE;
 
 	/*
 	 * Grant only line 0 before launch (the first app takes group id 0), so
@@ -65,7 +66,7 @@ int main(void)
 
 	app_platform_launch_llext("probe", ext, (app_entry_t)entry, caps);
 
-	k_msleep(4000);
+	k_msleep(10000);
 
 	printk("\n*** done: a loadable app used the shared service library ***\n");
 	return 0;

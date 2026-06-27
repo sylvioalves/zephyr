@@ -11,6 +11,7 @@ zephyr_library_sources_ifdef(CONFIG_APP_PLATFORM_NET      app_net.c)
 zephyr_library_sources_ifdef(CONFIG_APP_PLATFORM_GPIO     app_gpio.c)
 zephyr_library_sources_ifdef(CONFIG_APP_PLATFORM_PERIPH   app_periph.c)
 zephyr_library_sources_ifdef(CONFIG_APP_PLATFORM_BUS      app_bus.c)
+zephyr_library_sources_ifdef(CONFIG_APP_PLATFORM_BLE      app_ble.c)
 
 if(CONFIG_APP_PLATFORM_SERVICES)
   zephyr_syscall_header(${ZEPHYR_BASE}/include/zephyr/app_platform/app_services.h)
