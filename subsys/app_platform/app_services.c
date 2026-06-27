@@ -285,6 +285,41 @@ int z_impl_svc_ipc_recv(void *buf, size_t len, uint32_t timeout_ms)
 	return (int)n;
 }
 
+int z_impl_svc_app_count(void)
+{
+	if (!app_has_cap(APP_CAP_INSPECT)) {
+		return -EPERM;
+	}
+	return app_platform_count();
+}
+
+int z_impl_svc_app_info(int id, struct svc_app_info *out)
+{
+	if (!app_has_cap(APP_CAP_INSPECT)) {
+		return -EPERM;
+	}
+
+	struct app_platform_status st;
+	int rc = app_platform_status(id, &st);
+
+	if (rc != 0) {
+		return rc;
+	}
+
+	*out = (struct svc_app_info){
+		.active = st.active,
+		.monitored = st.monitored,
+		.faulted = st.faulted,
+		.stack_size = st.stack_size,
+		.stack_used = st.stack_used,
+		.cpu_cycles = st.cpu_cycles,
+		.cpu_total = st.cpu_total,
+	};
+	strncpy(out->name, st.name ? st.name : "", sizeof(out->name) - 1);
+	out->name[sizeof(out->name) - 1] = '\0';
+	return 0;
+}
+
 #ifdef CONFIG_USERSPACE
 static inline void z_vrfy_svc_log(const char *msg)
 {
@@ -379,4 +414,17 @@ static inline int z_vrfy_svc_ipc_recv(void *buf, size_t len, uint32_t timeout_ms
 	return z_impl_svc_ipc_recv(buf, len, timeout_ms);
 }
 #include <zephyr/syscalls/svc_ipc_recv_mrsh.c>
+
+static inline int z_vrfy_svc_app_count(void)
+{
+	return z_impl_svc_app_count();
+}
+#include <zephyr/syscalls/svc_app_count_mrsh.c>
+
+static inline int z_vrfy_svc_app_info(int id, struct svc_app_info *out)
+{
+	K_OOPS(K_SYSCALL_MEMORY_WRITE(out, sizeof(*out)));
+	return z_impl_svc_app_info(id, out);
+}
+#include <zephyr/syscalls/svc_app_info_mrsh.c>
 #endif

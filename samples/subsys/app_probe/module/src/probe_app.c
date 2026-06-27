@@ -104,6 +104,13 @@ void app_main(void *arg)
 	say("ipc_send", rc);
 	say("ipc_recv", (got_len == 5 && inbox[0] == 'p') ? 0 : -1);
 
+	/* inspect group: read our own group's status */
+	struct svc_app_info info;
+
+	rc = svc_app_info(0, &info);
+	say("app_count", svc_app_count() > 0 ? 0 : -1);
+	say("app_info", (rc == 0 && info.active) ? 0 : -1);
+
 	svc_log("probe: done - all from platform-owned services");
 	for (;;) {
 		svc_heartbeat();

@@ -218,6 +218,36 @@ __syscall int svc_ipc_send(int dest_id, const void *buf, size_t len);
  */
 __syscall int svc_ipc_recv(void *buf, size_t len, uint32_t timeout_ms);
 
+/** A user-mode-safe snapshot of one application group. */
+struct svc_app_info {
+	char     name[16];
+	uint8_t  active;
+	uint8_t  monitored;
+	uint8_t  faulted;
+	uint32_t stack_size;
+	uint32_t stack_used;
+	uint64_t cpu_cycles;
+	uint64_t cpu_total;
+};
+
+/**
+ * @brief Number of application group slots. Needs @ref APP_CAP_INSPECT.
+ */
+__syscall int svc_app_count(void);
+
+/**
+ * @brief Read a snapshot of an application group. Needs @ref APP_CAP_INSPECT.
+ *
+ * Lets a granted application observe the others' stack and CPU use. The name is
+ * copied into @p out, so the caller never holds a kernel pointer. An application
+ * without the capability is refused, so one cannot observe the others uninvited.
+ *
+ * @param id  Group id.
+ * @param out Receives the snapshot.
+ * @retval 0 on success, -EPERM without the capability, negative errno otherwise.
+ */
+__syscall int svc_app_info(int id, struct svc_app_info *out);
+
 #include <zephyr/syscalls/app_services.h>
 
 /** @} */

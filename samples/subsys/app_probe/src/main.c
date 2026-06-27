@@ -48,7 +48,8 @@ int main(void)
 
 	uint32_t caps = APP_CAP_LOG | APP_CAP_TIME | APP_CAP_RANDOM |
 			APP_CAP_CRYPTO | APP_CAP_SENSOR | APP_CAP_KV |
-			APP_CAP_FLASH | APP_CAP_GPIO | APP_CAP_IPC;
+			APP_CAP_FLASH | APP_CAP_GPIO | APP_CAP_IPC |
+			APP_CAP_INSPECT;
 
 	/*
 	 * Grant only line 0 before launch (the first app takes group id 0), so
