@@ -26,7 +26,6 @@ static void app_worker(void *arg)
 	svc_log("worker: started");
 	for (;;) {
 		svc_log("worker: tick");
-		svc_heartbeat();
 		k_msleep(500);
 	}
 }
@@ -47,16 +46,12 @@ const struct app_def *control_catalog_find(const char *name)
 	return NULL;
 }
 
-/* Sleep while proving liveness, so the manager is not reclaimed as hung. */
-static void wait_alive(int ms)
-{
-	for (int t = 0; t < ms; t += 200) {
-		svc_heartbeat();
-		k_msleep(200);
-	}
-}
-
-/* manager: starts two workers, lets them run, stops one, then the other. */
+/*
+ * manager: starts two workers, lets them run, stops one, then the other. It is
+ * an ordinary (unmonitored) app, so it sleeps freely between actions without
+ * any heartbeat - the platform reclaims it only if it crashes or exits, not for
+ * being busy or idle.
+ */
 void app_manager(void *arg)
 {
 	ARG_UNUSED(arg);
@@ -65,19 +60,15 @@ void app_manager(void *arg)
 	int a = svc_ctrl_start("worker-a");
 	int b = svc_ctrl_start("worker-b");
 
-	wait_alive(1500);
+	k_msleep(1500);
 
 	svc_log("manager: stopping worker-a");
 	svc_ctrl_stop(a);
 
-	wait_alive(1500);
+	k_msleep(1500);
 
 	svc_log("manager: stopping worker-b");
 	svc_ctrl_stop(b);
 
 	svc_log("manager: done - managed the workers at runtime");
-	for (;;) {
-		svc_heartbeat();
-		k_msleep(500);
-	}
 }

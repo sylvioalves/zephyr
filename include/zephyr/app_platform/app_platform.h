@@ -48,6 +48,7 @@ struct app_def {
 	enum app_source source;  /**< builtin or loadable */
 	app_entry_t     entry;   /**< entry point (APP_BUILTIN) */
 	uint32_t        caps;    /**< per-app grant mask (application-defined) */
+	bool            monitored; /**< opt in to hang detection (see heartbeat) */
 };
 
 /**
@@ -84,8 +85,12 @@ int app_platform_launch_llext(const char *name, struct llext *ext,
 /**
  * @brief Feed the calling application's liveness watchdog.
  *
- * An application proves it is alive by calling this; a group that stops feeding
- * is reclaimed.
+ * Only meaningful for an application launched with @ref app_def.monitored set:
+ * such an application opts in to hang detection and must call this periodically,
+ * and is reclaimed if it stops. Applications that are not monitored need not
+ * call this - their crash or exit is still detected passively - so ordinary
+ * applications carry no heartbeat burden. A no-op when called by an unmonitored
+ * application.
  */
 void app_platform_heartbeat(void);
 

@@ -33,6 +33,14 @@ config APP_PLATFORM_SUPERVISOR_STACK_SIZE
 	int "Supervisor thread stack size"
 	default 2048
 
+config APP_PLATFORM_WATCHER_STACK_SIZE
+	int "Per-application death-watcher stack size"
+	default 512
+	help
+	  Each application group has a small watcher thread blocked until the
+	  application terminates, giving passive crash and exit detection with no
+	  cooperation from the application.
+
 config APP_PLATFORM_SUPERVISOR_PRIORITY
 	int "Supervisor thread priority"
 	default 2
