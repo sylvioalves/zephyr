@@ -128,6 +128,7 @@ void app_main(void *arg)
 	/* uart: capability passes; no device wired returns a clean error, not a fault */
 	say("uart_path", svc_uart_write((const uint8_t *)"hi", 2) != -1 ? 0 : -1);
 
+#ifndef PROBE_NO_BLE
 	/* ble scan: see a peer board advertising the heart-rate service */
 	svc_log("ble: scanning for HR peer (up to 4s)...");
 	say("ble_scan", svc_ble_scan("HR-Peer", 4000) == 1 ? 0 : -1);
@@ -138,6 +139,22 @@ void app_main(void *arg)
 	int hr = svc_ble_hr_read(8000, &bpm);
 
 	say("ble_hr", (hr == 0 && bpm > 0) ? 0 : -1);
+#endif
+
+	/*
+	 * radio group: send to the 802.15.4 peer and read back its echo. BLE and
+	 * 802.15.4 share one radio on this SoC and cannot run at once, so this
+	 * runs only in the radio-only build (BLE compiled out).
+	 */
+#ifdef PROBE_NO_BLE
+	svc_log("radio: sending to 802.15.4 peer, awaiting echo...");
+	uint8_t rx[16] = {0};
+
+	say("radio_send", svc_radio_send("hello-15.4", 10));
+	int rn = svc_radio_recv(rx, sizeof(rx), 3000);
+
+	say("radio_echo", (rn == 10 && rx[0] == 'h') ? 0 : -1);
+#endif
 
 	svc_log("probe: done - all from platform-owned services");
 	for (;;) {

@@ -140,6 +140,24 @@ config APP_PLATFORM_BLE
 	  for a peer by name, or to connect to a heart-rate peer and read one
 	  measurement, without linking any of the BLE stack.
 
+config APP_PLATFORM_RADIO
+	bool "Shared 802.15.4 messaging service"
+	depends on APP_PLATFORM_SERVICES
+	depends on NET_L2_IEEE802154 && NET_IPV6 && NET_SOCKETS
+	help
+	  Expose 802.15.4 UDP messaging as a capability-gated service. The
+	  platform owns the radio and the socket; an application holding
+	  APP_CAP_RADIO sends and receives datagrams to a peer through copied
+	  buffers, without holding the socket or linking the network stack.
+
+if APP_PLATFORM_RADIO
+
+config APP_PLATFORM_RADIO_PEER
+	string "802.15.4 peer IPv6 address"
+	default "2001:db8::1"
+
+endif # APP_PLATFORM_RADIO
+
 config APP_PLATFORM_REGISTRY
 	bool "Persistent installed-application registry"
 	depends on FILE_SYSTEM

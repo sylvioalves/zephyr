@@ -339,6 +339,29 @@ __syscall int svc_ble_scan(const char *name, uint32_t timeout_ms);
  */
 __syscall int svc_ble_hr_read(uint32_t timeout_ms, uint8_t *out_bpm);
 
+/**
+ * @brief Send a datagram to the 802.15.4 peer. Needs @ref APP_CAP_RADIO.
+ *
+ * The platform owns the radio and the socket; the application hands off a copied
+ * payload and a supervisor thread transmits it.
+ *
+ * @param buf Payload bytes.
+ * @param len Payload length (bounded by the platform).
+ * @retval 0 on success, -EPERM without the capability, negative errno otherwise.
+ */
+__syscall int svc_radio_send(const void *buf, size_t len);
+
+/**
+ * @brief Receive a datagram from the 802.15.4 peer. Needs @ref APP_CAP_RADIO.
+ *
+ * @param buf        Receives the bytes.
+ * @param len        Buffer size (bounded by the platform).
+ * @param timeout_ms Milliseconds to wait.
+ * @retval >=0 the received length, -EPERM without the capability, -EAGAIN on
+ *         timeout.
+ */
+__syscall int svc_radio_recv(void *buf, size_t len, uint32_t timeout_ms);
+
 #include <zephyr/syscalls/app_services.h>
 
 /** @} */

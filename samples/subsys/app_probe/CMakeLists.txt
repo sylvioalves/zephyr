@@ -15,6 +15,9 @@ set(inc ${ZEPHYR_BINARY_DIR}/include/generated/probe_app.inc)
 set(sha ${ZEPHYR_BINARY_DIR}/include/generated/probe_app.sha256.inc)
 
 add_llext_target(probe_app_ext OUTPUT ${bin} SOURCES ${ext_src})
+if(NOT CONFIG_APP_PLATFORM_BLE)
+	llext_compile_definitions(probe_app_ext PROBE_NO_BLE)
+endif()
 llext_include_directories(probe_app_ext
 	${CMAKE_CURRENT_SOURCE_DIR}/src
 	${ZEPHYR_BINARY_DIR}/include/generated
