@@ -128,9 +128,16 @@ void app_main(void *arg)
 	/* uart: capability passes; no device wired returns a clean error, not a fault */
 	say("uart_path", svc_uart_write((const uint8_t *)"hi", 2) != -1 ? 0 : -1);
 
-	/* ble group: scan for the peer board advertising as ZephyrPeer */
-	svc_log("ble: scanning for peer (up to 4s)...");
-	say("ble_scan", svc_ble_scan("ZephyrPeer", 4000) == 1 ? 0 : -1);
+	/* ble scan: see a peer board advertising the heart-rate service */
+	svc_log("ble: scanning for HR peer (up to 4s)...");
+	say("ble_scan", svc_ble_scan("HR-Peer", 4000) == 1 ? 0 : -1);
+
+	/* ble gatt: connect to the HR peer and read one measurement */
+	svc_log("ble: connecting + reading heart rate (up to 8s)...");
+	uint8_t bpm = 0;
+	int hr = svc_ble_hr_read(8000, &bpm);
+
+	say("ble_hr", (hr == 0 && bpm > 0) ? 0 : -1);
 
 	svc_log("probe: done - all from platform-owned services");
 	for (;;) {

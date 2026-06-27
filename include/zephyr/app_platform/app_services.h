@@ -324,6 +324,21 @@ __syscall int svc_uart_write(const uint8_t *buf, size_t len);
  */
 __syscall int svc_ble_scan(const char *name, uint32_t timeout_ms);
 
+/**
+ * @brief Connect to a heart-rate peer and read one measurement.
+ * Needs @ref APP_CAP_BLE.
+ *
+ * The platform scans for a peer advertising the Heart Rate Service, connects,
+ * discovers the measurement characteristic, subscribes and returns the first
+ * value. The whole GATT client lives in the platform; the application gets back
+ * a single reading and links none of the BLE stack.
+ *
+ * @param timeout_ms How long to wait for a reading, in milliseconds.
+ * @param out_bpm    Receives the heart-rate value in beats per minute.
+ * @retval 0 on success, -EPERM without the capability, -ETIMEDOUT if no reading.
+ */
+__syscall int svc_ble_hr_read(uint32_t timeout_ms, uint8_t *out_bpm);
+
 #include <zephyr/syscalls/app_services.h>
 
 /** @} */

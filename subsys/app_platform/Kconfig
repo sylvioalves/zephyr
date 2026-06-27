@@ -133,11 +133,12 @@ config APP_PLATFORM_BUS
 config APP_PLATFORM_BLE
 	bool "Shared BLE service"
 	depends on APP_PLATFORM_SERVICES
-	depends on BT && BT_OBSERVER
+	depends on BT && BT_OBSERVER && BT_CENTRAL && BT_GATT_CLIENT
 	help
-	  Expose BLE scanning as a capability-gated service. An application
-	  holding APP_CAP_BLE asks the platform to scan for a peer by name and
-	  gets back a yes or no, without linking any of the BLE stack.
+	  Expose BLE scanning and a heart-rate read as capability-gated
+	  services. An application holding APP_CAP_BLE asks the platform to scan
+	  for a peer by name, or to connect to a heart-rate peer and read one
+	  measurement, without linking any of the BLE stack.
 
 config APP_PLATFORM_REGISTRY
 	bool "Persistent installed-application registry"

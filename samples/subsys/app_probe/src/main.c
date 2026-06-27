@@ -66,7 +66,7 @@ int main(void)
 
 	app_platform_launch_llext("probe", ext, (app_entry_t)entry, caps);
 
-	k_msleep(10000);
+	k_msleep(20000);
 
 	printk("\n*** done: a loadable app used the shared service library ***\n");
 	return 0;

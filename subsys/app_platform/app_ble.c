@@ -18,6 +18,11 @@
 #include <zephyr/kernel.h>
 #include <zephyr/internal/syscall_handler.h>
 #include <zephyr/bluetooth/bluetooth.h>
+#include <zephyr/bluetooth/conn.h>
+#include <zephyr/bluetooth/gatt.h>
+#include <zephyr/bluetooth/uuid.h>
+#include <zephyr/bluetooth/hci.h>
+#include <zephyr/sys/byteorder.h>
 #include <string.h>
 #include <errno.h>
 
@@ -110,6 +115,176 @@ out:
 	return rc;
 }
 
+/*
+ * Connect to a heart-rate peer, discover the measurement characteristic,
+ * subscribe, and capture one reading. The platform owns the whole client; the
+ * application gets back a single value.
+ */
+static struct bt_conn *hr_conn;
+static struct bt_uuid_16 hr_disc_uuid = BT_UUID_INIT_16(0);
+static struct bt_gatt_discover_params hr_disc;
+static struct bt_gatt_subscribe_params hr_sub;
+static K_SEM_DEFINE(hr_done, 0, 1);
+static uint8_t hr_value;
+static bool hr_connect_wanted;
+
+static uint8_t hr_notify(struct bt_conn *conn, struct bt_gatt_subscribe_params *p,
+			 const void *data, uint16_t len)
+{
+	ARG_UNUSED(conn);
+	ARG_UNUSED(p);
+	if (data && len >= 2) {
+		/* HR measurement: flags byte then the 8-bit value. */
+		hr_value = ((const uint8_t *)data)[1];
+		k_sem_give(&hr_done);
+	}
+	return BT_GATT_ITER_CONTINUE;
+}
+
+static uint8_t hr_discover(struct bt_conn *conn, const struct bt_gatt_attr *attr,
+			   struct bt_gatt_discover_params *params)
+{
+	if (!attr) {
+		return BT_GATT_ITER_STOP;
+	}
+
+	if (!bt_uuid_cmp(params->uuid, BT_UUID_HRS)) {
+		memcpy(&hr_disc_uuid, BT_UUID_HRS_MEASUREMENT, sizeof(hr_disc_uuid));
+		hr_disc.uuid = &hr_disc_uuid.uuid;
+		hr_disc.start_handle = attr->handle + 1;
+		hr_disc.type = BT_GATT_DISCOVER_CHARACTERISTIC;
+		bt_gatt_discover(conn, &hr_disc);
+	} else if (!bt_uuid_cmp(params->uuid, BT_UUID_HRS_MEASUREMENT)) {
+		memcpy(&hr_disc_uuid, BT_UUID_GATT_CCC, sizeof(hr_disc_uuid));
+		hr_disc.uuid = &hr_disc_uuid.uuid;
+		hr_disc.start_handle = attr->handle + 2;
+		hr_disc.type = BT_GATT_DISCOVER_DESCRIPTOR;
+		hr_sub.value_handle = bt_gatt_attr_value_handle(attr);
+		bt_gatt_discover(conn, &hr_disc);
+	} else {
+		hr_sub.notify = hr_notify;
+		hr_sub.value = BT_GATT_CCC_NOTIFY;
+		hr_sub.ccc_handle = attr->handle;
+		bt_gatt_subscribe(conn, &hr_sub);
+		return BT_GATT_ITER_STOP;
+	}
+	return BT_GATT_ITER_STOP;
+}
+
+static void hr_connected(struct bt_conn *conn, uint8_t err)
+{
+	if (err) {
+		return;
+	}
+	memcpy(&hr_disc_uuid, BT_UUID_HRS, sizeof(hr_disc_uuid));
+	hr_disc.uuid = &hr_disc_uuid.uuid;
+	hr_disc.func = hr_discover;
+	hr_disc.start_handle = BT_ATT_FIRST_ATTRIBUTE_HANDLE;
+	hr_disc.end_handle = BT_ATT_LAST_ATTRIBUTE_HANDLE;
+	hr_disc.type = BT_GATT_DISCOVER_PRIMARY;
+	bt_gatt_discover(conn, &hr_disc);
+}
+
+static void hr_disconnected(struct bt_conn *conn, uint8_t reason)
+{
+	ARG_UNUSED(reason);
+	if (conn == hr_conn) {
+		bt_conn_unref(hr_conn);
+		hr_conn = NULL;
+	}
+}
+
+BT_CONN_CB_DEFINE(hr_conn_cb) = {
+	.connected = hr_connected,
+	.disconnected = hr_disconnected,
+};
+
+static bool hr_has_service(struct bt_data *data, void *user)
+{
+	bool *found = user;
+
+	if (data->type == BT_DATA_UUID16_ALL || data->type == BT_DATA_UUID16_SOME) {
+		for (int i = 0; i + 1 < data->data_len; i += 2) {
+			uint16_t u = sys_get_le16(&data->data[i]);
+
+			if (u == BT_UUID_HRS_VAL) {
+				*found = true;
+				return false;
+			}
+		}
+	}
+	return true;
+}
+
+static void hr_scan_cb(const bt_addr_le_t *addr, int8_t rssi, uint8_t type,
+		       struct net_buf_simple *ad)
+{
+	ARG_UNUSED(rssi);
+	ARG_UNUSED(type);
+
+	if (!hr_connect_wanted || hr_conn) {
+		return;
+	}
+
+	bool found = false;
+
+	bt_data_parse(ad, hr_has_service, &found);
+	if (!found) {
+		return;
+	}
+
+	bt_le_scan_stop();
+
+	struct bt_conn_le_create_param *cp = BT_CONN_LE_CREATE_CONN;
+
+	if (bt_conn_le_create(addr, cp, BT_LE_CONN_PARAM_DEFAULT, &hr_conn) != 0) {
+		bt_le_scan_start(BT_LE_SCAN_ACTIVE, hr_scan_cb);
+	}
+}
+
+int z_impl_svc_ble_hr_read(uint32_t timeout_ms, uint8_t *out_bpm)
+{
+	if (!app_has_cap(APP_CAP_BLE)) {
+		return -EPERM;
+	}
+
+	k_mutex_lock(&ble_lock, K_FOREVER);
+
+	int rc = 0;
+
+	if (!bt_started) {
+		rc = bt_enable(NULL);
+		if (rc != 0 && rc != -EALREADY) {
+			goto out2;
+		}
+		bt_started = true;
+	}
+
+	k_sem_reset(&hr_done);
+	hr_connect_wanted = true;
+
+	rc = bt_le_scan_start(BT_LE_SCAN_ACTIVE, hr_scan_cb);
+	if (rc != 0) {
+		goto out2;
+	}
+
+	if (k_sem_take(&hr_done, K_MSEC(timeout_ms)) == 0) {
+		*out_bpm = hr_value;
+		rc = 0;
+	} else {
+		rc = -ETIMEDOUT;
+	}
+
+	hr_connect_wanted = false;
+	bt_le_scan_stop();
+	if (hr_conn) {
+		bt_conn_disconnect(hr_conn, BT_HCI_ERR_REMOTE_USER_TERM_CONN);
+	}
+out2:
+	k_mutex_unlock(&ble_lock);
+	return rc;
+}
+
 #ifdef CONFIG_USERSPACE
 static inline int z_vrfy_svc_ble_scan(const char *name, uint32_t timeout_ms)
 {
@@ -121,4 +296,11 @@ static inline int z_vrfy_svc_ble_scan(const char *name, uint32_t timeout_ms)
 	return z_impl_svc_ble_scan(buf, timeout_ms);
 }
 #include <zephyr/syscalls/svc_ble_scan_mrsh.c>
+
+static inline int z_vrfy_svc_ble_hr_read(uint32_t timeout_ms, uint8_t *out_bpm)
+{
+	K_OOPS(K_SYSCALL_MEMORY_WRITE(out_bpm, 1));
+	return z_impl_svc_ble_hr_read(timeout_ms, out_bpm);
+}
+#include <zephyr/syscalls/svc_ble_hr_read_mrsh.c>
 #endif
