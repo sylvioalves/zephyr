@@ -74,6 +74,21 @@ void app_main(void *arg)
 	rc = svc_sha256((const uint8_t *)"hello", 5, digest);
 	say("sha256", (rc == 0 && digest[0] != 0) ? 0 : -1);
 
+	/* sensor group */
+	say("die_temp", svc_die_temp_milli() > 0 ? 0 : -1);
+
+	/* kv group: round-trip a value through the lock-serialized store */
+	say("kv_set", svc_kv_set("count", 7));
+	uint32_t got = 0;
+
+	rc = svc_kv_get("count", &got);
+	say("kv_get", (rc == 0 && got == 7) ? 0 : -1);
+
+	/* flash group: read the storage partition into an app buffer */
+	uint8_t fbuf[16] = {0};
+
+	say("flash_read", svc_flash_read(0, fbuf, sizeof(fbuf)));
+
 	svc_log("probe: done - all from platform-owned services");
 	for (;;) {
 		svc_heartbeat();

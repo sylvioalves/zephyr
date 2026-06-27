@@ -71,6 +71,52 @@ __syscall uint32_t svc_uptime_ms(void);
  */
 __syscall uint32_t svc_cycles(void);
 
+/**
+ * @brief Read the SoC die temperature in milli-degrees Celsius.
+ * Needs @ref APP_CAP_SENSOR.
+ *
+ * Stateless: a fetch-and-read of a shared sensor, safe under concurrent callers.
+ */
+__syscall int svc_die_temp_milli(void);
+
+/**
+ * @brief Store a value under a key. Needs @ref APP_CAP_KV.
+ *
+ * Lock-serialized: the store is shared across applications, so concurrent
+ * set/get calls are serialized internally. Keys are namespaced per application,
+ * so one application cannot read or overwrite another's keys.
+ *
+ * @param key   Key string (bounded by the platform).
+ * @param value Value to store.
+ * @retval 0 on success, -EPERM without the capability, -ENOSPC if full.
+ */
+__syscall int svc_kv_set(const char *key, uint32_t value);
+
+/**
+ * @brief Read a value by key. Needs @ref APP_CAP_KV.
+ *
+ * Lock-serialized; reads only the calling application's namespace.
+ *
+ * @param key Key string.
+ * @param out Receives the value.
+ * @retval 0 on success, -EPERM without the capability, -ENOENT if absent.
+ */
+__syscall int svc_kv_get(const char *key, uint32_t *out);
+
+/**
+ * @brief Read from the raw storage partition. Needs @ref APP_CAP_FLASH.
+ *
+ * Lock-serialized: the partition is a shared peripheral, so accesses are
+ * serialized and every offset and length is bounds-checked against the
+ * partition.
+ *
+ * @param off Offset within the storage partition.
+ * @param buf Receives the bytes.
+ * @param len Number of bytes (bounded by the platform).
+ * @retval 0 on success, -EPERM without the capability, negative errno otherwise.
+ */
+__syscall int svc_flash_read(uint32_t off, uint8_t *buf, size_t len);
+
 #include <zephyr/syscalls/app_services.h>
 
 /** @} */

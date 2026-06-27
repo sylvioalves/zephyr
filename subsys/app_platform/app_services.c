@@ -21,9 +21,33 @@
 #ifdef CONFIG_PSA_CRYPTO
 #include <psa/crypto.h>
 #endif
+#ifdef CONFIG_SENSOR
+#include <zephyr/drivers/sensor.h>
+#endif
+#ifdef CONFIG_FLASH_MAP
+#include <zephyr/storage/flash_map.h>
+#endif
+#include <string.h>
 #include <errno.h>
 
 #define SVC_XFER_MAX 256
+
+/* A shared, lock-serialized key/value store namespaced by application id. */
+#define KV_SLOTS    16
+#define KV_KEY_MAX  20
+
+struct kv_entry {
+	int      owner;            /* app group id that owns this key */
+	char     key[KV_KEY_MAX];
+	uint32_t value;
+	bool     used;
+};
+static struct kv_entry kv_store[KV_SLOTS];
+static K_MUTEX_DEFINE(kv_lock);
+
+#if defined(CONFIG_SENSOR) && DT_HAS_ALIAS(die_temp0)
+static const struct device *const svc_die_temp = DEVICE_DT_GET(DT_ALIAS(die_temp0));
+#endif
 
 /* True when the calling application holds every bit in @mask. */
 static inline bool app_has_cap(uint32_t mask)
@@ -93,6 +117,115 @@ uint32_t z_impl_svc_cycles(void)
 	return k_cycle_get_32();
 }
 
+int z_impl_svc_die_temp_milli(void)
+{
+	if (!app_has_cap(APP_CAP_SENSOR)) {
+		return -EPERM;
+	}
+#if defined(CONFIG_SENSOR) && DT_HAS_ALIAS(die_temp0)
+	if (!device_is_ready(svc_die_temp) ||
+	    sensor_sample_fetch(svc_die_temp) != 0) {
+		return -EIO;
+	}
+	struct sensor_value v;
+
+	sensor_channel_get(svc_die_temp, SENSOR_CHAN_DIE_TEMP, &v);
+	return v.val1 * 1000 + v.val2 / 1000;
+#else
+	return -ENOTSUP;
+#endif
+}
+
+int z_impl_svc_kv_set(const char *key, uint32_t value)
+{
+	if (!app_has_cap(APP_CAP_KV)) {
+		return -EPERM;
+	}
+
+	int owner = app_platform_id_current();
+	struct kv_entry *slot = NULL;
+	int rc = -ENOSPC;
+
+	k_mutex_lock(&kv_lock, K_FOREVER);
+	for (int i = 0; i < KV_SLOTS; i++) {
+		if (kv_store[i].used && kv_store[i].owner == owner &&
+		    strcmp(kv_store[i].key, key) == 0) {
+			kv_store[i].value = value;
+			rc = 0;
+			goto out;
+		}
+		if (!kv_store[i].used && slot == NULL) {
+			slot = &kv_store[i];
+		}
+	}
+	if (slot != NULL) {
+		slot->owner = owner;
+		strncpy(slot->key, key, sizeof(slot->key) - 1);
+		slot->key[sizeof(slot->key) - 1] = '\0';
+		slot->value = value;
+		slot->used = true;
+		rc = 0;
+	}
+out:
+	k_mutex_unlock(&kv_lock);
+	return rc;
+}
+
+int z_impl_svc_kv_get(const char *key, uint32_t *out)
+{
+	if (!app_has_cap(APP_CAP_KV)) {
+		return -EPERM;
+	}
+
+	int owner = app_platform_id_current();
+	int rc = -ENOENT;
+
+	k_mutex_lock(&kv_lock, K_FOREVER);
+	for (int i = 0; i < KV_SLOTS; i++) {
+		if (kv_store[i].used && kv_store[i].owner == owner &&
+		    strcmp(kv_store[i].key, key) == 0) {
+			*out = kv_store[i].value;
+			rc = 0;
+			break;
+		}
+	}
+	k_mutex_unlock(&kv_lock);
+	return rc;
+}
+
+int z_impl_svc_flash_read(uint32_t off, uint8_t *buf, size_t len)
+{
+	if (!app_has_cap(APP_CAP_FLASH)) {
+		return -EPERM;
+	}
+	if (len > SVC_XFER_MAX) {
+		return -EINVAL;
+	}
+#if defined(CONFIG_FLASH_MAP) && FIXED_PARTITION_EXISTS(storage_partition)
+	const struct flash_area *fa;
+
+	if (flash_area_open(FIXED_PARTITION_ID(storage_partition), &fa) != 0) {
+		return -EIO;
+	}
+
+	int rc = -EINVAL;
+
+	if ((off + len) <= fa->fa_size) {
+		static K_MUTEX_DEFINE(flash_lock);
+
+		k_mutex_lock(&flash_lock, K_FOREVER);
+		rc = flash_area_read(fa, off, buf, len);
+		k_mutex_unlock(&flash_lock);
+	}
+	flash_area_close(fa);
+	return rc;
+#else
+	ARG_UNUSED(off);
+	ARG_UNUSED(buf);
+	return -ENOTSUP;
+#endif
+}
+
 #ifdef CONFIG_USERSPACE
 static inline void z_vrfy_svc_log(const char *msg)
 {
@@ -137,4 +270,40 @@ static inline uint32_t z_vrfy_svc_cycles(void)
 	return z_impl_svc_cycles();
 }
 #include <zephyr/syscalls/svc_cycles_mrsh.c>
+
+static inline int z_vrfy_svc_die_temp_milli(void)
+{
+	return z_impl_svc_die_temp_milli();
+}
+#include <zephyr/syscalls/svc_die_temp_milli_mrsh.c>
+
+static inline int z_vrfy_svc_kv_set(const char *key, uint32_t value)
+{
+	char buf[KV_KEY_MAX];
+
+	if (k_usermode_string_copy(buf, (char *)key, sizeof(buf)) != 0) {
+		return -EFAULT;
+	}
+	return z_impl_svc_kv_set(buf, value);
+}
+#include <zephyr/syscalls/svc_kv_set_mrsh.c>
+
+static inline int z_vrfy_svc_kv_get(const char *key, uint32_t *out)
+{
+	char buf[KV_KEY_MAX];
+
+	if (k_usermode_string_copy(buf, (char *)key, sizeof(buf)) != 0) {
+		return -EFAULT;
+	}
+	K_OOPS(K_SYSCALL_MEMORY_WRITE(out, sizeof(*out)));
+	return z_impl_svc_kv_get(buf, out);
+}
+#include <zephyr/syscalls/svc_kv_get_mrsh.c>
+
+static inline int z_vrfy_svc_flash_read(uint32_t off, uint8_t *buf, size_t len)
+{
+	K_OOPS(K_SYSCALL_MEMORY_WRITE(buf, len));
+	return z_impl_svc_flash_read(off, buf, len);
+}
+#include <zephyr/syscalls/svc_flash_read_mrsh.c>
 #endif
