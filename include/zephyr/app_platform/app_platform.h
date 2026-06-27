@@ -101,6 +101,20 @@ void app_platform_heartbeat(void);
 int app_platform_stop(int id);
 
 /**
+ * @brief Mark a built-in application group to be restarted after a fault.
+ *
+ * When set, the supervisor relaunches the group (same entry and capabilities)
+ * after it is reclaimed for faulting or hanging, so a resilient application can
+ * recover. The application is responsible for persisting any state it wants to
+ * resume from.
+ *
+ * @param id Group id returned by a launch call.
+ * @param restart Whether to auto-restart after a fault.
+ * @retval 0 on success, -EINVAL if @p id is not an active group.
+ */
+int app_platform_set_restart(int id, bool restart);
+
+/**
  * @brief The grant mask of the currently running application (0 if none).
  *
  * A service uses this to enforce the application's capabilities.

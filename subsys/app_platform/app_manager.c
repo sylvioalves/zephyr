@@ -30,10 +30,12 @@ LOG_MODULE_REGISTER(app_platform, CONFIG_APP_PLATFORM_LOG_LEVEL);
 struct running_app {
 	const char         *name;
 	bool                active;
+	bool                restart;   /* relaunch (built-in) after a fault */
 	struct k_thread     thread;
 	struct k_mem_domain domain;
 	int                 wdt_chan;
 	bool                wdt_fired;
+	bool                faulted;   /* reclaim was due to a fault or hang */
 	app_entry_t         entry;
 	uint32_t            caps;
 };
@@ -87,6 +89,7 @@ void k_sys_fatal_error_handler(unsigned int reason, const struct arch_esf *esf)
 		uint8_t id = a - apps;
 
 		LOG_WRN("app '%s' faulted (reason %u) - reclaiming", a->name, reason);
+		a->faulted = true;
 		(void)k_msgq_put(&reclaim_q, &id, K_NO_WAIT);
 	} else {
 		k_fatal_halt(reason);
@@ -99,7 +102,13 @@ static void wdt_cb(int chan, void *user)
 	struct running_app *a = user;
 	uint8_t id = a - apps;
 
+	/*
+	 * A thread that already terminated returned from its entry (a clean
+	 * finish); the watchdog simply stopped being fed. Only treat a still
+	 * running thread as hung, and therefore restartable.
+	 */
 	a->wdt_fired = true;
+	a->faulted = (k_thread_join(&a->thread, K_NO_WAIT) != 0);
 	(void)k_msgq_put(&reclaim_q, &id, K_NO_WAIT);
 }
 
@@ -135,6 +144,9 @@ int app_platform_stop(int id)
 	return 0;
 }
 
+static int launch(const char *name, app_entry_t entry, uint32_t caps,
+		  struct llext *ext, bool restart);
+
 static void supervisor(void *a, void *b, void *c)
 {
 	ARG_UNUSED(a); ARG_UNUSED(b); ARG_UNUSED(c);
@@ -142,8 +154,23 @@ static void supervisor(void *a, void *b, void *c)
 	for (;;) {
 		uint8_t id;
 
-		if (k_msgq_get(&reclaim_q, &id, K_FOREVER) == 0 && id < MAX_APPS) {
-			reclaim(&apps[id]);
+		if (k_msgq_get(&reclaim_q, &id, K_FOREVER) != 0 || id >= MAX_APPS) {
+			continue;
+		}
+
+		struct running_app *a = &apps[id];
+		const char *name = a->name;
+		app_entry_t entry = a->entry;
+		uint32_t caps = a->caps;
+
+		/* Restart only a resilient built-in app that faulted or hung. */
+		bool restart = a->restart && a->faulted && entry != NULL;
+
+		reclaim(a);
+
+		if (restart) {
+			LOG_INF("restarting app '%s' after fault", name);
+			(void)launch(name, entry, caps, NULL, true);
 		}
 	}
 }
@@ -172,7 +199,7 @@ int app_platform_init(void)
 
 /* Common launch: find a free slot, set up the domain, start a user-mode thread. */
 static int launch(const char *name, app_entry_t entry, uint32_t caps,
-		  struct llext *ext)
+		  struct llext *ext, bool restart)
 {
 	for (int i = 0; i < MAX_APPS; i++) {
 		if (apps[i].active) {
@@ -183,7 +210,9 @@ static int launch(const char *name, app_entry_t entry, uint32_t caps,
 		a->name = name;
 		a->entry = entry;
 		a->caps = caps;
+		a->restart = restart;
 		a->wdt_fired = false;
+		a->faulted = false;
 		k_mem_domain_init(&a->domain, 0, NULL);
 
 		if (IS_ENABLED(CONFIG_LLEXT) && ext != NULL) {
@@ -215,13 +244,22 @@ static int launch(const char *name, app_entry_t entry, uint32_t caps,
 
 int app_platform_launch(const struct app_def *def)
 {
-	return launch(def->name, def->entry, def->caps, NULL);
+	return launch(def->name, def->entry, def->caps, NULL, false);
 }
 
 #ifdef CONFIG_LLEXT
 int app_platform_launch_llext(const char *name, struct llext *ext,
 			      app_entry_t entry, uint32_t caps)
 {
-	return launch(name, entry, caps, ext);
+	return launch(name, entry, caps, ext, false);
 }
 #endif
+
+int app_platform_set_restart(int id, bool restart)
+{
+	if (id < 0 || id >= MAX_APPS || !apps[id].active) {
+		return -EINVAL;
+	}
+	apps[id].restart = restart;
+	return 0;
+}
