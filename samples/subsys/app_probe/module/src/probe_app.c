@@ -131,6 +131,22 @@ void app_main(void *arg)
 	say("ipc_send", rc);
 	say("ipc_recv", (got_len == 5 && inbox[0] == 'p') ? 0 : -1);
 
+	/* can group: loopback send then receive the same frame back */
+	const uint8_t cd[3] = { 0x11, 0x22, 0x33 };
+
+	say("can_send", svc_can_send(0x123, cd, 3));
+	uint32_t cid = 0;
+	uint8_t crx[8] = {0};
+	int cn = svc_can_recv(&cid, crx, sizeof(crx), 500);
+
+	say("can_loop", (cn == 3 && cid == 0x123 && crx[0] == 0x11) ? 0 : -1);
+
+	/* dma group: copy a buffer through the DMA engine and check it */
+	const uint8_t ds[8] = { 1, 2, 3, 4, 5, 6, 7, 8 };
+	uint8_t dd[8] = {0};
+
+	say("dma_copy", (svc_dma_copy(ds, dd, 8) == 0 && dd[7] == 8) ? 0 : -1);
+
 	/* inspect group: read our own group's status */
 	struct svc_app_info info;
 

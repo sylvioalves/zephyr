@@ -13,6 +13,8 @@ zephyr_library_sources_ifdef(CONFIG_APP_PLATFORM_PERIPH   app_periph.c)
 zephyr_library_sources_ifdef(CONFIG_APP_PLATFORM_BUS      app_bus.c)
 zephyr_library_sources_ifdef(CONFIG_APP_PLATFORM_BLE      app_ble.c)
 zephyr_library_sources_ifdef(CONFIG_APP_PLATFORM_RADIO    app_radio.c)
+zephyr_library_sources_ifdef(CONFIG_APP_PLATFORM_CAN      app_can.c)
+zephyr_library_sources_ifdef(CONFIG_APP_PLATFORM_DMA      app_dma.c)
 
 if(CONFIG_APP_PLATFORM_SERVICES)
   zephyr_syscall_header(${ZEPHYR_BASE}/include/zephyr/app_platform/app_services.h)

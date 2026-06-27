@@ -42,6 +42,8 @@
 #define APP_CAP_IPC     BIT(16)  /**< inter-application messaging */
 #define APP_CAP_INSPECT BIT(17)  /**< observe other application groups */
 #define APP_CAP_CONTROL BIT(18)  /**< start and stop other applications */
+#define APP_CAP_CAN     BIT(19)  /**< CAN bus messaging */
+#define APP_CAP_DMA     BIT(20)  /**< memory-to-memory DMA copy */
 
 /** Grant every capability (for a fully trusted application). */
 #define APP_CAP_ALL     (~0U)

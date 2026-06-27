@@ -158,6 +158,24 @@ config APP_PLATFORM_RADIO_PEER
 
 endif # APP_PLATFORM_RADIO
 
+config APP_PLATFORM_CAN
+	bool "Shared CAN service"
+	depends on APP_PLATFORM_SERVICES
+	depends on CAN
+	help
+	  Expose CAN messaging as a capability-gated service. The controller
+	  runs in loopback so an application can send and receive frames on a
+	  single board, without holding the bus.
+
+config APP_PLATFORM_DMA
+	bool "Shared memory-to-memory DMA service"
+	depends on APP_PLATFORM_SERVICES
+	depends on DMA
+	help
+	  Expose a memory-to-memory DMA copy as a capability-gated service. The
+	  platform owns the channel and the DMA buffers and handles cache
+	  coherency; the application hands in bytes and gets the copy back.
+
 config APP_PLATFORM_REGISTRY
 	bool "Persistent installed-application registry"
 	depends on FILE_SYSTEM

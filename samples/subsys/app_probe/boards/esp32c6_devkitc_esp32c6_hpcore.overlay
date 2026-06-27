@@ -10,12 +10,12 @@
 		compatible = "gpio-leds";
 
 		led_a: led_0 {
-			gpios = <&gpio0 4 GPIO_ACTIVE_HIGH>;
+			gpios = <&gpio0 6 GPIO_ACTIVE_HIGH>;
 			label = "probe LED 0";
 		};
 
 		led_b: led_1 {
-			gpios = <&gpio0 5 GPIO_ACTIVE_HIGH>;
+			gpios = <&gpio0 7 GPIO_ACTIVE_HIGH>;
 			label = "probe LED 1";
 		};
 	};
@@ -47,6 +47,29 @@
 			output-enable;
 		};
 	};
+
+	twai_default: twai_default {
+		group1 {
+			pinmux = <TWAI0_RX_GPIO5>;
+			output-enable;
+		};
+
+		group2 {
+			pinmux = <TWAI0_TX_GPIO5>;
+			input-enable;
+		};
+	};
+};
+
+&twai0 {
+	status = "okay";
+	bus-speed = <125000>;
+	pinctrl-0 = <&twai_default>;
+	pinctrl-names = "default";
+
+	can-transceiver {
+		max-bitrate = <1000000>;
+	};
 };
 
 &ledc0 {
@@ -74,6 +97,10 @@
 		zephyr,acquisition-time = <ADC_ACQ_TIME_DEFAULT>;
 		zephyr,resolution = <12>;
 	};
+};
+
+&dma {
+	status = "okay";
 };
 
 &coretemp {

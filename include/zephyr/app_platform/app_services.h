@@ -455,6 +455,46 @@ __syscall int svc_radio_send(const void *buf, size_t len);
  */
 __syscall int svc_radio_recv(void *buf, size_t len, uint32_t timeout_ms);
 
+/**
+ * @brief Send a CAN frame. Needs @ref APP_CAP_CAN.
+ *
+ * The controller runs in loopback, so a sent frame can be received back on the
+ * same board. The application never holds the bus.
+ *
+ * @param id  CAN identifier.
+ * @param buf Up to 8 payload bytes.
+ * @param len Payload length.
+ * @retval 0 on success, -EPERM without the capability, negative errno otherwise.
+ */
+__syscall int svc_can_send(uint32_t id, const uint8_t *buf, size_t len);
+
+/**
+ * @brief Receive a CAN frame. Needs @ref APP_CAP_CAN.
+ *
+ * @param id_out     Receives the frame identifier.
+ * @param buf        Receives the payload.
+ * @param cap        Buffer size.
+ * @param timeout_ms Milliseconds to wait.
+ * @retval >=0 the payload length, -EPERM without the capability, -EAGAIN on
+ *         timeout.
+ */
+__syscall int svc_can_recv(uint32_t *id_out, uint8_t *buf, size_t cap,
+			   uint32_t timeout_ms);
+
+/**
+ * @brief Copy a buffer through the DMA engine. Needs @ref APP_CAP_DMA.
+ *
+ * The platform owns the channel and DMA-capable buffers and handles cache
+ * coherency; the application hands in bytes and gets the copy back.
+ * Lock-serialized.
+ *
+ * @param src Source bytes.
+ * @param dst Receives the copied bytes.
+ * @param len Length (bounded by the platform).
+ * @retval 0 on success, -EPERM without the capability, negative errno otherwise.
+ */
+__syscall int svc_dma_copy(const uint8_t *src, uint8_t *dst, size_t len);
+
 #include <zephyr/syscalls/app_services.h>
 
 /** @} */
