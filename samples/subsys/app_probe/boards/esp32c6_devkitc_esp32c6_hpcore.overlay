@@ -3,6 +3,22 @@
  * SPDX-License-Identifier: Apache-2.0
  */
 
+/ {
+	leds {
+		compatible = "gpio-leds";
+
+		led_a: led_0 {
+			gpios = <&gpio0 2 GPIO_ACTIVE_HIGH>;
+			label = "probe LED 0";
+		};
+
+		led_b: led_1 {
+			gpios = <&gpio0 3 GPIO_ACTIVE_HIGH>;
+			label = "probe LED 1";
+		};
+	};
+};
+
 &coretemp {
 	status = "okay";
 };

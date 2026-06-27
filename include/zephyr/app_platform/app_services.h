@@ -155,6 +155,40 @@ __syscall int svc_mqtt_open(const char *client_id, const char *pub_topic,
  */
 __syscall int svc_mqtt_publish(const char *payload);
 
+/**
+ * @brief Number of GPIO lines the platform exposes. Needs @ref APP_CAP_GPIO.
+ *
+ * The lines come from the board's @c leds devicetree node.
+ */
+__syscall int svc_gpio_count(void);
+
+/**
+ * @brief Drive a GPIO line. Needs @ref APP_CAP_GPIO and a per-line grant.
+ *
+ * Per-line grant: holding @ref APP_CAP_GPIO is not enough; the application is
+ * granted a specific set of lines (see @ref app_platform_grant_gpio) and a call
+ * to an ungranted line is refused. Stateless beyond that check.
+ *
+ * @param line Line index in [0, @ref svc_gpio_count).
+ * @param on   Non-zero to drive high.
+ * @retval 0 on success, -EPERM without the capability or line grant.
+ */
+__syscall int svc_gpio_set(int line, int on);
+
+/**
+ * @brief Grant an application a set of GPIO lines.
+ *
+ * Called by the launcher (supervisor) before or after starting an application
+ * to allow it to drive specific lines through @ref svc_gpio_set. Lines not in
+ * @p line_mask are refused even if the application holds @ref APP_CAP_GPIO. This
+ * is the second-level grant within a capability: the capability admits the
+ * service, the mask scopes it to specific resources.
+ *
+ * @param id        Application group id.
+ * @param line_mask Bitmask of allowed line indices.
+ */
+void app_platform_grant_gpio(int id, uint32_t line_mask);
+
 #include <zephyr/syscalls/app_services.h>
 
 /** @} */

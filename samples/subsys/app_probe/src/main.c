@@ -16,6 +16,7 @@
 #include <zephyr/app_platform/app_platform.h>
 #include <zephyr/app_platform/app_loader.h>
 #include <zephyr/app_platform/app_caps.h>
+#include <zephyr/app_platform/app_services.h>
 #include <zephyr/kernel.h>
 #include <zephyr/sys/printk.h>
 
@@ -46,7 +47,15 @@ int main(void)
 	}
 
 	uint32_t caps = APP_CAP_LOG | APP_CAP_TIME | APP_CAP_RANDOM |
-			APP_CAP_CRYPTO | APP_CAP_SENSOR | APP_CAP_KV | APP_CAP_FLASH;
+			APP_CAP_CRYPTO | APP_CAP_SENSOR | APP_CAP_KV |
+			APP_CAP_FLASH | APP_CAP_GPIO;
+
+	/*
+	 * Grant only line 0 before launch (the first app takes group id 0), so
+	 * the probe sees line 0 allowed and line 1 refused regardless of when
+	 * its thread is first scheduled.
+	 */
+	app_platform_grant_gpio(0, BIT(0));
 
 	app_platform_launch_llext("probe", ext, (app_entry_t)entry, caps);
 

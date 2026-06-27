@@ -89,6 +89,11 @@ void app_main(void *arg)
 
 	say("flash_read", svc_flash_read(0, fbuf, sizeof(fbuf)));
 
+	/* gpio group: line 0 is granted, line 1 is not */
+	say("gpio_count", svc_gpio_count() >= 2 ? 0 : -1);
+	say("gpio_granted", svc_gpio_set(0, 1));
+	say("gpio_denied", svc_gpio_set(1, 1) == -1 ? 0 : -1);
+
 	svc_log("probe: done - all from platform-owned services");
 	for (;;) {
 		svc_heartbeat();

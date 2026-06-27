@@ -99,6 +99,16 @@ config APP_PLATFORM_NET_BROKER_HOST
 
 endif # APP_PLATFORM_NET
 
+config APP_PLATFORM_GPIO
+	bool "Shared GPIO service"
+	depends on APP_PLATFORM_SERVICES
+	depends on GPIO
+	help
+	  Expose the board's "leds" devicetree lines as a capability-gated
+	  service. An application holding APP_CAP_GPIO drives only the lines it
+	  is granted (app_platform_grant_gpio), so the capability admits the
+	  service and a per-line mask scopes it to specific pins.
+
 config APP_PLATFORM_REGISTRY
 	bool "Persistent installed-application registry"
 	depends on FILE_SYSTEM
