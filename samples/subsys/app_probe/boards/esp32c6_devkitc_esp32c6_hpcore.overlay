@@ -3,19 +3,74 @@
  * SPDX-License-Identifier: Apache-2.0
  */
 
+#include <zephyr/dt-bindings/pwm/pwm.h>
+
 / {
 	leds {
 		compatible = "gpio-leds";
 
 		led_a: led_0 {
-			gpios = <&gpio0 2 GPIO_ACTIVE_HIGH>;
+			gpios = <&gpio0 4 GPIO_ACTIVE_HIGH>;
 			label = "probe LED 0";
 		};
 
 		led_b: led_1 {
-			gpios = <&gpio0 3 GPIO_ACTIVE_HIGH>;
+			gpios = <&gpio0 5 GPIO_ACTIVE_HIGH>;
 			label = "probe LED 1";
 		};
+	};
+
+	app_pwm: app_pwm {
+		compatible = "pwm-leds";
+
+		app_pwm_ch0: app_pwm_ch0 {
+			pwms = <&ledc0 0 PWM_HZ(1000) PWM_POLARITY_NORMAL>;
+			label = "probe pwm ch0";
+		};
+	};
+
+	zephyr,user {
+		io-channels = <&adc0 2>;
+	};
+
+	aliases {
+		app-pwm0 = &app_pwm_ch0;
+	};
+};
+
+&pinctrl {
+	ledc0_default: ledc0_default {
+		group1 {
+			pinmux = <LEDC_CH0_GPIO2>;
+			output-enable;
+		};
+	};
+};
+
+&ledc0 {
+	pinctrl-0 = <&ledc0_default>;
+	pinctrl-names = "default";
+	status = "okay";
+	#address-cells = <1>;
+	#size-cells = <0>;
+
+	channel0@0 {
+		reg = <0x0>;
+		timer = <0>;
+	};
+};
+
+&adc0 {
+	#address-cells = <1>;
+	#size-cells = <0>;
+	status = "okay";
+
+	channel@2 {
+		reg = <2>;
+		zephyr,gain = "ADC_GAIN_1_4";
+		zephyr,reference = "ADC_REF_INTERNAL";
+		zephyr,acquisition-time = <ADC_ACQ_TIME_DEFAULT>;
+		zephyr,resolution = <12>;
 	};
 };
 

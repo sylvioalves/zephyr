@@ -109,6 +109,16 @@ config APP_PLATFORM_GPIO
 	  is granted (app_platform_grant_gpio), so the capability admits the
 	  service and a per-line mask scopes it to specific pins.
 
+config APP_PLATFORM_PERIPH
+	bool "Shared PWM and ADC services"
+	depends on APP_PLATFORM_SERVICES
+	depends on PWM && ADC
+	help
+	  Expose PWM channels and ADC channels as capability-gated services
+	  with per-channel grants, the same second-level grant pattern as the
+	  GPIO service. Channels come from devicetree and each service is a
+	  no-op when its node is absent.
+
 config APP_PLATFORM_REGISTRY
 	bool "Persistent installed-application registry"
 	depends on FILE_SYSTEM

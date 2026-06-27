@@ -248,6 +248,31 @@ __syscall int svc_app_count(void);
  */
 __syscall int svc_app_info(int id, struct svc_app_info *out);
 
+/**
+ * @brief Set a PWM channel duty cycle in per-mille. Needs @ref APP_CAP_PWM and a
+ *        per-channel grant (@ref app_platform_grant_pwm).
+ *
+ * @param ch       Channel index.
+ * @param permille Duty cycle in tenths of a percent (0..1000).
+ * @retval 0 on success, -EPERM without the capability or channel grant.
+ */
+__syscall int svc_pwm_set(int ch, uint32_t permille);
+
+/** @brief Grant an application a set of PWM channels. */
+void app_platform_grant_pwm(int id, uint32_t ch_mask);
+
+/**
+ * @brief Read an ADC channel. Needs @ref APP_CAP_ADC and a per-channel grant
+ *        (@ref app_platform_grant_adc).
+ *
+ * @param ch Channel index.
+ * @retval >=0 the raw sample, -EPERM without the capability or channel grant.
+ */
+__syscall int svc_adc_read(int ch);
+
+/** @brief Grant an application a set of ADC channels. */
+void app_platform_grant_adc(int id, uint32_t ch_mask);
+
 #include <zephyr/syscalls/app_services.h>
 
 /** @} */

@@ -111,6 +111,10 @@ void app_main(void *arg)
 	say("app_count", svc_app_count() > 0 ? 0 : -1);
 	say("app_info", (rc == 0 && info.active) ? 0 : -1);
 
+	/* periph group: PWM channel 0 and ADC channel 0, both granted */
+	say("pwm_set", svc_pwm_set(0, 500));
+	say("adc_read", svc_adc_read(0) >= 0 ? 0 : -1);
+
 	svc_log("probe: done - all from platform-owned services");
 	for (;;) {
 		svc_heartbeat();
