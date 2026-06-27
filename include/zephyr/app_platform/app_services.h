@@ -118,6 +118,88 @@ __syscall int svc_kv_get(const char *key, uint32_t *out);
 __syscall int svc_flash_read(uint32_t off, uint8_t *buf, size_t len);
 
 /**
+ * @brief Write to the raw storage partition. Needs @ref APP_CAP_FLASH.
+ *
+ * Lock-serialized and bounds-checked against the partition.
+ *
+ * @param off Offset within the storage partition.
+ * @param buf Bytes to write.
+ * @param len Number of bytes (bounded by the platform).
+ * @retval >=0 bytes written, -EPERM without the capability, negative errno.
+ */
+__syscall int svc_flash_write(uint32_t off, const uint8_t *buf, size_t len);
+
+/**
+ * @brief Erase a span of the raw storage partition. Needs @ref APP_CAP_FLASH.
+ *
+ * Lock-serialized and bounds-checked against the partition.
+ *
+ * @param off Offset within the storage partition.
+ * @param len Length to erase.
+ * @retval 0 on success, -EPERM without the capability, negative errno.
+ */
+__syscall int svc_flash_erase(uint32_t off, size_t len);
+
+/**
+ * @brief Read the SoC unique device id. Needs @ref APP_CAP_TIME.
+ *
+ * Grouped under the time/identity capability. Stateless.
+ *
+ * @param buf Receives the id bytes.
+ * @param len Buffer size (bounded by the platform).
+ * @retval >=0 the id length, -EPERM without the capability.
+ */
+__syscall int svc_device_id(uint8_t *buf, size_t len);
+
+/**
+ * @brief Read the reset cause bitmask. Needs @ref APP_CAP_TIME. Stateless.
+ *
+ * @param cause Receives the reset-cause flags.
+ * @retval 0 on success, -EPERM without the capability.
+ */
+__syscall int svc_reset_cause(uint32_t *cause);
+
+/**
+ * @brief Arm the calling application's one-shot timer. Needs @ref APP_CAP_TIME.
+ *
+ * Per-app-keyed: each application has its own timer. A later @ref svc_timer_wait
+ * blocks until it fires - a software timer reached through the platform rather
+ * than the application owning a kernel timer object.
+ *
+ * @param ms Milliseconds until the timer fires.
+ * @retval 0 on success, -EPERM without the capability.
+ */
+__syscall int svc_timer_start(uint32_t ms);
+
+/**
+ * @brief Wait for the calling application's timer to fire. Needs @ref APP_CAP_TIME.
+ *
+ * @param timeout_ms Maximum time to wait.
+ * @retval 0 if the timer fired, -EPERM without the capability, -EAGAIN on
+ *         timeout.
+ */
+__syscall int svc_timer_wait(uint32_t timeout_ms);
+
+/**
+ * @brief Read the wall-clock time in seconds. Needs @ref APP_CAP_TIME.
+ *
+ * The platform keeps a monotonic wall clock seeded by @ref svc_rtc_set; this
+ * returns that seed advanced by elapsed time. Lock-serialized.
+ *
+ * @param epoch_sec Receives the seconds since the set epoch.
+ * @retval 0 on success, -EPERM without the capability.
+ */
+__syscall int svc_rtc_now(uint32_t *epoch_sec);
+
+/**
+ * @brief Seed the wall clock. Needs @ref APP_CAP_TIME. Lock-serialized.
+ *
+ * @param epoch_sec Seconds value to set as the current time.
+ * @retval 0 on success, -EPERM without the capability.
+ */
+__syscall int svc_rtc_set(uint32_t epoch_sec);
+
+/**
  * @brief Bring up networking and wait until it is ready. Needs @ref APP_CAP_NET.
  *
  * Lock-serialized: the first caller brings up Wi-Fi and resolves the broker;
@@ -309,6 +391,17 @@ void app_platform_grant_spi(int id, bool allow);
  * @retval >=0 bytes written, -EPERM without the capability.
  */
 __syscall int svc_uart_write(const uint8_t *buf, size_t len);
+
+/**
+ * @brief Read available bytes from the secondary UART. Needs @ref APP_CAP_UART.
+ *
+ * Polled and non-blocking: returns however many bytes are ready, up to @p len.
+ *
+ * @param buf Receives the bytes.
+ * @param len Buffer size (bounded by the platform).
+ * @retval >=0 bytes read (may be 0), -EPERM without the capability.
+ */
+__syscall int svc_uart_read(uint8_t *buf, size_t len);
 
 /**
  * @brief Scan for a BLE peer advertising a given name. Needs @ref APP_CAP_BLE.

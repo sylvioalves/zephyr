@@ -149,6 +149,30 @@ int z_impl_svc_uart_write(const uint8_t *buf, size_t len)
 #endif
 }
 
+int z_impl_svc_uart_read(uint8_t *buf, size_t len)
+{
+	if (!app_has_cap(APP_CAP_UART)) {
+		return -EPERM;
+	}
+	if (len > BUS_XFER_MAX) {
+		return -EINVAL;
+	}
+#if DT_HAS_CHOSEN(app_uart)
+	if (!device_is_ready(uart_dev)) {
+		return -ENODEV;
+	}
+	size_t n = 0;
+
+	while (n < len && uart_poll_in(uart_dev, &buf[n]) == 0) {
+		n++;
+	}
+	return (int)n;
+#else
+	ARG_UNUSED(buf);
+	return -ENODEV;
+#endif
+}
+
 #ifdef CONFIG_USERSPACE
 static inline int z_vrfy_svc_i2c_read(uint16_t addr, uint8_t *buf, size_t len)
 {
@@ -171,4 +195,11 @@ static inline int z_vrfy_svc_uart_write(const uint8_t *buf, size_t len)
 	return z_impl_svc_uart_write(buf, len);
 }
 #include <zephyr/syscalls/svc_uart_write_mrsh.c>
+
+static inline int z_vrfy_svc_uart_read(uint8_t *buf, size_t len)
+{
+	K_OOPS(K_SYSCALL_MEMORY_WRITE(buf, len));
+	return z_impl_svc_uart_read(buf, len);
+}
+#include <zephyr/syscalls/svc_uart_read_mrsh.c>
 #endif

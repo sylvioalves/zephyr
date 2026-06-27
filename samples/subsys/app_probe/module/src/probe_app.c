@@ -84,10 +84,37 @@ void app_main(void *arg)
 	rc = svc_kv_get("count", &got);
 	say("kv_get", (rc == 0 && got == 7) ? 0 : -1);
 
-	/* flash group: read the storage partition into an app buffer */
+	/* flash group: erase, write, read back the storage partition */
 	uint8_t fbuf[16] = {0};
 
 	say("flash_read", svc_flash_read(0, fbuf, sizeof(fbuf)));
+	say("flash_erase", svc_flash_erase(0, 4096));
+	const uint8_t fw[4] = { 0xDE, 0xAD, 0xBE, 0xEF };
+
+	svc_flash_write(0, fw, 4);
+	uint8_t fr[4] = {0};
+
+	svc_flash_read(0, fr, 4);
+	say("flash_wr", (fr[0] == 0xDE && fr[3] == 0xEF) ? 0 : -1);
+
+	/* hwinfo: device id and reset cause */
+	uint8_t devid[12] = {0};
+
+	say("device_id", svc_device_id(devid, sizeof(devid)) > 0 ? 0 : -1);
+	uint32_t cause = 0;
+
+	say("reset_cause", svc_reset_cause(&cause) == 0 ? 0 : -1);
+
+	/* timer: arm 100ms and wait for it */
+	svc_timer_start(100);
+	say("timer", svc_timer_wait(500) == 0 ? 0 : -1);
+
+	/* rtc: seed the wall clock and read it back */
+	svc_rtc_set(1000000);
+	uint32_t epoch = 0;
+
+	svc_rtc_now(&epoch);
+	say("rtc", epoch >= 1000000 ? 0 : -1);
 
 	/* gpio group: line 0 is granted, line 1 is not */
 	say("gpio_count", svc_gpio_count() >= 2 ? 0 : -1);
@@ -127,6 +154,9 @@ void app_main(void *arg)
 	say("spi_xfer", svc_spi_xfer((const uint8_t *)"\x9f", b, 1) != -1 ? 0 : -1);
 	/* uart: capability passes; no device wired returns a clean error, not a fault */
 	say("uart_path", svc_uart_write((const uint8_t *)"hi", 2) != -1 ? 0 : -1);
+	uint8_t urx[4] = {0};
+
+	say("uart_read", svc_uart_read(urx, sizeof(urx)) != -1 ? 0 : -1);
 
 #ifndef PROBE_NO_BLE
 	/* ble scan: see a peer board advertising the heart-rate service */

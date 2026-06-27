@@ -27,10 +27,15 @@
 #ifdef CONFIG_FLASH_MAP
 #include <zephyr/storage/flash_map.h>
 #endif
+#ifdef CONFIG_HWINFO
+#include <zephyr/drivers/hwinfo.h>
+#endif
 #include <string.h>
 #include <errno.h>
 
 #define SVC_XFER_MAX 256
+
+static K_MUTEX_DEFINE(flash_lock);
 
 /* A shared, lock-serialized key/value store namespaced by application id. */
 #define KV_SLOTS    16
@@ -229,8 +234,6 @@ int z_impl_svc_flash_read(uint32_t off, uint8_t *buf, size_t len)
 	int rc = -EINVAL;
 
 	if ((off + len) <= fa->fa_size) {
-		static K_MUTEX_DEFINE(flash_lock);
-
 		k_mutex_lock(&flash_lock, K_FOREVER);
 		rc = flash_area_read(fa, off, buf, len);
 		k_mutex_unlock(&flash_lock);
@@ -242,6 +245,186 @@ int z_impl_svc_flash_read(uint32_t off, uint8_t *buf, size_t len)
 	ARG_UNUSED(buf);
 	return -ENOTSUP;
 #endif
+}
+
+int z_impl_svc_flash_write(uint32_t off, const uint8_t *buf, size_t len)
+{
+	if (!app_has_cap(APP_CAP_FLASH)) {
+		return -EPERM;
+	}
+	if (len > SVC_XFER_MAX) {
+		return -EINVAL;
+	}
+#if defined(CONFIG_FLASH_MAP) && DT_NODE_EXISTS(DT_NODELABEL(storage_partition))
+	const struct flash_area *fa;
+
+	if (flash_area_open(FIXED_PARTITION_ID(storage_partition), &fa) != 0) {
+		return -EIO;
+	}
+
+	int rc = -EINVAL;
+
+	if ((off + len) <= fa->fa_size) {
+		k_mutex_lock(&flash_lock, K_FOREVER);
+		rc = flash_area_write(fa, off, buf, len);
+		k_mutex_unlock(&flash_lock);
+		if (rc == 0) {
+			rc = (int)len;
+		}
+	}
+	flash_area_close(fa);
+	return rc;
+#else
+	ARG_UNUSED(off);
+	ARG_UNUSED(buf);
+	return -ENOTSUP;
+#endif
+}
+
+int z_impl_svc_flash_erase(uint32_t off, size_t len)
+{
+	if (!app_has_cap(APP_CAP_FLASH)) {
+		return -EPERM;
+	}
+#if defined(CONFIG_FLASH_MAP) && DT_NODE_EXISTS(DT_NODELABEL(storage_partition))
+	const struct flash_area *fa;
+
+	if (flash_area_open(FIXED_PARTITION_ID(storage_partition), &fa) != 0) {
+		return -EIO;
+	}
+
+	int rc = -EINVAL;
+
+	/* Erase is bounded only by the partition; it spans whole sectors. */
+	if ((off + len) <= fa->fa_size) {
+		k_mutex_lock(&flash_lock, K_FOREVER);
+		rc = flash_area_erase(fa, off, len);
+		k_mutex_unlock(&flash_lock);
+	}
+	flash_area_close(fa);
+	return rc;
+#else
+	ARG_UNUSED(off);
+	ARG_UNUSED(len);
+	return -ENOTSUP;
+#endif
+}
+
+int z_impl_svc_device_id(uint8_t *buf, size_t len)
+{
+	if (!app_has_cap(APP_CAP_TIME)) {
+		return -EPERM;
+	}
+	if (len > SVC_XFER_MAX) {
+		return -EINVAL;
+	}
+#ifdef CONFIG_HWINFO
+	return (int)hwinfo_get_device_id(buf, len);
+#else
+	ARG_UNUSED(buf);
+	return -ENOTSUP;
+#endif
+}
+
+int z_impl_svc_reset_cause(uint32_t *cause)
+{
+	if (!app_has_cap(APP_CAP_TIME)) {
+		return -EPERM;
+	}
+#ifdef CONFIG_HWINFO
+	return hwinfo_get_reset_cause(cause);
+#else
+	*cause = 0;
+	return -ENOTSUP;
+#endif
+}
+
+/* Per-application one-shot software timers, fired through a semaphore. */
+static struct k_timer app_timers[MAX_APPS];
+static struct k_sem timer_sems[MAX_APPS];
+static bool timers_inited;
+
+static void app_timer_expiry(struct k_timer *t)
+{
+	int id = (int)(t - app_timers);
+
+	if (id >= 0 && id < MAX_APPS) {
+		k_sem_give(&timer_sems[id]);
+	}
+}
+
+static void timers_init_once(void)
+{
+	if (timers_inited) {
+		return;
+	}
+	for (int i = 0; i < MAX_APPS; i++) {
+		k_timer_init(&app_timers[i], app_timer_expiry, NULL);
+		k_sem_init(&timer_sems[i], 0, 1);
+	}
+	timers_inited = true;
+}
+
+int z_impl_svc_timer_start(uint32_t ms)
+{
+	if (!app_has_cap(APP_CAP_TIME)) {
+		return -EPERM;
+	}
+
+	int id = app_platform_id_current();
+
+	if (id < 0 || id >= MAX_APPS) {
+		return -EINVAL;
+	}
+	timers_init_once();
+	k_sem_reset(&timer_sems[id]);
+	k_timer_start(&app_timers[id], K_MSEC(ms), K_NO_WAIT);
+	return 0;
+}
+
+int z_impl_svc_timer_wait(uint32_t timeout_ms)
+{
+	if (!app_has_cap(APP_CAP_TIME)) {
+		return -EPERM;
+	}
+
+	int id = app_platform_id_current();
+
+	if (id < 0 || id >= MAX_APPS) {
+		return -EINVAL;
+	}
+	timers_init_once();
+	return k_sem_take(&timer_sems[id], K_MSEC(timeout_ms)) == 0 ? 0 : -EAGAIN;
+}
+
+/* A monotonic wall clock: a seed plus elapsed uptime. */
+static K_MUTEX_DEFINE(rtc_lock);
+static int64_t rtc_seed_sec;
+static int64_t rtc_seed_uptime;
+
+int z_impl_svc_rtc_set(uint32_t epoch_sec)
+{
+	if (!app_has_cap(APP_CAP_TIME)) {
+		return -EPERM;
+	}
+	k_mutex_lock(&rtc_lock, K_FOREVER);
+	rtc_seed_sec = epoch_sec;
+	rtc_seed_uptime = k_uptime_get();
+	k_mutex_unlock(&rtc_lock);
+	return 0;
+}
+
+int z_impl_svc_rtc_now(uint32_t *epoch_sec)
+{
+	if (!app_has_cap(APP_CAP_TIME)) {
+		return -EPERM;
+	}
+	k_mutex_lock(&rtc_lock, K_FOREVER);
+	int64_t now = rtc_seed_sec + (k_uptime_get() - rtc_seed_uptime) / 1000;
+
+	k_mutex_unlock(&rtc_lock);
+	*epoch_sec = (uint32_t)now;
+	return 0;
 }
 
 int z_impl_svc_ipc_send(int dest_id, const void *buf, size_t len)
@@ -400,6 +583,58 @@ static inline int z_vrfy_svc_flash_read(uint32_t off, uint8_t *buf, size_t len)
 	return z_impl_svc_flash_read(off, buf, len);
 }
 #include <zephyr/syscalls/svc_flash_read_mrsh.c>
+
+static inline int z_vrfy_svc_flash_write(uint32_t off, const uint8_t *buf, size_t len)
+{
+	K_OOPS(K_SYSCALL_MEMORY_READ(buf, len));
+	return z_impl_svc_flash_write(off, buf, len);
+}
+#include <zephyr/syscalls/svc_flash_write_mrsh.c>
+
+static inline int z_vrfy_svc_flash_erase(uint32_t off, size_t len)
+{
+	return z_impl_svc_flash_erase(off, len);
+}
+#include <zephyr/syscalls/svc_flash_erase_mrsh.c>
+
+static inline int z_vrfy_svc_device_id(uint8_t *buf, size_t len)
+{
+	K_OOPS(K_SYSCALL_MEMORY_WRITE(buf, len));
+	return z_impl_svc_device_id(buf, len);
+}
+#include <zephyr/syscalls/svc_device_id_mrsh.c>
+
+static inline int z_vrfy_svc_reset_cause(uint32_t *cause)
+{
+	K_OOPS(K_SYSCALL_MEMORY_WRITE(cause, sizeof(*cause)));
+	return z_impl_svc_reset_cause(cause);
+}
+#include <zephyr/syscalls/svc_reset_cause_mrsh.c>
+
+static inline int z_vrfy_svc_timer_start(uint32_t ms)
+{
+	return z_impl_svc_timer_start(ms);
+}
+#include <zephyr/syscalls/svc_timer_start_mrsh.c>
+
+static inline int z_vrfy_svc_timer_wait(uint32_t timeout_ms)
+{
+	return z_impl_svc_timer_wait(timeout_ms);
+}
+#include <zephyr/syscalls/svc_timer_wait_mrsh.c>
+
+static inline int z_vrfy_svc_rtc_set(uint32_t epoch_sec)
+{
+	return z_impl_svc_rtc_set(epoch_sec);
+}
+#include <zephyr/syscalls/svc_rtc_set_mrsh.c>
+
+static inline int z_vrfy_svc_rtc_now(uint32_t *epoch_sec)
+{
+	K_OOPS(K_SYSCALL_MEMORY_WRITE(epoch_sec, sizeof(*epoch_sec)));
+	return z_impl_svc_rtc_now(epoch_sec);
+}
+#include <zephyr/syscalls/svc_rtc_now_mrsh.c>
 
 static inline int z_vrfy_svc_ipc_send(int dest_id, const void *buf, size_t len)
 {
