@@ -119,6 +119,17 @@ config APP_PLATFORM_PERIPH
 	  GPIO service. Channels come from devicetree and each service is a
 	  no-op when its node is absent.
 
+config APP_PLATFORM_BUS
+	bool "Shared I2C, SPI and UART services"
+	depends on APP_PLATFORM_SERVICES
+	depends on I2C && SPI && SERIAL
+	help
+	  Expose the I2C and SPI controllers and a secondary UART as
+	  capability-gated services. I2C is scoped by a per-application address
+	  grant and SPI by a per-application grant, so an application reaches
+	  only the bus devices it was given. Each service is a no-op when its
+	  devicetree node is absent.
+
 config APP_PLATFORM_REGISTRY
 	bool "Persistent installed-application registry"
 	depends on FILE_SYSTEM

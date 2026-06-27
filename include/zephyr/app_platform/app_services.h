@@ -273,6 +273,43 @@ __syscall int svc_adc_read(int ch);
 /** @brief Grant an application a set of ADC channels. */
 void app_platform_grant_adc(int id, uint32_t ch_mask);
 
+/**
+ * @brief Read from an I2C device. Needs @ref APP_CAP_I2C and a per-address grant
+ *        (@ref app_platform_grant_i2c).
+ *
+ * @param addr 7-bit device address.
+ * @param buf  Receives the bytes.
+ * @param len  Number of bytes (bounded by the platform).
+ * @retval 0 on success, -EPERM without the capability or address grant.
+ */
+__syscall int svc_i2c_read(uint16_t addr, uint8_t *buf, size_t len);
+
+/** @brief Grant an application access to one I2C address. */
+void app_platform_grant_i2c(int id, uint16_t addr);
+
+/**
+ * @brief Full-duplex SPI transfer. Needs @ref APP_CAP_SPI and a grant
+ *        (@ref app_platform_grant_spi).
+ *
+ * @param tx  Bytes to send.
+ * @param rx  Receives the bytes clocked in.
+ * @param len Transfer length (bounded by the platform).
+ * @retval 0 on success, -EPERM without the capability or grant.
+ */
+__syscall int svc_spi_xfer(const uint8_t *tx, uint8_t *rx, size_t len);
+
+/** @brief Grant or revoke an application's SPI access. */
+void app_platform_grant_spi(int id, bool allow);
+
+/**
+ * @brief Write to the secondary UART. Needs @ref APP_CAP_UART.
+ *
+ * @param buf Bytes to write.
+ * @param len Length (bounded by the platform).
+ * @retval >=0 bytes written, -EPERM without the capability.
+ */
+__syscall int svc_uart_write(const uint8_t *buf, size_t len);
+
 #include <zephyr/syscalls/app_services.h>
 
 /** @} */

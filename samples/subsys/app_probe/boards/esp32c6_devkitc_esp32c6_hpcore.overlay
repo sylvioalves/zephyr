@@ -35,6 +35,8 @@
 
 	aliases {
 		app-pwm0 = &app_pwm_ch0;
+		app-i2c = &i2c0;
+		app-spi = &spi2;
 	};
 };
 

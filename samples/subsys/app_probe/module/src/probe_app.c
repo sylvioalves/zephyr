@@ -115,6 +115,19 @@ void app_main(void *arg)
 	say("pwm_set", svc_pwm_set(0, 500));
 	say("adc_read", svc_adc_read(0) >= 0 ? 0 : -1);
 
+	/*
+	 * bus group: with no device wired we check the capability and grant
+	 * path. A granted I2C address reaches the driver (not -EPERM); an
+	 * ungranted address is refused. UART is granted by capability alone.
+	 */
+	uint8_t b[2] = {0};
+
+	say("i2c_granted", svc_i2c_read(0x50, b, 1) != -1 ? 0 : -1);
+	say("i2c_denied", svc_i2c_read(0x51, b, 1) == -1 ? 0 : -1);
+	say("spi_xfer", svc_spi_xfer((const uint8_t *)"\x9f", b, 1) != -1 ? 0 : -1);
+	/* uart: capability passes; no device wired returns a clean error, not a fault */
+	say("uart_path", svc_uart_write((const uint8_t *)"hi", 2) != -1 ? 0 : -1);
+
 	svc_log("probe: done - all from platform-owned services");
 	for (;;) {
 		svc_heartbeat();
