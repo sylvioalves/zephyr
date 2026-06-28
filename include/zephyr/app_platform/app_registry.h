@@ -46,6 +46,27 @@ int app_registry_get(int idx, struct app_record *out);
 /** Remove an installed application and persist. */
 int app_registry_uninstall(const char *name);
 
+/**
+ * @brief Persist an application's binary image to storage.
+ *
+ * Stores the verified module bytes so the application can be reloaded after a
+ * reboot, keyed by name. Pair this with @ref app_registry_install to record
+ * the metadata.
+ */
+int app_registry_store_blob(const char *name, const uint8_t *buf, size_t len);
+
+/**
+ * @brief Read back an application's persisted binary image.
+ *
+ * @param name     Application name.
+ * @param buf      Destination buffer.
+ * @param cap      Size of @p buf.
+ * @param out_len  Set to the number of bytes read.
+ * @return 0 on success, negative errno on failure (e.g. -ENOENT if not stored).
+ */
+int app_registry_load_blob(const char *name, uint8_t *buf, size_t cap,
+			   size_t *out_len);
+
 /** @} */
 
 #endif /* ZEPHYR_INCLUDE_APP_PLATFORM_REGISTRY_H_ */

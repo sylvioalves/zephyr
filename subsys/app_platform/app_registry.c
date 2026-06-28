@@ -12,6 +12,7 @@
 #include <zephyr/app_platform/app_registry.h>
 
 #include <zephyr/kernel.h>
+#include <zephyr/sys/printk.h>
 #include <zephyr/fs/fs.h>
 #include <zephyr/fs/littlefs.h>
 #include <zephyr/storage/flash_map.h>
@@ -23,6 +24,15 @@ LOG_MODULE_DECLARE(app_platform, CONFIG_APP_PLATFORM_LOG_LEVEL);
 
 #define MOUNT_POINT CONFIG_APP_PLATFORM_REGISTRY_MOUNT_POINT
 #define REG_PATH    MOUNT_POINT "/registry.bin"
+#define MOUNT_POINT_MAX (sizeof(MOUNT_POINT) + APP_NAME_MAX + 8)
+
+/* Build the on-flash path for an application's binary: <mount>/<name>.llext */
+static int blob_path(char *out, size_t cap, const char *name)
+{
+	int n = snprintk(out, cap, "%s/%s.llext", MOUNT_POINT, name);
+
+	return (n > 0 && (size_t)n < cap) ? 0 : -ENAMETOOLONG;
+}
 
 FS_LITTLEFS_DECLARE_DEFAULT_CONFIG(lfs_cfg);
 static struct fs_mount_t mnt = {
@@ -144,6 +154,69 @@ int app_registry_uninstall(const char *name)
 		reg.apps[i] = reg.apps[i + 1];
 	}
 	reg.count--;
+
+	/* Drop the persisted binary too, if present. */
+	char path[MOUNT_POINT_MAX];
+
+	if (blob_path(path, sizeof(path), name) == 0) {
+		(void)fs_unlink(path);
+	}
+
 	LOG_INF("uninstalled '%s'", name);
 	return reg_save();
+}
+
+int app_registry_store_blob(const char *name, const uint8_t *buf, size_t len)
+{
+	char path[MOUNT_POINT_MAX];
+	int rc = blob_path(path, sizeof(path), name);
+
+	if (rc != 0) {
+		return rc;
+	}
+
+	struct fs_file_t f;
+
+	fs_file_t_init(&f);
+	rc = fs_open(&f, path, FS_O_CREATE | FS_O_WRITE | FS_O_TRUNC);
+	if (rc != 0) {
+		return rc;
+	}
+
+	ssize_t n = fs_write(&f, buf, len);
+
+	fs_close(&f);
+	if (n < 0 || (size_t)n != len) {
+		return -EIO;
+	}
+	LOG_INF("stored binary for '%s' (%zu bytes)", name, len);
+	return 0;
+}
+
+int app_registry_load_blob(const char *name, uint8_t *buf, size_t cap,
+			   size_t *out_len)
+{
+	char path[MOUNT_POINT_MAX];
+	int rc = blob_path(path, sizeof(path), name);
+
+	if (rc != 0) {
+		return rc;
+	}
+
+	struct fs_file_t f;
+
+	fs_file_t_init(&f);
+	rc = fs_open(&f, path, FS_O_READ);
+	if (rc != 0) {
+		return rc;
+	}
+
+	ssize_t n = fs_read(&f, buf, cap);
+
+	fs_close(&f);
+	if (n < 0) {
+		return -EIO;
+	}
+	*out_len = (size_t)n;
+	return 0;
 }
