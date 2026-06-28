@@ -14,6 +14,7 @@
  */
 
 #include <zephyr/app_platform/app_loader.h>
+#include <zephyr/app_platform/app_manifest.h>
 
 #include <zephyr/kernel.h>
 #include <zephyr/llext/llext.h>
@@ -39,6 +40,35 @@ static int sha256(const uint8_t *buf, size_t len, uint8_t out[32])
 	psa_status_t st = psa_hash_compute(PSA_ALG_SHA_256, buf, len, out, 32, &olen);
 
 	return (st == PSA_SUCCESS && olen == 32) ? 0 : -EIO;
+}
+
+/* Verify an ECDSA P-256 signature over a 32-byte digest with a SEC1 public
+ * key. Returns 0 if authentic, -EPERM if not, -EIO on a crypto fault.
+ */
+static int ecdsa_verify(const uint8_t *pubkey, size_t pubkey_len,
+			const uint8_t digest[32], const uint8_t *sig,
+			size_t sig_len)
+{
+	psa_key_attributes_t attr = PSA_KEY_ATTRIBUTES_INIT;
+
+	psa_set_key_type(&attr,
+			 PSA_KEY_TYPE_ECC_PUBLIC_KEY(PSA_ECC_FAMILY_SECP_R1));
+	psa_set_key_usage_flags(&attr, PSA_KEY_USAGE_VERIFY_HASH);
+	psa_set_key_algorithm(&attr, PSA_ALG_ECDSA(PSA_ALG_SHA_256));
+
+	psa_key_id_t key = PSA_KEY_ID_NULL;
+	psa_status_t st = psa_import_key(&attr, pubkey, pubkey_len, &key);
+
+	if (st != PSA_SUCCESS) {
+		LOG_ERR("pubkey import failed: %d", (int)st);
+		return -EIO;
+	}
+
+	st = psa_verify_hash(key, PSA_ALG_ECDSA(PSA_ALG_SHA_256), digest, 32,
+			     sig, sig_len);
+	psa_destroy_key(key);
+
+	return (st == PSA_SUCCESS) ? 0 : -EPERM;
 }
 
 /*
@@ -140,30 +170,72 @@ int app_loader_verify_load_signed(const char *name, const uint8_t *buf,
 		return -EIO;
 	}
 
-	psa_key_attributes_t attr = PSA_KEY_ATTRIBUTES_INIT;
+	int rc = ecdsa_verify(pubkey, pubkey_len, digest, sig, sig_len);
 
-	psa_set_key_type(&attr,
-			 PSA_KEY_TYPE_ECC_PUBLIC_KEY(PSA_ECC_FAMILY_SECP_R1));
-	psa_set_key_usage_flags(&attr, PSA_KEY_USAGE_VERIFY_HASH);
-	psa_set_key_algorithm(&attr, PSA_ALG_ECDSA(PSA_ALG_SHA_256));
-
-	psa_key_id_t key = PSA_KEY_ID_NULL;
-	psa_status_t st = psa_import_key(&attr, pubkey, pubkey_len, &key);
-
-	if (st != PSA_SUCCESS) {
-		LOG_ERR("'%s' pubkey import failed: %d", name, (int)st);
-		return -EIO;
-	}
-
-	st = psa_verify_hash(key, PSA_ALG_ECDSA(PSA_ALG_SHA_256), digest,
-			     sizeof(digest), sig, sig_len);
-	psa_destroy_key(key);
-
-	if (st != PSA_SUCCESS) {
+	if (rc != 0) {
 		LOG_WRN("verify failed for '%s' - bad signature, rejected", name);
-		return -EPERM;
+		return rc;
 	}
 	LOG_INF("verify OK for '%s' (ecdsa-p256 signature authentic)", name);
 
 	return load_checked(name, buf, len, entry_sym, ext, entry);
+}
+
+int app_loader_verify_load_manifest(const struct app_manifest *mf,
+				    const uint8_t *sig, size_t sig_len,
+				    const uint8_t *buf, size_t len,
+				    const uint8_t *pubkey, size_t pubkey_len,
+				    const char *entry_sym, struct llext **ext,
+				    void **entry)
+{
+	uint8_t mf_digest[32];
+	uint8_t mod_digest[32];
+
+	if (psa_crypto_init() != PSA_SUCCESS) {
+		return -EIO;
+	}
+
+	/* 1. The signature must cover this manifest. Authenticating the
+	 * manifest authenticates the name and version it carries.
+	 */
+	if (sha256((const uint8_t *)mf, sizeof(*mf), mf_digest) != 0) {
+		return -EIO;
+	}
+	if (ecdsa_verify(pubkey, pubkey_len, mf_digest, sig, sig_len) != 0) {
+		LOG_WRN("manifest signature invalid, rejected");
+		return -EPERM;
+	}
+
+	/* 2. The manifest must be well-formed and name a sane module. */
+	if (mf->magic != APP_MANIFEST_MAGIC) {
+		LOG_WRN("bad manifest magic, rejected");
+		return -EPERM;
+	}
+	if (mf->name[APP_MANIFEST_NAME_MAX - 1] != '\0') {
+		LOG_WRN("manifest name not terminated, rejected");
+		return -EPERM;
+	}
+	if (mf->module_len != len) {
+		LOG_WRN("'%s' module length %u != signed %u, rejected",
+			mf->name, (unsigned int)len, mf->module_len);
+		return -EPERM;
+	}
+	if (elf_bounds_ok(buf, len) != 0) {
+		LOG_WRN("'%s' rejected: not a valid relocatable module", mf->name);
+		return -E2BIG;
+	}
+
+	/* 3. The module bytes must be exactly the ones the manifest binds. */
+	if (sha256(buf, len, mod_digest) != 0) {
+		return -EIO;
+	}
+	if (memcmp(mod_digest, mf->module_sha256, 32) != 0) {
+		LOG_WRN("'%s' module hash != manifest, rejected", mf->name);
+		return -EPERM;
+	}
+
+	LOG_INF("verify OK for '%s' v%u (manifest authentic, module bound)",
+		mf->name, mf->version);
+
+	return load_checked(mf->name, buf, len, entry_sym, ext, entry);
 }

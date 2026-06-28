@@ -8,6 +8,7 @@
 #define ZEPHYR_INCLUDE_APP_PLATFORM_REGISTRY_H_
 
 #include <zephyr/kernel.h>
+#include <zephyr/app_platform/app_manifest.h>
 
 /**
  * @brief Application registry
@@ -82,6 +83,33 @@ int app_registry_store_blob(const char *name, const uint8_t *buf, size_t len);
  */
 int app_registry_load_blob(const char *name, uint8_t *buf, size_t cap,
 			   size_t *out_len);
+
+/**
+ * @brief Persist an application's signed manifest and signature.
+ *
+ * The manifest binds the application's name and version to the module bytes,
+ * and is stored so both can be re-verified from flash after a reboot.
+ *
+ * @param name    Application name (the storage key).
+ * @param mf      Signed manifest body.
+ * @param sig     Signature over @p mf.
+ * @param sig_len Length of @p sig (must be @ref APP_MANIFEST_SIG_LEN).
+ * @return 0 on success, negative errno on failure.
+ */
+int app_registry_store_manifest(const char *name, const struct app_manifest *mf,
+				const uint8_t *sig, size_t sig_len);
+
+/**
+ * @brief Read back an application's persisted manifest and signature.
+ *
+ * @param name    Application name.
+ * @param[out] mf Receives the manifest body.
+ * @param[out] sig Receives the signature (@ref APP_MANIFEST_SIG_LEN bytes).
+ * @param sig_cap Size of @p sig (must be at least @ref APP_MANIFEST_SIG_LEN).
+ * @return 0 on success, negative errno on failure (e.g. -ENOENT if not stored).
+ */
+int app_registry_load_manifest(const char *name, struct app_manifest *mf,
+			       uint8_t *sig, size_t sig_cap);
 
 /** @} */
 

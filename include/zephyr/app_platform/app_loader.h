@@ -8,6 +8,7 @@
 #define ZEPHYR_INCLUDE_APP_PLATFORM_LOADER_H_
 
 #include <zephyr/llext/llext.h>
+#include <zephyr/app_platform/app_manifest.h>
 
 /**
  * @brief Application loader
@@ -81,6 +82,40 @@ int app_loader_verify_load_signed(const char *name, const uint8_t *buf,
 				  const uint8_t *pubkey, size_t pubkey_len,
 				  const char *entry_sym, struct llext **ext,
 				  void **entry);
+
+/**
+ * @brief Verify a signed manifest, then load the module it binds.
+ *
+ * The strongest path: the ECDSA P-256 signature is checked over the @p mf
+ * manifest, so the name and version the manifest carries are authenticated -
+ * not asserted by the caller. The module is then accepted only if its length
+ * and SHA-256 match the signed manifest, so a valid signature cannot be moved
+ * onto different bytes or relabelled. The module is also bounds-checked before
+ * any parsing. The loaded extension takes its name from the manifest.
+ *
+ * @param mf        Manifest body (the bytes the signature covers).
+ * @param sig       ECDSA P-256 signature over @p mf (raw r||s, 64 bytes).
+ * @param sig_len   Length of @p sig.
+ * @param buf       Module bytes.
+ * @param len       Module length.
+ * @param pubkey    Trusted public key, SEC1 uncompressed point (65 bytes).
+ * @param pubkey_len Length of @p pubkey.
+ * @param entry_sym Entry symbol name to resolve.
+ * @param[out] ext  Receives the loaded extension on success.
+ * @param[out] entry Receives the resolved entry pointer on success.
+ *
+ * @retval 0 on success.
+ * @retval -EPERM if the signature, manifest, or module binding does not check.
+ * @retval -ENOENT if the entry symbol is not found.
+ * @retval -E2BIG if the module fails a structural bounds check.
+ * @retval other negative errno from crypto or llext on failure.
+ */
+int app_loader_verify_load_manifest(const struct app_manifest *mf,
+				    const uint8_t *sig, size_t sig_len,
+				    const uint8_t *buf, size_t len,
+				    const uint8_t *pubkey, size_t pubkey_len,
+				    const char *entry_sym, struct llext **ext,
+				    void **entry);
 
 /** @} */
 

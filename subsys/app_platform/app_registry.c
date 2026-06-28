@@ -10,6 +10,7 @@
  */
 
 #include <zephyr/app_platform/app_registry.h>
+#include <zephyr/app_platform/app_manifest.h>
 
 #include <zephyr/kernel.h>
 #include <zephyr/sys/printk.h>
@@ -26,12 +27,17 @@ LOG_MODULE_DECLARE(app_platform, CONFIG_APP_PLATFORM_LOG_LEVEL);
 #define REG_PATH    MOUNT_POINT "/registry.bin"
 #define MOUNT_POINT_MAX (sizeof(MOUNT_POINT) + APP_NAME_MAX + 8)
 
-/* Build the on-flash path for an application's binary: <mount>/<name>.llext */
-static int blob_path(char *out, size_t cap, const char *name)
+/* Build the on-flash path for one of an application's files: <mount>/<name><ext> */
+static int app_path(char *out, size_t cap, const char *name, const char *ext)
 {
-	int n = snprintk(out, cap, "%s/%s.llext", MOUNT_POINT, name);
+	int n = snprintk(out, cap, "%s/%s%s", MOUNT_POINT, name, ext);
 
 	return (n > 0 && (size_t)n < cap) ? 0 : -ENAMETOOLONG;
+}
+
+static int blob_path(char *out, size_t cap, const char *name)
+{
+	return app_path(out, cap, name, ".llext");
 }
 
 FS_LITTLEFS_DECLARE_DEFAULT_CONFIG(lfs_cfg);
@@ -171,10 +177,13 @@ int app_registry_uninstall(const char *name)
 	}
 	reg.count--;
 
-	/* Drop the persisted binary too, if present. */
+	/* Drop the persisted binary and manifest too, if present. */
 	char path[MOUNT_POINT_MAX];
 
 	if (blob_path(path, sizeof(path), name) == 0) {
+		(void)fs_unlink(path);
+	}
+	if (app_path(path, sizeof(path), name, ".manifest") == 0) {
 		(void)fs_unlink(path);
 	}
 
@@ -235,4 +244,77 @@ int app_registry_load_blob(const char *name, uint8_t *buf, size_t cap,
 	}
 	*out_len = (size_t)n;
 	return 0;
+}
+
+/* The signed manifest and its signature are stored as one file:
+ * the manifest body followed by the 64-byte signature.
+ */
+int app_registry_store_manifest(const char *name, const struct app_manifest *mf,
+				const uint8_t *sig, size_t sig_len)
+{
+	char path[MOUNT_POINT_MAX];
+	int rc = app_path(path, sizeof(path), name, ".manifest");
+
+	if (rc != 0) {
+		return rc;
+	}
+	if (sig_len != APP_MANIFEST_SIG_LEN) {
+		return -EINVAL;
+	}
+
+	struct fs_file_t f;
+
+	fs_file_t_init(&f);
+	rc = fs_open(&f, path, FS_O_CREATE | FS_O_WRITE | FS_O_TRUNC);
+	if (rc != 0) {
+		return rc;
+	}
+
+	ssize_t n = fs_write(&f, mf, sizeof(*mf));
+
+	if (n == (ssize_t)sizeof(*mf)) {
+		n = fs_write(&f, sig, sig_len);
+		n = (n == (ssize_t)sig_len) ? 0 : -EIO;
+	} else {
+		n = -EIO;
+	}
+	fs_close(&f);
+	if (n != 0) {
+		return -EIO;
+	}
+	LOG_INF("stored manifest for '%s' (v%u)", name, mf->version);
+	return 0;
+}
+
+int app_registry_load_manifest(const char *name, struct app_manifest *mf,
+			       uint8_t *sig, size_t sig_cap)
+{
+	char path[MOUNT_POINT_MAX];
+	int rc = app_path(path, sizeof(path), name, ".manifest");
+
+	if (rc != 0) {
+		return rc;
+	}
+	if (sig_cap < APP_MANIFEST_SIG_LEN) {
+		return -EINVAL;
+	}
+
+	struct fs_file_t f;
+
+	fs_file_t_init(&f);
+	rc = fs_open(&f, path, FS_O_READ);
+	if (rc != 0) {
+		return rc;
+	}
+
+	ssize_t n = fs_read(&f, mf, sizeof(*mf));
+
+	if (n == (ssize_t)sizeof(*mf)) {
+		n = fs_read(&f, sig, APP_MANIFEST_SIG_LEN);
+		n = (n == APP_MANIFEST_SIG_LEN) ? 0 : -EIO;
+	} else {
+		n = -EIO;
+	}
+	fs_close(&f);
+	return (n == 0) ? 0 : -EIO;
 }
