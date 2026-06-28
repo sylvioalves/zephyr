@@ -64,7 +64,7 @@ static void psram_app(void *arg)
 		}
 	}
 	snprintk(line, sizeof(line), "psram: 10x256KB read cyc=%u sum=%u",
-		 svc_cycles() - t0, (uint32_t)(sum & 0xffff));
+		 svc_cycles() - t0, (uint32_t)sum);
 	svc_log(line);
 
 	svc_log("psram: done");

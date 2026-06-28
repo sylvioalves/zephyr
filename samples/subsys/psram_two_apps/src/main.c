@@ -78,7 +78,6 @@ static void psram_worker(void *arg)
 
 		bytes += (uint64_t)size * 2u;
 		iters++;
-		svc_heartbeat();
 	}
 
 	snprintk(line, sizeof(line),

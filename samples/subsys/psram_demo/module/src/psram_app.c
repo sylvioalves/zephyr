@@ -116,7 +116,7 @@ void app_main(void *arg)
 		}
 		i = put_u32(line, i, cyc);
 		line[i++] = ' '; line[i++] = 's'; line[i++] = '=';
-		i = put_u32(line, i, (uint32_t)(sum & 0xffff));
+		i = put_u32(line, i, (uint32_t)sum);
 		line[i] = '\0';
 		svc_log(line);
 	}
