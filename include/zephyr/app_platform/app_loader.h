@@ -22,6 +22,11 @@
  * module is rejected and never linked. On success the entry symbol named
  * @p entry_sym is resolved.
  *
+ * This proves integrity only: it detects corruption, not forgery. To accept a
+ * module from an untrusted source (a download), use @ref
+ * app_loader_verify_load_signed, which proves the module was signed by the
+ * holder of a trusted private key.
+ *
  * @param name      Name for the loaded extension.
  * @param buf       Module bytes.
  * @param len       Module length.
@@ -33,11 +38,49 @@
  * @retval 0 on success.
  * @retval -EPERM if the hash does not match.
  * @retval -ENOENT if the entry symbol is not found.
+ * @retval -E2BIG if the module fails a structural bounds check.
  * @retval other negative errno from crypto or llext on failure.
  */
 int app_loader_verify_load(const char *name, const uint8_t *buf, size_t len,
 			   const uint8_t expect[32], const char *entry_sym,
 			   struct llext **ext, void **entry);
+
+/**
+ * @brief Verify a module's signature and load it as an llext.
+ *
+ * Authenticates a module before loading: the ECDSA P-256 signature over the
+ * SHA-256 of the module is checked against @p pubkey, which is the trusted
+ * public key compiled into the firmware. A module that was not signed by the
+ * matching private key - including one whose bytes were altered after signing -
+ * is rejected and never linked. This is the install path an untrusted,
+ * network-downloaded module must follow.
+ *
+ * The module is also structurally bounds-checked before any parsing, so a
+ * malformed image is rejected before it can exercise the loader.
+ *
+ * @param name      Name for the loaded extension.
+ * @param buf       Module bytes.
+ * @param len       Module length.
+ * @param sig       ECDSA P-256 signature (raw r||s, 64 bytes).
+ * @param sig_len   Length of @p sig.
+ * @param pubkey    Trusted public key, SEC1 uncompressed point (65 bytes,
+ *                  0x04 || X || Y).
+ * @param pubkey_len Length of @p pubkey.
+ * @param entry_sym Entry symbol name to resolve.
+ * @param[out] ext  Receives the loaded extension on success.
+ * @param[out] entry Receives the resolved entry pointer on success.
+ *
+ * @retval 0 on success.
+ * @retval -EPERM if the signature does not verify.
+ * @retval -ENOENT if the entry symbol is not found.
+ * @retval -E2BIG if the module fails a structural bounds check.
+ * @retval other negative errno from crypto or llext on failure.
+ */
+int app_loader_verify_load_signed(const char *name, const uint8_t *buf,
+				  size_t len, const uint8_t *sig, size_t sig_len,
+				  const uint8_t *pubkey, size_t pubkey_len,
+				  const char *entry_sym, struct llext **ext,
+				  void **entry);
 
 /** @} */
 
