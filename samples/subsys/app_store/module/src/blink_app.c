@@ -5,20 +5,28 @@
  */
 
 /*
- * A downloadable "app" module. In a full system this would be fetched over the
- * network, verified, stored, and installed at runtime. Here it is built as an
- * llext extension and embedded, but the install path is identical: verify, load,
- * resolve the entry symbol, run.
+ * A downloadable "app" module. In a full system this is fetched over the
+ * network, its signed manifest verified, stored, and installed at runtime. It
+ * is built as an llext extension and embedded for the demo, but the install
+ * path is identical: verify the manifest, bind the module, launch it as an
+ * isolated user-mode application. The entry takes the isolated-app signature so
+ * the platform runs it in its own memory domain, reaching the system only
+ * through service syscalls.
  */
 
-#include <zephyr/llext/symbol.h>
-#include <zephyr/sys/printk.h>
+#include <zephyr/app_platform/app_services.h>
 
-void app_main(void)
+#include <zephyr/llext/symbol.h>
+#include <zephyr/kernel.h>
+
+void app_main(void *arg)
 {
-	printk("    [installed app] hello from a module loaded at runtime!\n");
-	for (int i = 0; i < 3; i++) {
-		printk("    [installed app] tick %d\n", i);
+	ARG_UNUSED(arg);
+
+	for (int i = 0; i < 5; i++) {
+		svc_log("store app: running from a verified install");
+		k_msleep(500);
 	}
+	svc_log("store app: done");
 }
 EXPORT_SYMBOL(app_main);
