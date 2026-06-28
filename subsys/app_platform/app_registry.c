@@ -49,7 +49,10 @@ struct reg_file {
 	uint32_t next_seq;
 	struct app_record apps[APP_REG_MAX];
 };
-#define REG_MAGIC 0x41505072U
+/* Bumped when the record layout changes; an older on-flash registry whose
+ * magic differs is treated as absent and rebuilt rather than misread.
+ */
+#define REG_MAGIC 0x41505073U
 
 static struct reg_file reg;
 
@@ -109,9 +112,16 @@ static int find(const char *name)
 	return -1;
 }
 
-int app_registry_install(const char *name, bool autostart)
+int app_registry_install_versioned(const char *name, bool autostart,
+				   uint32_t version)
 {
 	int idx = find(name);
+
+	if (idx >= 0 && version < reg.apps[idx].version) {
+		LOG_WRN("rejected '%s' v%u: older than installed v%u (rollback)",
+			name, version, reg.apps[idx].version);
+		return -EACCES;
+	}
 
 	if (idx < 0) {
 		if (reg.count >= APP_REG_MAX) {
@@ -124,9 +134,15 @@ int app_registry_install(const char *name, bool autostart)
 	reg.apps[idx].enabled = 1;
 	reg.apps[idx].autostart = autostart ? 1 : 0;
 	reg.apps[idx].install_seq = reg.next_seq++;
-	LOG_INF("installed '%s' (seq %u, autostart=%d)", name,
-		reg.apps[idx].install_seq, reg.apps[idx].autostart);
+	reg.apps[idx].version = version;
+	LOG_INF("installed '%s' (seq %u, v%u, autostart=%d)", name,
+		reg.apps[idx].install_seq, version, reg.apps[idx].autostart);
 	return reg_save();
+}
+
+int app_registry_install(const char *name, bool autostart)
+{
+	return app_registry_install_versioned(name, autostart, 0);
 }
 
 int app_registry_count(void)

@@ -29,6 +29,7 @@ struct app_record {
 	uint8_t  enabled;             /**< present and runnable */
 	uint8_t  autostart;           /**< launch at boot */
 	uint32_t install_seq;         /**< bumped on each install */
+	uint32_t version;             /**< signed image version, monotonic */
 };
 
 /** Mount the storage and load the registry. Call once at boot. */
@@ -36,6 +37,21 @@ int app_registry_load(void);
 
 /** Install (or update) an application record and persist it. */
 int app_registry_install(const char *name, bool autostart);
+
+/**
+ * @brief Install (or update) an application, rejecting a version downgrade.
+ *
+ * Records @p version and refuses to overwrite an existing record with a lower
+ * version, so a signed-but-old image cannot be replayed onto a device that has
+ * already accepted a newer one. Equal versions are accepted (re-install of the
+ * same image).
+ *
+ * @retval 0 on success.
+ * @retval -EACCES if @p version is older than the installed record's version.
+ * @retval other negative errno on failure.
+ */
+int app_registry_install_versioned(const char *name, bool autostart,
+				   uint32_t version);
 
 /** Number of installed applications. */
 int app_registry_count(void);
