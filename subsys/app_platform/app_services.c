@@ -54,23 +54,34 @@ static K_MUTEX_DEFINE(kv_lock);
 static const struct device *const svc_die_temp = DEVICE_DT_GET(DT_ALIAS(die_temp0));
 #endif
 
-/* Per-application mailbox: a fixed-size message queue, one per group. */
+/*
+ * Per-application mailbox: a fixed-size message queue, one per group. The
+ * queues and their backing storage are arrays sized by the number of
+ * application groups, so the messaging service scales with
+ * CONFIG_APP_PLATFORM_MAX_APPS without per-group boilerplate.
+ */
 #define MAX_APPS  CONFIG_APP_PLATFORM_MAX_APPS
 #define IPC_MSG_MAX 64
+#define IPC_QUEUE_DEPTH 4
 
 struct ipc_msg {
 	uint16_t len;
 	uint8_t  data[IPC_MSG_MAX];
 };
 
-K_MSGQ_DEFINE(ipc_q0, sizeof(struct ipc_msg), 4, 4);
-K_MSGQ_DEFINE(ipc_q1, sizeof(struct ipc_msg), 4, 4);
-K_MSGQ_DEFINE(ipc_q2, sizeof(struct ipc_msg), 4, 4);
-K_MSGQ_DEFINE(ipc_q3, sizeof(struct ipc_msg), 4, 4);
-static struct k_msgq *const mailbox[] = { &ipc_q0, &ipc_q1, &ipc_q2, &ipc_q3 };
+static struct k_msgq mailbox[MAX_APPS];
+static char mailbox_buf[MAX_APPS][IPC_QUEUE_DEPTH * sizeof(struct ipc_msg)]
+	__aligned(4);
 
-BUILD_ASSERT(MAX_APPS <= ARRAY_SIZE(mailbox),
-	     "add a mailbox per supported application group");
+static int ipc_mailbox_init(void)
+{
+	for (int i = 0; i < MAX_APPS; i++) {
+		k_msgq_init(&mailbox[i], mailbox_buf[i], sizeof(struct ipc_msg),
+			    IPC_QUEUE_DEPTH);
+	}
+	return 0;
+}
+SYS_INIT(ipc_mailbox_init, PRE_KERNEL_1, 0);
 
 /* Optional name and topic subscription per application, for addressed and
  * published messaging on top of the mailboxes.
@@ -89,7 +100,7 @@ static int mailbox_put(int dest, const void *buf, size_t len)
 
 	msg.len = (uint16_t)len;
 	memcpy(msg.data, buf, len);
-	return k_msgq_put(mailbox[dest], &msg, K_NO_WAIT) == 0 ? 0 : -EAGAIN;
+	return k_msgq_put(&mailbox[dest], &msg, K_NO_WAIT) == 0 ? 0 : -EAGAIN;
 }
 
 /* True when the calling application holds every bit in @mask. */
@@ -472,7 +483,7 @@ int z_impl_svc_ipc_recv(void *buf, size_t len, uint32_t timeout_ms)
 
 	struct ipc_msg msg;
 
-	if (k_msgq_get(mailbox[id], &msg, K_MSEC(timeout_ms)) != 0) {
+	if (k_msgq_get(&mailbox[id], &msg, K_MSEC(timeout_ms)) != 0) {
 		return -EAGAIN;
 	}
 
