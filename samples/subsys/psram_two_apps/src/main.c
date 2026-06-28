@@ -6,12 +6,13 @@
 
 /*
  * Two isolated user-mode applications, each mapping its own private region of
- * external RAM (PSRAM) on the esp32c5. Each app erases, writes and reads back
- * its region with a distinct byte pattern, proving the mapping is real and
- * usable at memory speed. Because each region is a private partition of that
- * app's own memory domain, the regions are isolated: one app's region is never
- * visible to the other. The platform allocates non-overlapping regions, so the
- * two apps run concurrently without interfering.
+ * external RAM (PSRAM) on the esp32c5. The two apps run a sustained, concurrent
+ * read/write/verify stress over their separate regions for ten seconds. Each
+ * region is a private partition of that app's own memory domain, so the apps
+ * are isolated: one app's region is never visible to the other. The platform
+ * allocates non-overlapping regions, so both can hammer external RAM at the
+ * same time. Any corruption - whether a real PSRAM fault or cross-app
+ * interference - shows up as a verify mismatch.
  */
 
 #include <zephyr/app_platform/app_platform.h>
@@ -20,19 +21,22 @@
 #include <zephyr/kernel.h>
 #include <zephyr/sys/printk.h>
 
-#define REGION_SIZE (128 * 1024)
+#define REGION_SIZE   (128 * 1024)
+#define STRESS_MS     10000
 
 /*
- * Each app erases its region to 0xFF, writes a tag-derived pattern, then reads
- * it back. The tag is derived from the running app's platform id, so the two
- * apps write distinguishable data into their separate regions.
+ * Each app maps its private region, then for STRESS_MS milliseconds repeatedly
+ * writes the whole region with a pattern that rotates every iteration and reads
+ * it all back, verifying every byte. The pattern depends on the app's tag and
+ * the iteration counter so a stale or cross-app value is caught immediately.
+ * The tag is derived from the running app's platform id.
  */
 static void psram_worker(void *arg)
 {
 	ARG_UNUSED(arg);
 
 	uint8_t tag = (uint8_t)(0xA0 + app_platform_id_current() * 0x10);
-	char line[56];
+	char line[64];
 	uintptr_t addr = 0;
 	size_t size = 0;
 
@@ -51,36 +55,36 @@ static void psram_worker(void *arg)
 
 	volatile uint8_t *mem = (volatile uint8_t *)addr;
 
-	/* Erase the whole region. */
-	for (size_t i = 0; i < size; i++) {
-		mem[i] = 0xFF;
-	}
+	uint32_t iters = 0;
+	uint32_t errors = 0;
+	uint64_t bytes = 0;
+	int64_t deadline = k_uptime_get() + STRESS_MS;
 
-	/* Write a pattern that depends on this app's tag. */
-	for (size_t i = 0; i < size; i++) {
-		mem[i] = (uint8_t)((i * 31u) + tag);
-	}
+	while (k_uptime_get() < deadline) {
+		uint8_t seed = (uint8_t)(tag + iters);
 
-	/* Read back and verify. */
-	int ok = 1;
-
-	for (size_t i = 0; i < size; i++) {
-		if (mem[i] != (uint8_t)((i * 31u) + tag)) {
-			ok = 0;
-			break;
+		/* Write the whole region with this iteration's pattern. */
+		for (size_t i = 0; i < size; i++) {
+			mem[i] = (uint8_t)((i * 31u) + seed);
 		}
+
+		/* Read it all back and verify every byte. */
+		for (size_t i = 0; i < size; i++) {
+			if (mem[i] != (uint8_t)((i * 31u) + seed)) {
+				errors++;
+				break;
+			}
+		}
+
+		bytes += (uint64_t)size * 2u;
+		iters++;
+		svc_heartbeat();
 	}
 
-	snprintk(line, sizeof(line), "app%u: erase+write+read %s", tag,
-		 ok ? "OK" : "FAILED");
-	svc_log(line);
-
-	/*
-	 * Report the first few bytes so the two apps' regions are visibly
-	 * distinct in the log (different tag -> different content).
-	 */
-	snprintk(line, sizeof(line), "app%u: bytes[0..3] %02x %02x %02x %02x",
-		 tag, mem[0], mem[1], mem[2], mem[3]);
+	snprintk(line, sizeof(line),
+		 "app%u: 10s stress iters=%u err=%u MB=%u %s", tag, iters,
+		 errors, (uint32_t)(bytes / (1024 * 1024)),
+		 errors ? "FAILED" : "OK");
 	svc_log(line);
 
 	for (;;) {
@@ -114,7 +118,8 @@ int main(void)
 	app_platform_launch(&app_a);
 	app_platform_launch(&app_b);
 
-	k_msleep(6000);
+	/* Let both apps run the full 10 s stress plus reporting time. */
+	k_msleep(STRESS_MS + 3000);
 
 	printk("\n*** done: two isolated apps each used a private region ***\n");
 	return 0;
