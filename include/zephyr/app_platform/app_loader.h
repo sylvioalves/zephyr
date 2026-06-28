@@ -117,6 +117,30 @@ int app_loader_verify_load_manifest(const struct app_manifest *mf,
 				    const char *entry_sym, struct llext **ext,
 				    void **entry);
 
+/**
+ * @brief Report whether an extension was produced by a verifying loader.
+ *
+ * Only an extension that one of the @c app_loader_verify_* functions loaded and
+ * verified is recorded as verified. The platform launch path consults this so
+ * an extension that did not pass verification cannot be launched, even if a
+ * caller obtained a @ref llext by other means.
+ *
+ * @param ext Extension to query.
+ * @retval true if @p ext was verified by this loader.
+ * @retval false otherwise.
+ */
+bool app_loader_is_verified(const struct llext *ext);
+
+/**
+ * @brief Drop an extension from the verified set.
+ *
+ * Call when unloading a verified extension so its handle does not linger as
+ * verified for a future, unrelated allocation at the same address.
+ *
+ * @param ext Extension to forget.
+ */
+void app_loader_forget(const struct llext *ext);
+
 /** @} */
 
 #endif /* ZEPHYR_INCLUDE_APP_PLATFORM_LOADER_H_ */

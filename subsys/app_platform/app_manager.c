@@ -25,6 +25,9 @@
 #include <zephyr/fatal.h>
 #include <zephyr/task_wdt/task_wdt.h>
 #include <zephyr/llext/llext.h>
+#ifdef CONFIG_APP_PLATFORM_LOADER
+#include <zephyr/app_platform/app_loader.h>
+#endif
 #include <zephyr/sys/libc-hooks.h>
 #include <zephyr/logging/log.h>
 #include <errno.h>
@@ -382,6 +385,15 @@ int app_platform_launch(const struct app_def *def)
 int app_platform_launch_llext(const char *name, struct llext *ext,
 			      app_entry_t entry, uint32_t caps)
 {
+#ifdef CONFIG_APP_PLATFORM_LOADER
+	/* Refuse any extension that did not pass the verifying loader, so a
+	 * launch cannot bypass signature and integrity checks.
+	 */
+	if (!app_loader_is_verified(ext)) {
+		LOG_ERR("refusing to launch '%s': extension not verified", name);
+		return -EPERM;
+	}
+#endif
 	return launch(name, entry, caps, ext, false, false);
 }
 #endif

@@ -100,6 +100,64 @@ static int elf_bounds_ok(const uint8_t *buf, size_t len)
 	return 0;
 }
 
+/*
+ * Set of extensions this loader verified. The launch path checks membership so
+ * an unverified extension cannot be run even if a caller hands one in. Sized to
+ * the number of concurrent applications the platform supports.
+ */
+#define VERIFIED_MAX CONFIG_APP_PLATFORM_MAX_APPS
+static const struct llext *verified[VERIFIED_MAX];
+static K_MUTEX_DEFINE(verified_lock);
+
+static void verified_add(const struct llext *ext)
+{
+	bool placed = false;
+
+	k_mutex_lock(&verified_lock, K_FOREVER);
+	for (int i = 0; i < VERIFIED_MAX; i++) {
+		if (verified[i] == NULL) {
+			verified[i] = ext;
+			placed = true;
+			break;
+		}
+	}
+	k_mutex_unlock(&verified_lock);
+
+	if (!placed) {
+		LOG_WRN("verified set full; call app_loader_forget on unload");
+	}
+}
+
+bool app_loader_is_verified(const struct llext *ext)
+{
+	bool found = false;
+
+	if (ext == NULL) {
+		return false;
+	}
+	k_mutex_lock(&verified_lock, K_FOREVER);
+	for (int i = 0; i < VERIFIED_MAX; i++) {
+		if (verified[i] == ext) {
+			found = true;
+			break;
+		}
+	}
+	k_mutex_unlock(&verified_lock);
+	return found;
+}
+
+void app_loader_forget(const struct llext *ext)
+{
+	k_mutex_lock(&verified_lock, K_FOREVER);
+	for (int i = 0; i < VERIFIED_MAX; i++) {
+		if (verified[i] == ext) {
+			verified[i] = NULL;
+			break;
+		}
+	}
+	k_mutex_unlock(&verified_lock);
+}
+
 static int load_checked(const char *name, const uint8_t *buf, size_t len,
 			const char *entry_sym, struct llext **ext, void **entry)
 {
@@ -120,6 +178,9 @@ static int load_checked(const char *name, const uint8_t *buf, size_t len,
 		llext_unload(&loaded);
 		return -ENOENT;
 	}
+
+	/* Reached only after the caller's signature/hash check passed. */
+	verified_add(loaded);
 
 	*ext = loaded;
 	*entry = fn;
