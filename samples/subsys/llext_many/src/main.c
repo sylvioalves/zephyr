@@ -70,8 +70,8 @@ int main(void)
 	printk("*** launched %d / %d parallel loadable apps ***\n", launched,
 	       N_APPS);
 
-	k_msleep(6000);
+	k_msleep(8000);
 
-	printk("*** %d apps alive after 6 s ***\n", launched);
+	printk("*** %d apps alive after 8 s ***\n", launched);
 	return 0;
 }
