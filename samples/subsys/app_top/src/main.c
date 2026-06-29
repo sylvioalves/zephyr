@@ -5,15 +5,18 @@
  */
 
 /*
- * Launch a fleet of loadable applications, then leave a shell up so their live
- * status can be inspected. Each app is an isolated user-mode instance of the
- * same verified module looping with a one-second period. Run "appstat status"
- * on the console to see the installed and running apps with their stack, module
- * footprint, CPU share, and the system heap.
+ * Launch one built-in and one loadable application, then leave a shell up so
+ * both can be inspected and controlled live. The built-in app is compiled into
+ * the firmware; the loadable app is a verified module loaded at runtime. Both
+ * run as isolated user-mode threads looping with a one-second period. Run
+ * "app status" on the console to compare them (the built-in shows a zero module
+ * footprint, the loadable shows its loaded size) and "app stop/start/restart/
+ * remove <id>" to control them.
  */
 
 #include <zephyr/app_platform/app_platform.h>
 #include <zephyr/app_platform/app_loader.h>
+#include <zephyr/app_platform/app_services.h>
 #include <zephyr/app_platform/app_caps.h>
 #include <zephyr/kernel.h>
 #include <zephyr/sys/printk.h>
@@ -26,49 +29,56 @@ static const uint8_t app_hash[32] = {
 };
 
 #define APP_CAPS (APP_CAP_LOG | APP_CAP_TIME)
-#define N_APPS   10
+
+/* Built-in app: runs as a user-mode thread, reaching the system only through
+ * service syscalls, the same as a loadable app.
+ */
+static void builtin_hello(void *arg)
+{
+	ARG_UNUSED(arg);
+
+	for (;;) {
+		svc_log("builtin: hello from a compiled-in app");
+		k_msleep(1000);
+	}
+}
 
 int main(void)
 {
-	printk("\n*** app fleet + live status (run: appstat status) ***\n");
+	printk("\n*** built-in + loadable app demo (run: app status) ***\n");
 
 	if (app_platform_init() != 0) {
 		printk("platform init failed\n");
 		return 0;
 	}
 
-	/* Names must outlive the launch: the platform keeps the pointer. */
-	static char names[N_APPS][8];
-	int launched = 0;
+	/* 1. A built-in application, compiled into the firmware. */
+	const struct app_def builtin = {
+		.name = "builtin0",
+		.source = APP_BUILTIN,
+		.entry = builtin_hello,
+		.caps = APP_CAPS,
+		.monitored = false,
+	};
 
-	for (int i = 0; i < N_APPS; i++) {
-		char *name = names[i];
-
-		name[0] = 'a'; name[1] = 'p'; name[2] = 'p';
-		name[3] = '0' + (i / 10);
-		name[4] = '0' + (i % 10);
-		name[5] = '\0';
-
-		struct llext *ext = NULL;
-		void *entry = NULL;
-		int rc = app_loader_verify_load(name, app_bytes,
-						ARRAY_SIZE(app_bytes), app_hash,
-						"app_main", &ext, &entry);
-
-		if (rc != 0) {
-			printk("load #%d failed: %d\n", i, rc);
-			break;
-		}
-		rc = app_platform_launch_llext(name, ext, (app_entry_t)entry,
-					       APP_CAPS);
-		if (rc < 0) {
-			printk("launch #%d failed: %d\n", i, rc);
-			break;
-		}
-		launched++;
+	if (app_platform_launch(&builtin) < 0) {
+		printk("built-in launch failed\n");
 	}
 
-	printk("*** launched %d apps; shell ready, try: appstat status ***\n",
-	       launched);
+	/* 2. A loadable application, verified and loaded at runtime. */
+	struct llext *ext = NULL;
+	void *entry = NULL;
+	int rc = app_loader_verify_load("loadable0", app_bytes,
+					ARRAY_SIZE(app_bytes), app_hash,
+					"app_main", &ext, &entry);
+
+	if (rc == 0) {
+		app_platform_launch_llext("loadable0", ext, (app_entry_t)entry,
+					  APP_CAPS);
+	} else {
+		printk("loadable load failed: %d\n", rc);
+	}
+
+	printk("*** ready: built-in (id 0) + loadable (id 1); try app status ***\n");
 	return 0;
 }
