@@ -38,6 +38,45 @@ static K_SEM_DEFINE(found_sem, 0, 1);
 static char want_name[BLE_NAME_MAX];
 static bool bt_started;
 
+/*
+ * The BLE controller and host are brought up, and every scan and GATT client
+ * flow is driven, on this dedicated supervisor thread. A service syscall runs
+ * on the calling user-mode application thread, where bt_enable() and the HCI
+ * command path cannot complete; it only posts a request here and waits for the
+ * result. The ble_lock mutex serializes callers, so a single in-flight request
+ * with module-level result storage is enough.
+ */
+enum ble_op {
+	BLE_OP_SCAN,
+	BLE_OP_HR_READ,
+};
+
+struct ble_req {
+	enum ble_op op;
+	char        name[BLE_NAME_MAX];
+	uint32_t    timeout_ms;
+};
+
+K_MSGQ_DEFINE(ble_req_q, sizeof(struct ble_req), 1, 4);
+static K_SEM_DEFINE(ble_done, 0, 1);
+static int ble_result;
+static uint8_t ble_bpm;
+
+static int ble_ensure_enabled(void)
+{
+	int rc;
+
+	if (bt_started) {
+		return 0;
+	}
+	rc = bt_enable(NULL);
+	if (rc != 0 && rc != -EALREADY) {
+		return rc;
+	}
+	bt_started = true;
+	return 0;
+}
+
 struct name_match {
 	const char *want;
 	bool        matched;
@@ -74,22 +113,13 @@ static void scan_cb(const bt_addr_le_t *addr, int8_t rssi, uint8_t type,
 	}
 }
 
-int z_impl_svc_ble_scan(const char *name, uint32_t timeout_ms)
+/* Runs on the BLE worker thread. */
+static int ble_do_scan(const char *name, uint32_t timeout_ms)
 {
-	if (!app_has_cap(APP_CAP_BLE)) {
-		return -EPERM;
-	}
+	int rc = ble_ensure_enabled();
 
-	k_mutex_lock(&ble_lock, K_FOREVER);
-
-	int rc = 0;
-
-	if (!bt_started) {
-		rc = bt_enable(NULL);
-		if (rc != 0 && rc != -EALREADY) {
-			goto out;
-		}
-		bt_started = true;
+	if (rc != 0) {
+		return rc;
 	}
 
 	strncpy(want_name, name, sizeof(want_name) - 1);
@@ -105,12 +135,30 @@ int z_impl_svc_ble_scan(const char *name, uint32_t timeout_ms)
 
 	rc = bt_le_scan_start(&sp, scan_cb);
 	if (rc != 0) {
-		goto out;
+		return rc;
 	}
 
 	rc = (k_sem_take(&found_sem, K_MSEC(timeout_ms)) == 0) ? 1 : 0;
 	bt_le_scan_stop();
-out:
+	return rc;
+}
+
+int z_impl_svc_ble_scan(const char *name, uint32_t timeout_ms)
+{
+	if (!app_has_cap(APP_CAP_BLE)) {
+		return -EPERM;
+	}
+
+	struct ble_req req = { .op = BLE_OP_SCAN, .timeout_ms = timeout_ms };
+
+	strncpy(req.name, name, sizeof(req.name) - 1);
+	req.name[sizeof(req.name) - 1] = '\0';
+
+	k_mutex_lock(&ble_lock, K_FOREVER);
+	(void)k_msgq_put(&ble_req_q, &req, K_FOREVER);
+	(void)k_sem_take(&ble_done, K_FOREVER);
+	int rc = ble_result;
+
 	k_mutex_unlock(&ble_lock);
 	return rc;
 }
@@ -242,22 +290,13 @@ static void hr_scan_cb(const bt_addr_le_t *addr, int8_t rssi, uint8_t type,
 	}
 }
 
-int z_impl_svc_ble_hr_read(uint32_t timeout_ms, uint8_t *out_bpm)
+/* Runs on the BLE worker thread. On success stores the reading in ble_bpm. */
+static int ble_do_hr_read(uint32_t timeout_ms)
 {
-	if (!app_has_cap(APP_CAP_BLE)) {
-		return -EPERM;
-	}
+	int rc = ble_ensure_enabled();
 
-	k_mutex_lock(&ble_lock, K_FOREVER);
-
-	int rc = 0;
-
-	if (!bt_started) {
-		rc = bt_enable(NULL);
-		if (rc != 0 && rc != -EALREADY) {
-			goto out2;
-		}
-		bt_started = true;
+	if (rc != 0) {
+		return rc;
 	}
 
 	k_sem_reset(&hr_done);
@@ -265,11 +304,12 @@ int z_impl_svc_ble_hr_read(uint32_t timeout_ms, uint8_t *out_bpm)
 
 	rc = bt_le_scan_start(BT_LE_SCAN_ACTIVE, hr_scan_cb);
 	if (rc != 0) {
-		goto out2;
+		hr_connect_wanted = false;
+		return rc;
 	}
 
 	if (k_sem_take(&hr_done, K_MSEC(timeout_ms)) == 0) {
-		*out_bpm = hr_value;
+		ble_bpm = hr_value;
 		rc = 0;
 	} else {
 		rc = -ETIMEDOUT;
@@ -280,7 +320,47 @@ int z_impl_svc_ble_hr_read(uint32_t timeout_ms, uint8_t *out_bpm)
 	if (hr_conn) {
 		bt_conn_disconnect(hr_conn, BT_HCI_ERR_REMOTE_USER_TERM_CONN);
 	}
-out2:
+	return rc;
+}
+
+static void ble_thread(void *a, void *b, void *c)
+{
+	ARG_UNUSED(a); ARG_UNUSED(b); ARG_UNUSED(c);
+
+	for (;;) {
+		struct ble_req req;
+
+		if (k_msgq_get(&ble_req_q, &req, K_FOREVER) != 0) {
+			continue;
+		}
+
+		if (req.op == BLE_OP_SCAN) {
+			ble_result = ble_do_scan(req.name, req.timeout_ms);
+		} else {
+			ble_result = ble_do_hr_read(req.timeout_ms);
+		}
+		k_sem_give(&ble_done);
+	}
+}
+
+K_THREAD_DEFINE(app_ble_tid, 2048, ble_thread, NULL, NULL, NULL, 6, 0, 0);
+
+int z_impl_svc_ble_hr_read(uint32_t timeout_ms, uint8_t *out_bpm)
+{
+	if (!app_has_cap(APP_CAP_BLE)) {
+		return -EPERM;
+	}
+
+	struct ble_req req = { .op = BLE_OP_HR_READ, .timeout_ms = timeout_ms };
+
+	k_mutex_lock(&ble_lock, K_FOREVER);
+	(void)k_msgq_put(&ble_req_q, &req, K_FOREVER);
+	(void)k_sem_take(&ble_done, K_FOREVER);
+	int rc = ble_result;
+
+	if (rc == 0) {
+		*out_bpm = ble_bpm;
+	}
 	k_mutex_unlock(&ble_lock);
 	return rc;
 }
