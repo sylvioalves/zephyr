@@ -62,6 +62,17 @@ config APP_PLATFORM_LOADER
 	  PSA crypto provider (for example CONFIG_PSA_CRYPTO and
 	  CONFIG_PSA_WANT_ALG_SHA_256) for the SHA-256 implementation.
 
+config APP_PLATFORM_LOADER_MAX_MODULE_BYTES
+	int "Per-application loadable-extension memory budget (bytes)"
+	depends on APP_PLATFORM_LOADER
+	default 65536
+	help
+	  Maximum total loadable-extension memory a single application may
+	  allocate when loaded. A verified module whose footprint exceeds this
+	  is unloaded and rejected, so one (even authentic) module cannot
+	  exhaust the shared loadable-extension heap and starve the platform or
+	  the other applications. 0 disables the check.
+
 config APP_PLATFORM_RECLAIM_HOOKS
 	int "Number of reclaim-hook slots"
 	default 2

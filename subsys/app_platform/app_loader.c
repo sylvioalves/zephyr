@@ -168,6 +168,40 @@ void app_loader_forget(const struct llext *ext)
 	k_mutex_unlock(&verified_lock);
 }
 
+/*
+ * Resolve the entry symbol and enforce the per-application memory budget on a
+ * freshly loaded extension. A module whose footprint exceeds the budget is
+ * unloaded and rejected, so one module cannot exhaust the shared loadable-
+ * extension heap. On success the extension is recorded as verified.
+ */
+static int finish_load(const char *name, struct llext *loaded,
+		       const char *entry_sym, struct llext **ext, void **entry)
+{
+	void *fn = llext_find_sym(&loaded->exp_tab, entry_sym);
+
+	if (fn == NULL) {
+		LOG_ERR("no '%s' entry in '%s'", entry_sym, name);
+		llext_unload(&loaded);
+		return -ENOENT;
+	}
+
+	size_t budget = CONFIG_APP_PLATFORM_LOADER_MAX_MODULE_BYTES;
+
+	if (budget != 0 && loaded->alloc_size > budget) {
+		LOG_WRN("'%s' rejected: %zu bytes over %zu-byte budget",
+			name, loaded->alloc_size, budget);
+		llext_unload(&loaded);
+		return -EFBIG;
+	}
+
+	/* Reached only after the caller's signature/hash check passed. */
+	verified_add(loaded);
+
+	*ext = loaded;
+	*entry = fn;
+	return 0;
+}
+
 static int load_checked(const char *name, const uint8_t *buf, size_t len,
 			const char *entry_sym, struct llext **ext, void **entry)
 {
@@ -181,20 +215,7 @@ static int load_checked(const char *name, const uint8_t *buf, size_t len,
 		return rc;
 	}
 
-	void *fn = llext_find_sym(&loaded->exp_tab, entry_sym);
-
-	if (fn == NULL) {
-		LOG_ERR("no '%s' entry in '%s'", entry_sym, name);
-		llext_unload(&loaded);
-		return -ENOENT;
-	}
-
-	/* Reached only after the caller's signature/hash check passed. */
-	verified_add(loaded);
-
-	*ext = loaded;
-	*entry = fn;
-	return 0;
+	return finish_load(name, loaded, entry_sym, ext, entry);
 }
 
 int app_loader_verify_load(const char *name, const uint8_t *buf, size_t len,
@@ -391,19 +412,7 @@ static int fs_load_checked(const char *name, const char *path,
 		return rc;
 	}
 
-	void *fn = llext_find_sym(&loaded->exp_tab, entry_sym);
-
-	if (fn == NULL) {
-		LOG_ERR("no '%s' entry in '%s'", entry_sym, name);
-		llext_unload(&loaded);
-		return -ENOENT;
-	}
-
-	verified_add(loaded);
-
-	*ext = loaded;
-	*entry = fn;
-	return 0;
+	return finish_load(name, loaded, entry_sym, ext, entry);
 }
 
 int app_loader_verify_load_manifest_file(const struct app_manifest *mf,
