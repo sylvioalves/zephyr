@@ -95,15 +95,49 @@ int app_platform_launch_llext(const char *name, struct llext *ext,
 void app_platform_heartbeat(void);
 
 /**
- * @brief Stop a running application group and free its slot.
+ * @brief Stop a running application group, keeping it loaded.
  *
- * Aborts the group's thread and releases its watchdog and slot, the same way a
- * faulting group is reclaimed - but on request, e.g. to update or remove it.
+ * Aborts the group's thread and releases its watchdog and per-app service
+ * resources, but keeps the slot and the loaded module so the group can be
+ * started again with @ref app_platform_start. Use @ref app_platform_remove to
+ * fully reclaim it.
  *
  * @param id Group id returned by a launch call.
- * @retval 0 on success, -EINVAL if @p id is not an active group.
+ * @retval 0 on success, -EINVAL if @p id is not a running group.
  */
 int app_platform_stop(int id);
+
+/**
+ * @brief Start a previously stopped application group.
+ *
+ * Re-creates the group's user-mode thread in its existing memory domain from
+ * the loaded module. Only valid on a group that is loaded but not running.
+ *
+ * @param id Group id.
+ * @retval 0 on success (returns the id), -EALREADY if already running,
+ *         -EINVAL if not a loaded group, -ENOTSUP if it cannot be restarted.
+ */
+int app_platform_start(int id);
+
+/**
+ * @brief Restart an application group (stop then start).
+ *
+ * @param id Group id.
+ * @retval id on success, negative errno on failure.
+ */
+int app_platform_restart(int id);
+
+/**
+ * @brief Remove an application group and free everything.
+ *
+ * Stops the group if running, unloads its module, and frees the slot. Unlike
+ * @ref app_platform_stop this releases the module memory, so the group cannot
+ * be started again without loading it anew.
+ *
+ * @param id Group id.
+ * @retval 0 on success, -EINVAL if @p id is not a loaded group.
+ */
+int app_platform_remove(int id);
 
 /**
  * @brief Mark a built-in application group to be restarted after a fault.
@@ -161,6 +195,7 @@ struct app_platform_status {
 	bool        faulted;       /**< last reclaim was due to a crash or hang */
 	size_t      stack_size;    /**< usable stack bytes */
 	size_t      stack_used;    /**< stack high-water mark in bytes */
+	size_t      module_bytes;  /**< loadable-extension footprint (0 if built-in) */
 	uint64_t    cpu_cycles;    /**< non-idle cycles attributed to this app */
 	uint64_t    cpu_total;     /**< non-idle cycles across the whole system */
 };

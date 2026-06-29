@@ -42,7 +42,8 @@ LOG_MODULE_REGISTER(app_platform, CONFIG_APP_PLATFORM_LOG_LEVEL);
 /* A running app: an isolated user-mode group with its own memory domain. */
 struct running_app {
 	const char         *name;
-	bool                active;
+	bool                active;    /* slot occupied (running or stopped) */
+	bool                running;   /* thread is alive */
 	bool                restart;   /* relaunch (built-in) after a fault */
 	bool                monitored; /* opt-in liveness watchdog for hangs */
 	struct k_thread     thread;
@@ -51,10 +52,16 @@ struct running_app {
 	bool                faulted;   /* reclaimed due to a crash or hang */
 	app_entry_t         entry;
 	uint32_t            caps;
+	size_t              module_bytes; /* loadable-extension footprint, 0 if built-in */
+#ifdef CONFIG_LLEXT
+	struct llext       *ext;       /* retained so a stopped app can restart */
+#endif
 };
 
 static struct running_app apps[MAX_APPS];
 static K_THREAD_STACK_ARRAY_DEFINE(app_stacks, MAX_APPS, APP_STACK);
+
+static void trampoline(void *entry, void *u1, void *u2);
 
 /* Reclaim requests from the wdt callback / fatal handler -> supervisor thread. */
 static struct k_msgq reclaim_q;
@@ -65,7 +72,7 @@ static K_THREAD_STACK_DEFINE(sup_stack, CONFIG_APP_PLATFORM_SUPERVISOR_STACK_SIZ
 static struct running_app *app_of_thread(k_tid_t t)
 {
 	for (int i = 0; i < MAX_APPS; i++) {
-		if (apps[i].active && &apps[i].thread == t) {
+		if (apps[i].running && &apps[i].thread == t) {
 			return &apps[i];
 		}
 	}
@@ -127,10 +134,16 @@ int app_platform_status(int id, struct app_platform_status *out)
 
 	*out = (struct app_platform_status){
 		.name = a->name,
-		.active = a->active,
+		.active = a->running,
 		.monitored = a->monitored,
 		.faulted = a->faulted,
+		.module_bytes = a->module_bytes,
 	};
+
+	/* Thread-level stats are only meaningful while the app is running. */
+	if (!a->running) {
+		return 0;
+	}
 
 #if defined(CONFIG_INIT_STACKS) && defined(CONFIG_THREAD_STACK_INFO)
 	{
@@ -226,10 +239,15 @@ static void death_watch(void *p_app, void *p_id, void *u)
 	(void)k_msgq_put(&reclaim_q, &id, K_NO_WAIT);
 }
 
-static void reclaim(struct running_app *a)
+/*
+ * Stop a running app's thread and release its per-app service resources, but
+ * keep the slot and its loaded module so it can be started again. With @p full
+ * the slot is also freed and the module unloaded (a complete reclaim).
+ */
+static void reclaim_ex(struct running_app *a, bool full)
 {
-	if (!a->active) {
-		return;
+	if (!a->running) {
+		goto release_slot;
 	}
 	if (a->wdt_chan >= 0) {
 		(void)task_wdt_delete(a->wdt_chan);
@@ -247,18 +265,101 @@ static void reclaim(struct running_app *a)
 	/* Aborting the app makes its death-watcher's join return; reap it too. */
 	k_thread_abort(&a->thread);
 	k_thread_abort(&watchers[a - apps]);
-	a->active = false;
-	LOG_INF("app '%s' reclaimed; system + other apps alive", a->name);
+	a->running = false;
+	LOG_INF("app '%s' stopped; system + other apps alive", a->name);
+
+release_slot:
+	if (full) {
+#ifdef CONFIG_LLEXT
+		if (a->ext != NULL) {
+			app_loader_forget(a->ext);
+			llext_unload(&a->ext);
+			a->ext = NULL;
+		}
+#endif
+		a->active = false;
+		a->module_bytes = 0;
+		LOG_INF("app '%s' removed; resources freed", a->name);
+	}
+}
+
+static void reclaim(struct running_app *a)
+{
+	/* Crash/hang path: fully reclaim a faulted app. */
+	reclaim_ex(a, true);
 }
 
 int app_platform_stop(int id)
 {
+	if (id < 0 || id >= MAX_APPS || !apps[id].active || !apps[id].running) {
+		return -EINVAL;
+	}
+	reclaim_ex(&apps[id], false);
+	return 0;
+}
+
+#ifdef CONFIG_LLEXT
+/* Re-create the user-mode thread of a stopped app in its existing domain. */
+static int restart_thread(struct running_app *a)
+{
+	int id = a - apps;
+
+	k_tid_t t = k_thread_create(&a->thread, app_stacks[id], APP_STACK,
+				    trampoline, (void *)a->entry, NULL, NULL,
+				    APP_PRIO, K_USER | K_INHERIT_PERMS, K_FOREVER);
+
+	k_thread_name_set(t, a->name);
+	k_mem_domain_add_thread(&a->domain, t);
+	a->faulted = false;
+	a->running = true;
+
+	if (a->monitored) {
+		a->wdt_chan = task_wdt_add(WDT_TIMEOUT, wdt_cb, a);
+	}
+	k_thread_create(&watchers[id], watch_stacks[id],
+			K_THREAD_STACK_SIZEOF(watch_stacks[id]), death_watch,
+			a, (void *)(uintptr_t)id, NULL,
+			CONFIG_APP_PLATFORM_SUPERVISOR_PRIORITY, 0, K_NO_WAIT);
+	k_thread_start(t);
+	LOG_INF("app '%s' started (group %d)", a->name, id);
+	return id;
+}
+
+int app_platform_start(int id)
+{
 	if (id < 0 || id >= MAX_APPS || !apps[id].active) {
 		return -EINVAL;
 	}
-	reclaim(&apps[id]);
+	if (apps[id].running) {
+		return -EALREADY;
+	}
+	if (apps[id].entry == NULL) {
+		return -ENOTSUP;
+	}
+	return restart_thread(&apps[id]);
+}
+
+int app_platform_restart(int id)
+{
+	if (id < 0 || id >= MAX_APPS || !apps[id].active) {
+		return -EINVAL;
+	}
+	if (apps[id].running) {
+		reclaim_ex(&apps[id], false);
+	}
+	return app_platform_start(id);
+}
+#endif /* CONFIG_LLEXT */
+
+int app_platform_remove(int id)
+{
+	if (id < 0 || id >= MAX_APPS || !apps[id].active) {
+		return -EINVAL;
+	}
+	reclaim_ex(&apps[id], true);
 	return 0;
 }
+
 
 static int launch(const char *name, app_entry_t entry, uint32_t caps,
 		  struct llext *ext, bool restart, bool monitored);
@@ -276,7 +377,7 @@ static void supervisor(void *p1, void *p2, void *p3)
 
 		struct running_app *a = &apps[id];
 
-		if (!a->active) {
+		if (!a->running) {
 			continue;   /* already reclaimed (e.g. double signal) */
 		}
 
@@ -336,6 +437,10 @@ static int launch(const char *name, app_entry_t entry, uint32_t caps,
 		a->monitored = monitored;
 		a->faulted = false;
 		a->wdt_chan = -1;
+		a->module_bytes = 0;
+#ifdef CONFIG_LLEXT
+		a->ext = ext;
+#endif
 		k_mem_domain_init(&a->domain, 0, NULL);
 
 		if (IS_ENABLED(CONFIG_LLEXT) && ext != NULL) {
@@ -343,6 +448,7 @@ static int launch(const char *name, app_entry_t entry, uint32_t caps,
 			k_mem_domain_add_partition(&a->domain, &z_libc_partition);
 #endif
 #ifdef CONFIG_LLEXT
+			a->module_bytes = ext->alloc_size;
 			if (llext_add_domain(ext, &a->domain) != 0) {
 				LOG_ERR("could not map '%s' into its domain", name);
 				return -ENOSPC;
@@ -357,6 +463,7 @@ static int launch(const char *name, app_entry_t entry, uint32_t caps,
 		k_thread_name_set(t, name);
 		k_mem_domain_add_thread(&a->domain, t);
 		a->active = true;
+		a->running = true;
 
 		/* Opt-in hang detection: only a monitored app gets a watchdog. */
 		if (monitored) {
