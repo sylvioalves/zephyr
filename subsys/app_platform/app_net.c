@@ -75,6 +75,7 @@ static struct net_mgmt_event_callback ipv4_cb;
 static struct sockaddr_storage broker_addr;
 static bool link_started;
 static bool link_ready;
+static bool link_failed;
 static bool broker_resolved;
 
 static void ipv4_evt(struct net_mgmt_event_callback *cb, uint64_t ev,
@@ -112,7 +113,7 @@ static int wifi_up(void)
 	p.psk = CONFIG_APP_PLATFORM_NET_WIFI_PSK;
 	p.psk_length = strlen(CONFIG_APP_PLATFORM_NET_WIFI_PSK);
 	p.security = WIFI_SECURITY_TYPE_PSK;
-	p.band = WIFI_FREQ_BAND_2_4_GHZ;
+	p.band = WIFI_FREQ_BAND_UNKNOWN;
 	p.channel = WIFI_CHANNEL_ANY;
 	p.mfp = WIFI_MFP_OPTIONAL;
 
@@ -218,12 +219,58 @@ static int session_connect(struct session *s)
 	return 0;
 }
 
+/*
+ * Bring the shared Wi-Fi link up. This runs only on the supervisor net thread,
+ * never on an application thread: the Wi-Fi connect path must execute from a
+ * plain kernel thread (as the stand-alone Wi-Fi samples do), not from inside a
+ * service syscall invoked by a user-mode app, or the connect never completes.
+ */
+static void bring_link_up(void)
+{
+	struct net_if *iface = net_if_get_first_wifi();
+
+	for (int i = 0; i < 50 &&
+	     (iface == NULL || !net_if_is_admin_up(iface)); i++) {
+		k_msleep(100);
+		iface = net_if_get_first_wifi();
+	}
+	k_msleep(1000);
+
+	bool got_ip = false;
+
+	for (int attempt = 0; attempt < 5 && !got_ip; attempt++) {
+		if (wifi_up() == 0 &&
+		    k_sem_take(&net_ready_sem, K_SECONDS(20)) == 0) {
+			got_ip = true;
+		} else {
+			printk("net: Wi-Fi attempt %d got no IP, retrying\n",
+			       attempt + 1);
+		}
+	}
+	if (!got_ip) {
+		printk("net: Wi-Fi/IP not ready after retries\n");
+		link_failed = true;
+		return;
+	}
+	for (int i = 0; i < 5 && resolve_broker() != 0; i++) {
+		k_sleep(K_SECONDS(1));
+	}
+	link_ready = broker_resolved;
+	if (!link_ready) {
+		link_failed = true;
+	}
+}
+
 static void net_thread(void *a, void *b, void *c)
 {
 	ARG_UNUSED(a); ARG_UNUSED(b); ARG_UNUSED(c);
 
 	for (;;) {
 		struct pub_req req;
+
+		if (link_started && !link_ready && !link_failed) {
+			bring_link_up();
+		}
 
 		if (k_msgq_get(&net_pub_q, &req, K_MSEC(500)) == 0 &&
 		    req.id >= 0 && req.id < MAX_SESSIONS &&
@@ -277,41 +324,15 @@ int z_impl_svc_net_ready(void)
 		return -EPERM;
 	}
 
+	/* Ask the supervisor net thread to bring the shared link up, then wait
+	 * for the result. The connect itself must not run on this app thread.
+	 */
 	k_mutex_lock(&net_lock, K_FOREVER);
-	bool start = !link_started;
-
 	link_started = true;
 	k_mutex_unlock(&net_lock);
 
-	if (start) {
-		/* Bring the link up, retrying the connection a few times: a
-		 * single attempt often fails to associate or get DHCP.
-		 */
-		bool got_ip = false;
-
-		for (int attempt = 0; attempt < 5 && !got_ip; attempt++) {
-			if (wifi_up() == 0 &&
-			    k_sem_take(&net_ready_sem, K_SECONDS(20)) == 0) {
-				got_ip = true;
-			} else {
-				printk("net: Wi-Fi attempt %d got no IP, retrying\n",
-				       attempt + 1);
-			}
-		}
-		if (!got_ip) {
-			printk("net: Wi-Fi/IP not ready after retries\n");
-			link_started = false; /* let a later caller try again */
-			return -EIO;
-		}
-		for (int i = 0; i < 5 && resolve_broker() != 0; i++) {
-			k_sleep(K_SECONDS(1));
-		}
-		link_ready = broker_resolved;
-	} else {
-		/* Another application is bringing the link up; wait for it. */
-		for (int i = 0; i < 350 && !link_ready; i++) {
-			k_sleep(K_MSEC(100));
-		}
+	for (int i = 0; i < 700 && !link_ready && !link_failed; i++) {
+		k_sleep(K_MSEC(100));
 	}
 	return link_ready ? 0 : -EIO;
 }
