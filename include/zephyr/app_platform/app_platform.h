@@ -187,6 +187,17 @@ typedef void (*app_reclaim_hook_t)(int id);
  */
 int app_platform_on_reclaim(app_reclaim_hook_t hook);
 
+/**
+ * @brief Enable or mute per-application log output (svc_log).
+ *
+ * Muting lets a console operator silence the application stream while typing,
+ * without stopping the applications.
+ */
+void app_platform_log_enable(bool en);
+
+/** @brief Whether per-application log output is currently enabled. */
+bool app_platform_log_is_enabled(void);
+
 /** A snapshot of one application group's identity and resource use. */
 struct app_platform_status {
 	const char *name;          /**< application name (NULL if the slot is free) */

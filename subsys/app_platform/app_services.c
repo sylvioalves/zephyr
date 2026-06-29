@@ -16,8 +16,24 @@
 
 #include <zephyr/kernel.h>
 #include <zephyr/sys/printk.h>
+#include <zephyr/logging/log.h>
 #include <zephyr/internal/syscall_handler.h>
 #include <zephyr/random/random.h>
+
+LOG_MODULE_REGISTER(app_log, CONFIG_APP_PLATFORM_LOG_LEVEL);
+
+/* Per-app log output can be muted at runtime so it does not crowd the shell. */
+static bool app_log_enabled = true;
+
+void app_platform_log_enable(bool en)
+{
+	app_log_enabled = en;
+}
+
+bool app_platform_log_is_enabled(void)
+{
+	return app_log_enabled;
+}
 #ifdef CONFIG_PSA_CRYPTO
 #include <psa/crypto.h>
 #endif
@@ -111,7 +127,13 @@ static inline bool app_has_cap(uint32_t mask)
 
 void z_impl_svc_log(const char *msg)
 {
-	printk("    [app %d] %s\n", app_platform_id_current(), msg);
+	if (!app_log_enabled) {
+		return;
+	}
+	/* Route through the logging subsystem so output cooperates with the
+	 * shell (rendered above the prompt) instead of racing it on the console.
+	 */
+	LOG_INF("[app %d] %s", app_platform_id_current(), msg);
 }
 
 void z_impl_svc_heartbeat(void)
