@@ -268,11 +268,26 @@ int main(void)
 		return 0;
 	}
 
-	wifi_connect();
-	if (k_sem_take(&got_ip, K_SECONDS(30)) != 0) {
-		printk("no IP address; check Wi-Fi credentials\n");
-		return 0;
+	/* Let the Wi-Fi interface finish coming up before requesting a
+	 * connection, then retry a few times.
+	 */
+	struct net_if *iface = net_if_get_first_wifi();
+
+	for (int i = 0; i < 50 && (iface == NULL || !net_if_is_admin_up(iface)); i++) {
+		k_msleep(100);
+		iface = net_if_get_first_wifi();
 	}
-	printk("online. fetch an app with: app fetch <name> <server-ip>\n");
+	k_msleep(1000);
+
+	for (int attempt = 0; attempt < 3; attempt++) {
+		wifi_connect();
+		if (k_sem_take(&got_ip, K_SECONDS(20)) == 0) {
+			printk("online. fetch an app with: app fetch <name> "
+			       "<server-ip>\n");
+			return 0;
+		}
+		printk("Wi-Fi attempt %d got no IP; retrying...\n", attempt + 1);
+	}
+	printk("no IP address; check Wi-Fi credentials/band (2.4GHz)\n");
 	return 0;
 }
