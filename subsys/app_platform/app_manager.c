@@ -79,18 +79,29 @@ static struct running_app *app_of_thread(k_tid_t t)
 	return NULL;
 }
 
-uint32_t app_platform_caps_current(void)
-{
-	struct running_app *a = app_of_thread(k_current_get());
-
-	return a ? a->caps : 0U;
-}
-
+/*
+ * The id of the application the current thread belongs to. A thread parked in a
+ * blocking service call can resume with a transient current-thread view, so the
+ * id is cached in the app thread's custom data at launch and read from there;
+ * the pointer search is the fallback.
+ */
 int app_platform_id_current(void)
 {
+	uintptr_t cd = (uintptr_t)k_thread_custom_data_get();
+
+	if (cd != 0) {
+		return (int)(cd - 1);
+	}
 	struct running_app *a = app_of_thread(k_current_get());
 
 	return a ? (int)(a - apps) : -1;
+}
+
+uint32_t app_platform_caps_current(void)
+{
+	int id = app_platform_id_current();
+
+	return (id >= 0 && id < MAX_APPS) ? apps[id].caps : 0U;
 }
 
 struct k_mem_domain *app_platform_domain(int id)
@@ -322,7 +333,8 @@ static int restart_thread(struct running_app *a)
 	int id = a - apps;
 
 	k_tid_t t = k_thread_create(&a->thread, app_stacks[id], APP_STACK,
-				    trampoline, (void *)a->entry, NULL, NULL,
+				    trampoline, (void *)a->entry,
+				    (void *)(uintptr_t)(id + 1), NULL,
 				    APP_PRIO, K_USER | K_INHERIT_PERMS, K_FOREVER);
 
 	k_thread_name_set(t, a->name);
@@ -416,9 +428,14 @@ static void supervisor(void *p1, void *p2, void *p3)
 	}
 }
 
-static void trampoline(void *entry, void *u1, void *u2)
+static void trampoline(void *entry, void *id_plus_1, void *u2)
 {
-	ARG_UNUSED(u1); ARG_UNUSED(u2);
+	ARG_UNUSED(u2);
+	/* Cache this app's id (offset by one so zero means "not an app") in the
+	 * thread's custom data, so app_platform_id_current is reliable even when
+	 * the current-thread view is transiently off after a blocking call.
+	 */
+	k_thread_custom_data_set(id_plus_1);
 	((app_entry_t)entry)(NULL);
 	/* The app returned. Exit through the kernel so a user-mode thread does
 	 * not fall off its entry into an undefined return address; the death-
@@ -480,7 +497,8 @@ static int launch(const char *name, app_entry_t entry, uint32_t caps,
 		}
 
 		k_tid_t t = k_thread_create(&a->thread, app_stacks[i], APP_STACK,
-					    trampoline, (void *)entry, NULL, NULL,
+					    trampoline, (void *)entry,
+					    (void *)(uintptr_t)(i + 1), NULL,
 					    APP_PRIO, K_USER | K_INHERIT_PERMS,
 					    K_FOREVER);
 		k_thread_name_set(t, name);

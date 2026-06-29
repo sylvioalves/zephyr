@@ -24,6 +24,7 @@
 #include <zephyr/net/wifi_mgmt.h>
 #include <zephyr/net/net_mgmt.h>
 #include <zephyr/net/socket.h>
+#include <zephyr/posix/fcntl.h>
 #include <zephyr/net/mqtt.h>
 #include <string.h>
 #include <errno.h>
@@ -94,8 +95,15 @@ static int wifi_up(void)
 	if (!iface) {
 		return -ENODEV;
 	}
-	net_mgmt_init_event_callback(&ipv4_cb, ipv4_evt, NET_EVENT_IPV4_ADDR_ADD);
-	net_mgmt_add_event_callback(&ipv4_cb);
+
+	static bool cb_added;
+
+	if (!cb_added) {
+		net_mgmt_init_event_callback(&ipv4_cb, ipv4_evt,
+					     NET_EVENT_IPV4_ADDR_ADD);
+		net_mgmt_add_event_callback(&ipv4_cb);
+		cb_added = true;
+	}
 
 	static struct wifi_connect_req_params p;
 
@@ -143,13 +151,12 @@ static void mqtt_evt(struct mqtt_client *c, const struct mqtt_evt *e)
 	} else if (e->type == MQTT_EVT_DISCONNECT) {
 		s->connected = false;
 	} else if (e->type == MQTT_EVT_PUBLISH) {
-		/* A message arrived on this session's subscribed topic: read its
-		 * payload and queue it for the application to receive.
+		/* A message arrived on this session's subscribed topic: read the
+		 * payload (bounded by the inbox message) and queue it for the app.
 		 */
 		const struct mqtt_publish_param *p = &e->param.publish;
 		struct inbox_msg m = { 0 };
-		size_t cap = MIN(p->message.payload.len, sizeof(m.data) - 1);
-		int rc = mqtt_read_publish_payload(c, m.data, cap);
+		int rc = mqtt_read_publish_payload(c, m.data, sizeof(m.data) - 1);
 
 		if (rc >= 0) {
 			m.data[rc] = '\0';
@@ -181,6 +188,14 @@ static int session_connect(struct session *s)
 	if (mqtt_connect(&s->client) != 0) {
 		return -EIO;
 	}
+
+	/* Non-blocking socket: reading a publish payload in the event callback
+	 * must not block the shared network thread.
+	 */
+	int flags = zsock_fcntl(s->client.transport.tcp.sock, F_GETFL, 0);
+
+	(void)zsock_fcntl(s->client.transport.tcp.sock, F_SETFL,
+			  flags | O_NONBLOCK);
 
 	struct zsock_pollfd fd = { .fd = s->client.transport.tcp.sock,
 				   .events = ZSOCK_POLLIN };
@@ -238,13 +253,17 @@ static void net_thread(void *a, void *b, void *c)
 					.fd = s->client.transport.tcp.sock,
 					.events = ZSOCK_POLLIN };
 
-				zsock_poll(&fd, 1, 0);
+				if (zsock_poll(&fd, 1, 0) > 0) {
+					k_mutex_lock(&net_lock, K_FOREVER);
+					mqtt_input(&s->client);
+					k_mutex_unlock(&net_lock);
+				}
 				k_mutex_lock(&net_lock, K_FOREVER);
-				mqtt_input(&s->client);
 				mqtt_live(&s->client);
 				k_mutex_unlock(&net_lock);
 			}
 		}
+		k_msleep(20);
 	}
 }
 
@@ -265,9 +284,23 @@ int z_impl_svc_net_ready(void)
 	k_mutex_unlock(&net_lock);
 
 	if (start) {
-		if (wifi_up() != 0 ||
-		    k_sem_take(&net_ready_sem, K_SECONDS(30)) != 0) {
-			printk("net: Wi-Fi/IP not ready\n");
+		/* Bring the link up, retrying the connection a few times: a
+		 * single attempt often fails to associate or get DHCP.
+		 */
+		bool got_ip = false;
+
+		for (int attempt = 0; attempt < 5 && !got_ip; attempt++) {
+			if (wifi_up() == 0 &&
+			    k_sem_take(&net_ready_sem, K_SECONDS(20)) == 0) {
+				got_ip = true;
+			} else {
+				printk("net: Wi-Fi attempt %d got no IP, retrying\n",
+				       attempt + 1);
+			}
+		}
+		if (!got_ip) {
+			printk("net: Wi-Fi/IP not ready after retries\n");
+			link_started = false; /* let a later caller try again */
 			return -EIO;
 		}
 		for (int i = 0; i < 5 && resolve_broker() != 0; i++) {
