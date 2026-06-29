@@ -69,14 +69,18 @@ static void wifi_connect(void)
 	p.band = WIFI_FREQ_BAND_2_4_GHZ;
 	p.mfp = WIFI_MFP_OPTIONAL;
 
-	net_mgmt_init_event_callback(&ipv4_cb, ipv4_evt, NET_EVENT_IPV4_ADDR_ADD);
-	net_mgmt_add_event_callback(&ipv4_cb);
-
 	printk("connecting to Wi-Fi '%s'...\n", CONFIG_APP_FETCH_WIFI_SSID);
 	if (net_mgmt(NET_REQUEST_WIFI_CONNECT, iface, &p, sizeof(p))) {
 		printk("Wi-Fi connect request failed\n");
 		return;
 	}
+
+	/* Turn off power save so the station stays awake for the transfer;
+	 * with it on, some access points drop the link between beacons.
+	 */
+	struct wifi_ps_params ps = { .enabled = WIFI_PS_DISABLED };
+
+	(void)net_mgmt(NET_REQUEST_WIFI_PS, iface, &ps, sizeof(ps));
 }
 
 /* A small file written incrementally as HTTP body chunks arrive. */
@@ -118,15 +122,29 @@ static int http_get_to_file(const char *host, const char *remote,
 		return -EINVAL;
 	}
 
-	int sock = zsock_socket(AF_INET, SOCK_STREAM, IPPROTO_TCP);
+	int sock = -1;
+	int crc = -1;
 
-	if (sock < 0) {
-		return -errno;
-	}
-	if (zsock_connect(sock, (struct sockaddr *)&addr, sizeof(addr)) < 0) {
+	for (int attempt = 0; attempt < 5; attempt++) {
+		sock = zsock_socket(AF_INET, SOCK_STREAM, IPPROTO_TCP);
+		if (sock < 0) {
+			printk("  socket() failed: %d\n", errno);
+			return -errno;
+		}
+		crc = zsock_connect(sock, (struct sockaddr *)&addr, sizeof(addr));
+		if (crc == 0) {
+			break;
+		}
+		printk("  connect attempt %d to %s:%d failed: %d\n", attempt + 1,
+		       host, SERVER_PORT, errno);
 		zsock_close(sock);
-		return -errno;
+		sock = -1;
+		k_msleep(500);
 	}
+	if (crc != 0) {
+		return -ETIMEDOUT;
+	}
+	printk("  connected to %s:%d\n", host, SERVER_PORT);
 
 	struct dl d = {0};
 
@@ -149,6 +167,7 @@ static int http_get_to_file(const char *host, const char *remote,
 
 	int rc = http_client_req(sock, &req, 10000, &d);
 
+	printk("  http_client_req rc=%d, body_err=%d\n", rc, d.err);
 	fs_close(&d.f);
 	zsock_close(sock);
 
@@ -271,6 +290,9 @@ int main(void)
 	/* Let the Wi-Fi interface finish coming up before requesting a
 	 * connection, then retry a few times.
 	 */
+	net_mgmt_init_event_callback(&ipv4_cb, ipv4_evt, NET_EVENT_IPV4_ADDR_ADD);
+	net_mgmt_add_event_callback(&ipv4_cb);
+
 	struct net_if *iface = net_if_get_first_wifi();
 
 	for (int i = 0; i < 50 && (iface == NULL || !net_if_is_admin_up(iface)); i++) {
