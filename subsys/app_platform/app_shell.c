@@ -16,6 +16,7 @@
 #include <zephyr/sys/sys_heap.h>
 #include <zephyr/kernel.h>
 #include <stdlib.h>
+#include <string.h>
 
 #ifdef CONFIG_APP_PLATFORM_REGISTRY
 #include <zephyr/app_platform/app_registry.h>
@@ -180,6 +181,20 @@ static int cmd_remove(const struct shell *sh, size_t argc, char **argv)
 	return rc;
 }
 
+static int cmd_log(const struct shell *sh, size_t argc, char **argv)
+{
+	if (strcmp(argv[1], "on") == 0) {
+		app_platform_log_enable(true);
+	} else if (strcmp(argv[1], "off") == 0) {
+		app_platform_log_enable(false);
+	} else {
+		shell_error(sh, "usage: app log <on|off>");
+		return -EINVAL;
+	}
+	shell_print(sh, "app log %s", app_platform_log_is_enabled() ? "on" : "off");
+	return 0;
+}
+
 SHELL_STATIC_SUBCMD_SET_CREATE(app_cmds,
 	SHELL_CMD(status, NULL, "installed + running apps, stacks, cpu, heap",
 		  cmd_status),
@@ -191,6 +206,8 @@ SHELL_STATIC_SUBCMD_SET_CREATE(app_cmds,
 		      cmd_restart, 2, 0),
 	SHELL_CMD_ARG(remove, NULL, "remove <id>: stop and unload an app",
 		      cmd_remove, 2, 0),
+	SHELL_CMD_ARG(log, NULL, "log <on|off>: show or mute app log output",
+		      cmd_log, 2, 0),
 	SHELL_SUBCMD_SET_END);
 SHELL_CMD_REGISTER(app, &app_cmds, "App platform control and introspection",
 		   NULL);
