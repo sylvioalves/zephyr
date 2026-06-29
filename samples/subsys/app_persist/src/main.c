@@ -27,6 +27,7 @@
 #include <zephyr/app_platform/app_caps.h>
 #include <zephyr/kernel.h>
 #include <zephyr/sys/printk.h>
+#include <zephyr/fs/fs.h>
 #include <string.h>
 #include <errno.h>
 
@@ -49,8 +50,6 @@ static const uint8_t persist_pubkey[] = {
 
 #define APP_CAPS (APP_CAP_LOG | APP_CAP_TIME)
 
-static uint8_t load_buf[8192];
-
 static bool is_installed(const char *name)
 {
 	for (int i = 0; i < app_registry_count(); i++) {
@@ -63,30 +62,49 @@ static bool is_installed(const char *name)
 	return false;
 }
 
-static int load_with_manifest(const struct app_manifest *mf, const uint8_t *sig,
-			      uint8_t *buf, size_t len, struct llext **ext,
-			      void **entry)
+static int load_from_flash(const struct app_manifest *mf, const uint8_t *sig,
+			   const char *path, struct llext **ext, void **entry)
 {
-	return app_loader_verify_load_manifest(mf, sig, APP_MANIFEST_SIG_LEN,
-					       buf, len, persist_pubkey,
-					       ARRAY_SIZE(persist_pubkey),
-					       "app_main", ext, entry);
+	return app_loader_verify_load_manifest_file(mf, sig, APP_MANIFEST_SIG_LEN,
+						    path, persist_pubkey,
+						    ARRAY_SIZE(persist_pubkey),
+						    "app_main", ext, entry);
 }
 
-/* Prove the binding: flip one module byte and confirm the load is refused
- * because the module no longer matches the signed manifest hash. Restore after.
+/* Prove the binding without holding the module in RAM: flip one byte in the
+ * on-flash module file and confirm the streamed load is refused because the
+ * module no longer matches the signed manifest hash, then restore the byte.
  */
 static void tamper_self_test(const struct app_manifest *mf, const uint8_t *sig,
-			     uint8_t *buf, size_t len)
+			     const char *path)
 {
 	struct llext *ext = NULL;
 	void *entry = NULL;
-	uint8_t saved = buf[len / 2];
+	struct fs_file_t f;
+	uint8_t b;
+	off_t at = mf->module_len / 2;
 
-	buf[len / 2] ^= 0xff;
-	int rc = load_with_manifest(mf, sig, buf, len, &ext, &entry);
+	fs_file_t_init(&f);
+	if (fs_open(&f, path, FS_O_RDWR) != 0) {
+		printk("tamper self-test: skipped (open failed)\n");
+		return;
+	}
+	fs_seek(&f, at, FS_SEEK_SET);
+	fs_read(&f, &b, 1);
+	uint8_t flipped = b ^ 0xff;
 
-	buf[len / 2] = saved;
+	fs_seek(&f, at, FS_SEEK_SET);
+	fs_write(&f, &flipped, 1);
+	fs_close(&f);
+
+	int rc = load_from_flash(mf, sig, path, &ext, &entry);
+
+	fs_file_t_init(&f);
+	if (fs_open(&f, path, FS_O_RDWR) == 0) {
+		fs_seek(&f, at, FS_SEEK_SET);
+		fs_write(&f, &b, 1);
+		fs_close(&f);
+	}
 
 	if (rc == 0) {
 		printk("SECURITY FAIL: tampered module was accepted!\n");
@@ -156,22 +174,21 @@ int main(void)
 		printk("SECURITY FAIL: downgrade accepted (rc=%d)\n", down);
 	}
 
-	size_t len = 0;
+	char path[64];
 
-	if (app_registry_load_blob(APP_NAME, load_buf, sizeof(load_buf),
-				   &len) != 0) {
-		printk("could not read '%s' binary from flash\n", APP_NAME);
+	if (app_registry_blob_path(APP_NAME, path, sizeof(path)) != 0) {
+		printk("could not build '%s' binary path\n", APP_NAME);
 		return 0;
 	}
-	printk("loaded '%s' v%u from flash (%zu bytes)\n", mf.name, mf.version,
-	       len);
+	printk("streaming '%s' v%u from %s (%u bytes)\n", mf.name, mf.version,
+	       path, mf.module_len);
 
-	tamper_self_test(&mf, sig, load_buf, len);
+	tamper_self_test(&mf, sig, path);
 
 	struct llext *ext = NULL;
 	void *entry = NULL;
 
-	if (load_with_manifest(&mf, sig, load_buf, len, &ext, &entry) != 0) {
+	if (load_from_flash(&mf, sig, path, &ext, &entry) != 0) {
 		printk("manifest verify/load of flash binary failed\n");
 		return 0;
 	}
