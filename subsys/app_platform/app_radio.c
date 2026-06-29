@@ -50,6 +50,24 @@ static int radio_open(void)
 		return -errno;
 	}
 
+	/* Bind the local port so datagrams the peer sends to us are delivered,
+	 * not just replies that happen to match an ephemeral source port.
+	 */
+	struct sockaddr_in6 local = {
+		.sin6_family = AF_INET6,
+		.sin6_port = htons(PEER_PORT),
+		.sin6_addr = in6addr_any,
+	};
+
+	if (zsock_bind(radio_sock, (struct sockaddr *)&local,
+		       sizeof(local)) < 0) {
+		int rc = -errno;
+
+		zsock_close(radio_sock);
+		radio_sock = -1;
+		return rc;
+	}
+
 	peer.sin6_family = AF_INET6;
 	peer.sin6_port = htons(PEER_PORT);
 	if (zsock_inet_pton(AF_INET6, PEER_ADDR, &peer.sin6_addr) != 1) {
