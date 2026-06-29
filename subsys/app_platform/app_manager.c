@@ -50,6 +50,7 @@ struct running_app {
 	struct k_mem_domain domain;
 	int                 wdt_chan;  /* -1 unless monitored */
 	bool                faulted;   /* reclaimed due to a crash or hang */
+	bool                cleaning;  /* reaper is releasing this slot's resources */
 	app_entry_t         entry;
 	uint32_t            caps;
 	size_t              module_bytes; /* loadable-extension footprint, 0 if built-in */
@@ -68,6 +69,27 @@ static struct k_msgq reclaim_q;
 static uint8_t reclaim_buf[MAX_APPS];
 static struct k_thread sup_thread;
 static K_THREAD_STACK_DEFINE(sup_stack, CONFIG_APP_PLATFORM_SUPERVISOR_STACK_SIZE);
+
+/*
+ * Deferred per-application cleanup. The supervisor aborts an application's
+ * threads itself (it owns them and that work is bounded and driver-free), then
+ * hands the heavy, driver-touching cleanup - service reclaim hooks and module
+ * unload - to the reaper-helper thread. Keeping that work off the supervisor
+ * means the safety-critical supervisor never blocks on a heap, a service lock
+ * or a loader operation.
+ */
+struct cleanup_req {
+	int   id;        /* application slot to release service resources for */
+	bool  full;      /* also unload the module captured in ext */
+#ifdef CONFIG_LLEXT
+	struct llext *ext;
+#endif
+};
+
+static struct k_msgq cleanup_q;
+static char cleanup_buf[MAX_APPS * sizeof(struct cleanup_req)];
+static struct k_thread reaper_thread;
+static K_THREAD_STACK_DEFINE(reaper_stack, CONFIG_APP_PLATFORM_REAPER_STACK_SIZE);
 
 static struct running_app *app_of_thread(k_tid_t t)
 {
@@ -260,12 +282,73 @@ static void death_watch(void *p_app, void *p_id, void *u)
 }
 
 /*
- * Stop a running app's thread and release its per-app service resources, but
- * keep the slot and its loaded module so it can be started again. With @p full
- * the slot is also freed and the module unloaded (a complete reclaim).
+ * The heavy, driver-touching part of reclaim: run each service's reclaim hook
+ * (which may free a heap, touch a service lock or reprogram a memory domain) and
+ * unload the module. This runs ONLY on the reaper-helper thread, never on the
+ * supervisor, so the supervisor stays detached from drivers and service locks.
+ */
+static void run_cleanup(int id, bool full, struct llext *ext)
+{
+	for (int i = 0; i < CONFIG_APP_PLATFORM_RECLAIM_HOOKS; i++) {
+		if (reclaim_hooks[i] != NULL) {
+			reclaim_hooks[i](id);
+		}
+	}
+
+	if (full) {
+#ifdef CONFIG_LLEXT
+		if (ext != NULL) {
+			app_loader_forget(ext);
+			llext_unload(&ext);
+		}
+#else
+		ARG_UNUSED(ext);
+#endif
+		/* Release the slot only after its resources are freed, so the slot
+		 * cannot be re-leased to a new application while this cleanup is
+		 * still running against the same id.
+		 */
+		apps[id].active = false;
+		apps[id].module_bytes = 0;
+		LOG_DBG("app slot %d cleaned up; resources freed", id);
+	}
+
+	/* Cleanup for this slot is done; it may be reused or restarted now. */
+	apps[id].cleaning = false;
+}
+
+static void reaper(void *p1, void *p2, void *p3)
+{
+	ARG_UNUSED(p1); ARG_UNUSED(p2); ARG_UNUSED(p3);
+
+	for (;;) {
+		struct cleanup_req req;
+
+		if (k_msgq_get(&cleanup_q, &req, K_FOREVER) != 0) {
+			continue;
+		}
+#ifdef CONFIG_LLEXT
+		run_cleanup(req.id, req.full, req.ext);
+#else
+		run_cleanup(req.id, req.full, NULL);
+#endif
+	}
+}
+
+/*
+ * Stop a running app's thread, then hand its per-app service cleanup and module
+ * unload to the reaper-helper thread. Keep the slot and its loaded module when
+ * @p full is false (a stop that can be started again); with @p full the slot is
+ * released and the module scheduled for unload (a complete reclaim).
+ *
+ * The supervisor runs only the bounded, driver-free part here (clear flags,
+ * delete the watchdog channel, abort the threads it owns) and enqueues the rest.
  */
 static void reclaim_ex(struct running_app *a, bool full)
 {
+	int id = a - apps;
+	struct cleanup_req req = { .id = id, .full = full };
+
 	if (!a->running) {
 		goto release_slot;
 	}
@@ -282,33 +365,29 @@ static void reclaim_ex(struct running_app *a, bool full)
 		(void)task_wdt_delete(a->wdt_chan);
 		a->wdt_chan = -1;
 	}
-	/* Let services release any per-app resources (e.g. mapped PSRAM). */
-	int id = a - apps;
-
-	for (int i = 0; i < CONFIG_APP_PLATFORM_RECLAIM_HOOKS; i++) {
-		if (reclaim_hooks[i] != NULL) {
-			reclaim_hooks[i](id);
-		}
-	}
 
 	/* Aborting the app makes its death-watcher's join return; reap it too. */
 	k_thread_abort(&a->thread);
-	k_thread_abort(&watchers[a - apps]);
+	k_thread_abort(&watchers[id]);
 	LOG_DBG("app '%s' stopped; system + other apps alive", a->name);
 
 release_slot:
 	if (full) {
 #ifdef CONFIG_LLEXT
-		if (a->ext != NULL) {
-			app_loader_forget(a->ext);
-			llext_unload(&a->ext);
-			a->ext = NULL;
-		}
+		/* Capture the module for the reaper. The slot is freed by the reaper
+		 * once cleanup completes, so it is not re-leased mid-cleanup.
+		 */
+		req.ext = a->ext;
+		a->ext = NULL;
 #endif
-		a->active = false;
-		a->module_bytes = 0;
-		LOG_DBG("app '%s' removed; resources freed", a->name);
 	}
+
+	/* Mark the slot as having cleanup pending, then hand the heavy cleanup
+	 * (service hooks + module unload) to the reaper. The slot is not reused
+	 * or restarted until the reaper clears this.
+	 */
+	a->cleaning = true;
+	(void)k_msgq_put(&cleanup_q, &req, K_NO_WAIT);
 }
 
 static void reclaim(struct running_app *a)
@@ -331,6 +410,16 @@ int app_platform_stop(int id)
 static int restart_thread(struct running_app *a)
 {
 	int id = a - apps;
+
+	/* Wait for any pending reaper cleanup of this slot to finish, so its
+	 * per-app service resources are released before the app runs again.
+	 */
+	for (int i = 0; i < 100 && a->cleaning; i++) {
+		k_msleep(2);
+	}
+	if (a->cleaning) {
+		return -EBUSY;
+	}
 
 	k_tid_t t = k_thread_create(&a->thread, app_stacks[id], APP_STACK,
 				    trampoline, (void *)a->entry,
@@ -447,12 +536,17 @@ static void trampoline(void *entry, void *id_plus_1, void *u2)
 int app_platform_init(void)
 {
 	k_msgq_init(&reclaim_q, reclaim_buf, sizeof(uint8_t), MAX_APPS);
+	k_msgq_init(&cleanup_q, cleanup_buf, sizeof(struct cleanup_req), MAX_APPS);
 	if (task_wdt_init(NULL) != 0) {
 		return -EIO;
 	}
 	for (int i = 0; i < MAX_APPS; i++) {
 		apps[i].wdt_chan = -1;
 	}
+	k_thread_create(&reaper_thread, reaper_stack,
+			K_THREAD_STACK_SIZEOF(reaper_stack), reaper, NULL, NULL,
+			NULL, CONFIG_APP_PLATFORM_REAPER_PRIORITY, 0, K_NO_WAIT);
+	k_thread_name_set(&reaper_thread, "app_reaper");
 	k_thread_create(&sup_thread, sup_stack, K_THREAD_STACK_SIZEOF(sup_stack),
 			supervisor, NULL, NULL, NULL,
 			CONFIG_APP_PLATFORM_SUPERVISOR_PRIORITY, 0, K_NO_WAIT);
@@ -465,8 +559,8 @@ static int launch(const char *name, app_entry_t entry, uint32_t caps,
 		  struct llext *ext, bool restart, bool monitored)
 {
 	for (int i = 0; i < MAX_APPS; i++) {
-		if (apps[i].active) {
-			continue;
+		if (apps[i].active || apps[i].cleaning) {
+			continue;   /* in use or pending reaper cleanup */
 		}
 		struct running_app *a = &apps[i];
 

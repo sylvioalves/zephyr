@@ -17,6 +17,7 @@
 #include <zephyr/app_platform/app_platform.h>
 
 #include <zephyr/kernel.h>
+#include <zephyr/init.h>
 #include <zephyr/sys/printk.h>
 #include <zephyr/internal/syscall_handler.h>
 #include <zephyr/net/net_if.h>
@@ -935,6 +936,42 @@ int z_impl_svc_tcp_close(void)
 {
 	return sock_close(true);
 }
+
+/*
+ * Release a reclaimed application's network resources: its MQTT session and any
+ * raw socket it left open. Registered as a platform reclaim hook, so it runs on
+ * the reaper-helper thread (never the supervisor) when an app is reclaimed.
+ */
+static void net_release(int id)
+{
+	if (id < 0 || id >= MAX_SESSIONS) {
+		return;
+	}
+
+	if (k_mutex_lock(&net_lock, NET_LOCK_TIMEOUT) != 0) {
+		return;
+	}
+	if (sessions[id].used) {
+		if (sessions[id].connected) {
+			(void)mqtt_disconnect(&sessions[id].client, false);
+		}
+		sessions[id] = (struct session){ 0 };
+	}
+	if (socks[id].used) {
+		if (socks[id].fd >= 0) {
+			(void)zsock_close(socks[id].fd);
+		}
+		socks[id].used = false;
+		socks[id].fd = -1;
+	}
+	k_mutex_unlock(&net_lock);
+}
+
+static int net_service_init(void)
+{
+	return app_platform_on_reclaim(net_release);
+}
+SYS_INIT(net_service_init, APPLICATION, 99);
 
 #ifdef CONFIG_USERSPACE
 static inline int z_vrfy_svc_net_ready(void)

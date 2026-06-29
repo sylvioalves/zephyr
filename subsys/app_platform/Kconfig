@@ -46,6 +46,20 @@ config APP_PLATFORM_SUPERVISOR_PRIORITY
 	int "Supervisor thread priority"
 	default 2
 
+config APP_PLATFORM_REAPER_PRIORITY
+	int "Reaper-helper thread priority"
+	default 6
+	help
+	  Priority of the reaper-helper thread that runs per-application cleanup
+	  (service reclaim hooks and module unload) after the supervisor aborts a
+	  faulted or finished application. It runs below the supervisor so the
+	  safety-critical supervisor never blocks on cleanup that touches drivers,
+	  heaps or service locks.
+
+config APP_PLATFORM_REAPER_STACK_SIZE
+	int "Reaper-helper thread stack size"
+	default 2048
+
 config APP_PLATFORM_WDT_TIMEOUT_MS
 	int "Application liveness watchdog timeout (ms)"
 	default 2000
@@ -76,10 +90,11 @@ config APP_PLATFORM_LOADER_MAX_MODULE_BYTES
 
 config APP_PLATFORM_RECLAIM_HOOKS
 	int "Number of reclaim-hook slots"
-	default 2
+	default 4
 	help
 	  How many services can register a hook to release per-application
-	  resources when an application is reclaimed.
+	  resources when an application is reclaimed (for example the network
+	  and PSRAM services each register one).
 
 config APP_PLATFORM_PSRAM
 	bool "Shared external RAM (PSRAM) mapping service"
