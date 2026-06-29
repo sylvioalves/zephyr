@@ -40,6 +40,11 @@ static int blob_path(char *out, size_t cap, const char *name)
 	return app_path(out, cap, name, ".llext");
 }
 
+int app_registry_blob_path(const char *name, char *out, size_t cap)
+{
+	return blob_path(out, cap, name);
+}
+
 FS_LITTLEFS_DECLARE_DEFAULT_CONFIG(lfs_cfg);
 static struct fs_mount_t mnt = {
 	.type = FS_LITTLEFS,

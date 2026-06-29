@@ -85,6 +85,19 @@ int app_registry_load_blob(const char *name, uint8_t *buf, size_t cap,
 			   size_t *out_len);
 
 /**
+ * @brief Build the on-flash path of an application's binary.
+ *
+ * Yields "<mount>/<name>.llext" so a caller can stream-load the module from the
+ * file without holding it in memory.
+ *
+ * @param name Application name.
+ * @param out  Destination buffer for the path.
+ * @param cap  Size of @p out.
+ * @return 0 on success, -ENAMETOOLONG if the path does not fit.
+ */
+int app_registry_blob_path(const char *name, char *out, size_t cap);
+
+/**
  * @brief Persist an application's signed manifest and signature.
  *
  * The manifest binds the application's name and version to the module bytes,
