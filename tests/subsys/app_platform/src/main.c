@@ -14,6 +14,9 @@
 #include <zephyr/app_platform/app_registry.h>
 #include <zephyr/app_platform/app_loader.h>
 #include <zephyr/app_platform/app_manifest.h>
+#include <zephyr/app_platform/app_platform.h>
+#include <zephyr/app_platform/app_caps.h>
+#include <zephyr/kernel.h>
 #include <errno.h>
 #include <string.h>
 
@@ -249,3 +252,124 @@ static void *registry_setup(void)
 
 ZTEST_SUITE(registry, NULL, registry_setup, NULL, NULL, NULL);
 ZTEST_SUITE(loader, NULL, NULL, NULL, NULL, NULL);
+
+/* ---- lifecycle / reaper ---- */
+
+/*
+ * Built-in test apps. The platform reclaims a faulted or finished app and a
+ * dedicated reaper-helper thread releases its resources off the supervisor.
+ * These tests prove the supervisor reclaims, the reaper completes cleanup, and
+ * the slot becomes reusable - the contract of the detached-cleanup design.
+ */
+/*
+ * These run as user-mode apps, so they must not touch kernel memory (no shared
+ * counters): the test observes the lifecycle through app_platform_status, which
+ * is exactly the contract being verified.
+ */
+static void crasher_app(void *arg)
+{
+	ARG_UNUSED(arg);
+	/* Fault on purpose: a NULL write traps and routes through the fatal
+	 * handler, which flags the app and signals the supervisor.
+	 */
+	volatile uint32_t *p = NULL;
+	*p = 0xdead;
+}
+
+static void quitter_app(void *arg)
+{
+	ARG_UNUSED(arg);
+	/* Return immediately: a clean exit, reclaimed but never relaunched. */
+}
+
+/* Find the slot id currently holding the named app, or -1. */
+static int slot_of(const char *name)
+{
+	for (int i = 0; i < app_platform_count(); i++) {
+		struct app_platform_status st;
+
+		if (app_platform_status(i, &st) == 0 && st.name != NULL &&
+		    strcmp(st.name, name) == 0) {
+			return i;
+		}
+	}
+	return -1;
+}
+
+/* Wait until the named app's slot is free (reaper finished), bounded. */
+static bool wait_slot_free(const char *name, int ms)
+{
+	for (int i = 0; i < ms / 5; i++) {
+		if (slot_of(name) < 0) {
+			return true;
+		}
+		k_msleep(5);
+	}
+	return slot_of(name) < 0;
+}
+
+ZTEST(lifecycle, test_fault_is_reclaimed)
+{
+	struct app_def def = {
+		.name = "crasher",
+		.source = APP_BUILTIN,
+		.entry = crasher_app,
+		.caps = APP_CAP_LOG,
+	};
+
+	int id = app_platform_launch(&def);
+
+	zassert_true(id >= 0, "launch failed (%d)", id);
+
+	/* The app crashes; the supervisor reclaims it and the reaper frees the
+	 * slot. The slot must become free without help from the test.
+	 */
+	zassert_true(wait_slot_free("crasher", 2000),
+		     "faulted app slot was never reclaimed/cleaned");
+}
+
+ZTEST(lifecycle, test_clean_exit_is_reclaimed)
+{
+	struct app_def def = {
+		.name = "quitter",
+		.source = APP_BUILTIN,
+		.entry = quitter_app,
+		.caps = APP_CAP_LOG,
+	};
+
+	int id = app_platform_launch(&def);
+
+	zassert_true(id >= 0, "launch failed (%d)", id);
+	zassert_true(wait_slot_free("quitter", 2000),
+		     "cleanly-exited app slot was never reclaimed");
+}
+
+ZTEST(lifecycle, test_slot_reusable_after_reclaim)
+{
+	struct app_def def = {
+		.name = "recycle",
+		.source = APP_BUILTIN,
+		.entry = quitter_app,
+		.caps = APP_CAP_LOG,
+	};
+
+	/* Launch, let it finish and be reaped, then relaunch into a reusable
+	 * slot. Repeat to prove the reaper actually frees slots and the platform
+	 * does not leak them.
+	 */
+	for (int round = 0; round < 8; round++) {
+		int id = app_platform_launch(&def);
+
+		zassert_true(id >= 0, "round %d launch failed (%d)", round, id);
+		zassert_true(wait_slot_free("recycle", 2000),
+			     "round %d slot not reclaimed", round);
+	}
+}
+
+static void *lifecycle_setup(void)
+{
+	zassert_equal(app_platform_init(), 0, "platform init failed");
+	return NULL;
+}
+
+ZTEST_SUITE(lifecycle, NULL, lifecycle_setup, NULL, NULL, NULL);
