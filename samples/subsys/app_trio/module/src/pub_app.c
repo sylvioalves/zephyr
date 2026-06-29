@@ -42,6 +42,35 @@ void app_main(void *arg)
 		svc_log("pub: network not ready");
 		return;
 	}
+
+	struct svc_wifi_status ws;
+
+	if (svc_wifi_status(&ws) == 0) {
+		char line[80];
+		int i = 0;
+		const char *p = "pub: link ";
+
+		while (*p) {
+			line[i++] = *p++;
+		}
+		p = ws.connected ? "up on " : "down ";
+		while (*p) {
+			line[i++] = *p++;
+		}
+		p = ws.ssid;
+		while (*p) {
+			line[i++] = *p++;
+		}
+		line[i++] = ' '; line[i++] = '(';
+		p = ws.ipv4;
+		while (*p) {
+			line[i++] = *p++;
+		}
+		line[i++] = ')';
+		line[i] = '\0';
+		svc_log(line);
+	}
+
 	if (svc_mqtt_open("zephyr-trio-pub", "zephyr/trio/temp",
 			  "zephyr/trio/unused") != 0) {
 		svc_log("pub: MQTT session failed");

@@ -253,6 +253,49 @@ __syscall int svc_mqtt_publish(const char *payload);
  */
 __syscall int svc_mqtt_recv(char *payload, size_t cap, uint32_t timeout_ms);
 
+/** Snapshot of the shared Wi-Fi link, filled by @ref svc_wifi_status. */
+struct svc_wifi_status {
+	uint8_t  connected;  /**< Non-zero when the link has an IPv4 address. */
+	char     ssid[33];   /**< SSID the link is joined to (NUL-terminated). */
+	char     ipv4[16];   /**< Dotted IPv4 address, empty when none. */
+};
+
+/**
+ * @brief Read the shared Wi-Fi link's status. Needs @ref APP_CAP_NET.
+ *
+ * Fills @p out with the current connection state of the one shared link. Does
+ * not change anything; safe to call from any networking application.
+ *
+ * @param out Destination status snapshot.
+ * @retval 0 on success, -EPERM without the capability, negative errno otherwise.
+ */
+__syscall int svc_wifi_status(struct svc_wifi_status *out);
+
+/**
+ * @brief Set the shared Wi-Fi credentials and reconnect. Needs @ref APP_CAP_NET.
+ *
+ * Replaces the shared link's credentials with @p ssid / @p psk, persists them so
+ * they survive a reboot, and brings the one shared link down and back up on the
+ * new network. Because the link is shared, this affects every networking
+ * application. Returns once the new link is ready or has failed.
+ *
+ * @param ssid Network SSID.
+ * @param psk Pre-shared key; pass an empty string for an open network.
+ * @retval 0 when the new link is ready, -EPERM without the capability, negative
+ *         errno on failure.
+ */
+__syscall int svc_wifi_connect(const char *ssid, const char *psk);
+
+/**
+ * @brief Bring the shared Wi-Fi link down. Needs @ref APP_CAP_NET.
+ *
+ * Disconnects the one shared link. Because the link is shared, this affects
+ * every networking application.
+ *
+ * @retval 0 on success, -EPERM without the capability, negative errno otherwise.
+ */
+__syscall int svc_wifi_disconnect(void);
+
 /**
  * @brief Number of GPIO lines the platform exposes. Needs @ref APP_CAP_GPIO.
  *

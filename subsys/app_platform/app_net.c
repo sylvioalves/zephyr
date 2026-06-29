@@ -26,6 +26,9 @@
 #include <zephyr/net/socket.h>
 #include <zephyr/posix/fcntl.h>
 #include <zephyr/net/mqtt.h>
+#ifdef CONFIG_SETTINGS
+#include <zephyr/settings/settings.h>
+#endif
 #include <string.h>
 #include <errno.h>
 
@@ -35,6 +38,12 @@
 #define ID_MAX       24
 #define TOPIC_MAX    48
 #define PAYLOAD_MAX  64
+#define SSID_MAX     33
+#define PSK_MAX      65
+
+/* Live Wi-Fi credentials, seeded from Kconfig and overridable at runtime. */
+static char wifi_ssid[SSID_MAX] = CONFIG_APP_PLATFORM_NET_WIFI_SSID;
+static char wifi_psk[PSK_MAX] = CONFIG_APP_PLATFORM_NET_WIFI_PSK;
 
 static inline bool app_has_cap(uint32_t mask)
 {
@@ -77,6 +86,49 @@ static bool link_started;
 static bool link_ready;
 static bool link_failed;
 static bool broker_resolved;
+/* Set by svc_wifi_connect/disconnect; serviced on the supervisor net thread. */
+static bool reconnect_req;
+static bool disconnect_req;
+static K_SEM_DEFINE(link_change_sem, 0, 1);
+
+#ifdef CONFIG_SETTINGS
+/* Persist the live credentials under "app_net/ssid" and "app_net/psk" so a
+ * runtime change made through svc_wifi_connect survives a reboot.
+ */
+static int creds_set(const char *name, size_t len, settings_read_cb read_cb,
+		     void *cb_arg)
+{
+	const char *next;
+
+	if (settings_name_steq(name, "ssid", &next) && !next) {
+		ssize_t n = read_cb(cb_arg, wifi_ssid, sizeof(wifi_ssid) - 1);
+
+		if (n >= 0) {
+			wifi_ssid[n] = '\0';
+		}
+		return 0;
+	}
+	if (settings_name_steq(name, "psk", &next) && !next) {
+		ssize_t n = read_cb(cb_arg, wifi_psk, sizeof(wifi_psk) - 1);
+
+		if (n >= 0) {
+			wifi_psk[n] = '\0';
+		}
+		return 0;
+	}
+	return -ENOENT;
+}
+
+SETTINGS_STATIC_HANDLER_DEFINE(app_net, "app_net", NULL, creds_set, NULL, NULL);
+
+static void creds_save(void)
+{
+	(void)settings_save_one("app_net/ssid", wifi_ssid, strlen(wifi_ssid));
+	(void)settings_save_one("app_net/psk", wifi_psk, strlen(wifi_psk));
+}
+#else
+static void creds_save(void) { }
+#endif
 
 static void ipv4_evt(struct net_mgmt_event_callback *cb, uint64_t ev,
 		     struct net_if *iface)
@@ -108,16 +160,17 @@ static int wifi_up(void)
 
 	static struct wifi_connect_req_params p;
 
-	p.ssid = CONFIG_APP_PLATFORM_NET_WIFI_SSID;
-	p.ssid_length = strlen(CONFIG_APP_PLATFORM_NET_WIFI_SSID);
-	p.psk = CONFIG_APP_PLATFORM_NET_WIFI_PSK;
-	p.psk_length = strlen(CONFIG_APP_PLATFORM_NET_WIFI_PSK);
-	p.security = WIFI_SECURITY_TYPE_PSK;
+	p.ssid = wifi_ssid;
+	p.ssid_length = strlen(wifi_ssid);
+	p.psk = wifi_psk;
+	p.psk_length = strlen(wifi_psk);
+	p.security = (p.psk_length > 0) ? WIFI_SECURITY_TYPE_PSK
+				       : WIFI_SECURITY_TYPE_NONE;
 	p.band = WIFI_FREQ_BAND_UNKNOWN;
 	p.channel = WIFI_CHANNEL_ANY;
 	p.mfp = WIFI_MFP_OPTIONAL;
 
-	printk("net: connecting to '%s'...\n", CONFIG_APP_PLATFORM_NET_WIFI_SSID);
+	printk("net: connecting to '%s'...\n", wifi_ssid);
 	return net_mgmt(NET_REQUEST_WIFI_CONNECT, iface, &p, sizeof(p));
 }
 
@@ -261,12 +314,52 @@ static void bring_link_up(void)
 	}
 }
 
+/* Tear the shared link down. Runs only on the supervisor net thread. */
+static void take_link_down(void)
+{
+	struct net_if *iface = net_if_get_first_wifi();
+
+	for (int i = 0; i < MAX_SESSIONS; i++) {
+		if (sessions[i].connected) {
+			(void)mqtt_disconnect(&sessions[i].client, false);
+			sessions[i].connected = false;
+		}
+		sessions[i].used = false;
+	}
+	if (iface) {
+		(void)net_mgmt(NET_REQUEST_WIFI_DISCONNECT, iface, NULL, 0);
+	}
+	link_ready = false;
+	link_failed = false;
+	link_started = false;
+	broker_resolved = false;
+}
+
 static void net_thread(void *a, void *b, void *c)
 {
 	ARG_UNUSED(a); ARG_UNUSED(b); ARG_UNUSED(c);
 
+#ifdef CONFIG_SETTINGS
+	if (settings_subsys_init() == 0) {
+		(void)settings_load_subtree("app_net");
+	}
+#endif
+
 	for (;;) {
 		struct pub_req req;
+
+		if (disconnect_req) {
+			disconnect_req = false;
+			take_link_down();
+			k_sem_give(&link_change_sem);
+		}
+		if (reconnect_req) {
+			reconnect_req = false;
+			take_link_down();
+			link_started = true;
+			bring_link_up();
+			k_sem_give(&link_change_sem);
+		}
 
 		if (link_started && !link_ready && !link_failed) {
 			bring_link_up();
@@ -413,6 +506,77 @@ int z_impl_svc_mqtt_publish(const char *payload)
 	return k_msgq_put(&net_pub_q, &req, K_NO_WAIT);
 }
 
+int z_impl_svc_wifi_status(struct svc_wifi_status *out)
+{
+	if (!app_has_cap(APP_CAP_NET)) {
+		return -EPERM;
+	}
+
+	memset(out, 0, sizeof(*out));
+	out->connected = link_ready ? 1 : 0;
+	strncpy(out->ssid, wifi_ssid, sizeof(out->ssid) - 1);
+
+	/* Read only cached interface state. A WIFI_IFACE_STATUS mgmt round-trip
+	 * would query the driver and can block in this app-thread context, so it
+	 * is left out; rssi stays 0 (unknown).
+	 */
+	struct net_if *iface = net_if_get_first_wifi();
+
+	if (iface != NULL) {
+		struct net_if_ipv4 *ipv4 = iface->config.ip.ipv4;
+
+		if (ipv4 != NULL) {
+			ARRAY_FOR_EACH(ipv4->unicast, i) {
+				if (ipv4->unicast[i].ipv4.is_used) {
+					net_addr_ntop(AF_INET,
+						&ipv4->unicast[i].ipv4.address.in_addr,
+						out->ipv4, sizeof(out->ipv4));
+					break;
+				}
+			}
+		}
+	}
+	return 0;
+}
+
+int z_impl_svc_wifi_connect(const char *ssid, const char *psk)
+{
+	if (!app_has_cap(APP_CAP_NET)) {
+		return -EPERM;
+	}
+	if (ssid[0] == '\0') {
+		return -EINVAL;
+	}
+
+	k_mutex_lock(&net_lock, K_FOREVER);
+	strncpy(wifi_ssid, ssid, sizeof(wifi_ssid) - 1);
+	wifi_ssid[sizeof(wifi_ssid) - 1] = '\0';
+	strncpy(wifi_psk, psk, sizeof(wifi_psk) - 1);
+	wifi_psk[sizeof(wifi_psk) - 1] = '\0';
+	creds_save();
+	k_sem_reset(&link_change_sem);
+	reconnect_req = true;
+	k_mutex_unlock(&net_lock);
+
+	(void)k_sem_take(&link_change_sem, K_SECONDS(90));
+	return link_ready ? 0 : -EIO;
+}
+
+int z_impl_svc_wifi_disconnect(void)
+{
+	if (!app_has_cap(APP_CAP_NET)) {
+		return -EPERM;
+	}
+
+	k_mutex_lock(&net_lock, K_FOREVER);
+	k_sem_reset(&link_change_sem);
+	disconnect_req = true;
+	k_mutex_unlock(&net_lock);
+
+	(void)k_sem_take(&link_change_sem, K_SECONDS(10));
+	return 0;
+}
+
 #ifdef CONFIG_USERSPACE
 static inline int z_vrfy_svc_net_ready(void)
 {
@@ -464,4 +628,37 @@ static inline int z_vrfy_svc_mqtt_recv(char *payload, size_t cap,
 	return rc;
 }
 #include <zephyr/syscalls/svc_mqtt_recv_mrsh.c>
+
+static inline int z_vrfy_svc_wifi_status(struct svc_wifi_status *out)
+{
+	struct svc_wifi_status st;
+
+	K_OOPS(K_SYSCALL_MEMORY_WRITE(out, sizeof(*out)));
+
+	int rc = z_impl_svc_wifi_status(&st);
+
+	if (rc == 0 && k_usermode_to_copy(out, &st, sizeof(st)) != 0) {
+		return -EFAULT;
+	}
+	return rc;
+}
+#include <zephyr/syscalls/svc_wifi_status_mrsh.c>
+
+static inline int z_vrfy_svc_wifi_connect(const char *ssid, const char *psk)
+{
+	char s[SSID_MAX], p[PSK_MAX];
+
+	if (k_usermode_string_copy(s, (char *)ssid, sizeof(s)) != 0 ||
+	    k_usermode_string_copy(p, (char *)psk, sizeof(p)) != 0) {
+		return -EFAULT;
+	}
+	return z_impl_svc_wifi_connect(s, p);
+}
+#include <zephyr/syscalls/svc_wifi_connect_mrsh.c>
+
+static inline int z_vrfy_svc_wifi_disconnect(void)
+{
+	return z_impl_svc_wifi_disconnect();
+}
+#include <zephyr/syscalls/svc_wifi_disconnect_mrsh.c>
 #endif
