@@ -249,6 +249,15 @@ static void reclaim_ex(struct running_app *a, bool full)
 	if (!a->running) {
 		goto release_slot;
 	}
+
+	/*
+	 * Clear running before aborting the thread. Aborting wakes the app's
+	 * death-watcher, which signals the supervisor to reclaim; the supervisor
+	 * skips an app that is no longer running, so an intentional stop is not
+	 * mistaken for a crash and turned into a full reclaim.
+	 */
+	a->running = false;
+
 	if (a->wdt_chan >= 0) {
 		(void)task_wdt_delete(a->wdt_chan);
 		a->wdt_chan = -1;
@@ -265,7 +274,6 @@ static void reclaim_ex(struct running_app *a, bool full)
 	/* Aborting the app makes its death-watcher's join return; reap it too. */
 	k_thread_abort(&a->thread);
 	k_thread_abort(&watchers[a - apps]);
-	a->running = false;
 	LOG_INF("app '%s' stopped; system + other apps alive", a->name);
 
 release_slot:
