@@ -228,6 +228,15 @@ void app_platform_heartbeat(void)
 static K_THREAD_STACK_ARRAY_DEFINE(watch_stacks, MAX_APPS,
 				   CONFIG_APP_PLATFORM_WATCHER_STACK_SIZE);
 static struct k_thread watchers[MAX_APPS];
+static char watcher_names[MAX_APPS][16];
+
+/* Give a death-watcher thread a readable name (e.g. "watch:app0"). */
+static void name_watcher(int id)
+{
+	(void)snprintk(watcher_names[id], sizeof(watcher_names[id]), "watch:%d",
+		       id);
+	k_thread_name_set(&watchers[id], watcher_names[id]);
+}
 
 static void death_watch(void *p_app, void *p_id, void *u)
 {
@@ -274,7 +283,7 @@ static void reclaim_ex(struct running_app *a, bool full)
 	/* Aborting the app makes its death-watcher's join return; reap it too. */
 	k_thread_abort(&a->thread);
 	k_thread_abort(&watchers[a - apps]);
-	LOG_INF("app '%s' stopped; system + other apps alive", a->name);
+	LOG_DBG("app '%s' stopped; system + other apps alive", a->name);
 
 release_slot:
 	if (full) {
@@ -287,7 +296,7 @@ release_slot:
 #endif
 		a->active = false;
 		a->module_bytes = 0;
-		LOG_INF("app '%s' removed; resources freed", a->name);
+		LOG_DBG("app '%s' removed; resources freed", a->name);
 	}
 }
 
@@ -328,8 +337,9 @@ static int restart_thread(struct running_app *a)
 			K_THREAD_STACK_SIZEOF(watch_stacks[id]), death_watch,
 			a, (void *)(uintptr_t)id, NULL,
 			CONFIG_APP_PLATFORM_SUPERVISOR_PRIORITY, 0, K_NO_WAIT);
+	name_watcher(id);
 	k_thread_start(t);
-	LOG_INF("app '%s' started (group %d)", a->name, id);
+	LOG_DBG("app '%s' started (group %d)", a->name, id);
 	return id;
 }
 
@@ -483,9 +493,10 @@ static int launch(const char *name, app_entry_t entry, uint32_t caps,
 				K_THREAD_STACK_SIZEOF(watch_stacks[i]), death_watch,
 				a, (void *)(uintptr_t)i, NULL,
 				CONFIG_APP_PLATFORM_SUPERVISOR_PRIORITY, 0, K_NO_WAIT);
+		name_watcher(i);
 
 		k_thread_start(t);
-		LOG_INF("launched app '%s' (isolated user-mode group %d)", name, i);
+		LOG_DBG("launched app '%s' (isolated user-mode group %d)", name, i);
 		return i;
 	}
 	return -ENOSPC;
