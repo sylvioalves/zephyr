@@ -41,6 +41,9 @@
 #define SSID_MAX     33
 #define PSK_MAX      65
 
+/* Bounded wait for the network lock; -EBUSY rather than parking the caller. */
+#define NET_LOCK_TIMEOUT K_SECONDS(2)
+
 /* Live Wi-Fi credentials, seeded from Kconfig and overridable at runtime. */
 static char wifi_ssid[SSID_MAX] = CONFIG_APP_PLATFORM_NET_WIFI_SSID;
 static char wifi_psk[PSK_MAX] = CONFIG_APP_PLATFORM_NET_WIFI_PSK;
@@ -494,7 +497,9 @@ int z_impl_svc_net_ready(void)
 	/* Ask the supervisor net thread to bring the shared link up, then wait
 	 * for the result. The connect itself must not run on this app thread.
 	 */
-	k_mutex_lock(&net_lock, K_FOREVER);
+	if (k_mutex_lock(&net_lock, NET_LOCK_TIMEOUT) != 0) {
+		return -EBUSY;
+	}
 	link_started = true;
 	k_mutex_unlock(&net_lock);
 
@@ -528,7 +533,9 @@ int z_impl_svc_mqtt_open(const char *client_id, const char *pub_topic,
 	strncpy(s->sub_topic, sub_topic, sizeof(s->sub_topic) - 1);
 	k_msgq_init(&s->inbox, s->inbox_buf, sizeof(struct inbox_msg), 4);
 
-	k_mutex_lock(&net_lock, K_FOREVER);
+	if (k_mutex_lock(&net_lock, NET_LOCK_TIMEOUT) != 0) {
+		return -EBUSY;
+	}
 	int rc = session_connect(s);
 
 	k_mutex_unlock(&net_lock);
@@ -622,7 +629,9 @@ int z_impl_svc_wifi_connect(const char *ssid, const char *psk)
 		return -EINVAL;
 	}
 
-	k_mutex_lock(&net_lock, K_FOREVER);
+	if (k_mutex_lock(&net_lock, NET_LOCK_TIMEOUT) != 0) {
+		return -EBUSY;
+	}
 	strncpy(wifi_ssid, ssid, sizeof(wifi_ssid) - 1);
 	wifi_ssid[sizeof(wifi_ssid) - 1] = '\0';
 	strncpy(wifi_psk, psk, sizeof(wifi_psk) - 1);
@@ -642,7 +651,9 @@ int z_impl_svc_wifi_disconnect(void)
 		return -EPERM;
 	}
 
-	k_mutex_lock(&net_lock, K_FOREVER);
+	if (k_mutex_lock(&net_lock, NET_LOCK_TIMEOUT) != 0) {
+		return -EBUSY;
+	}
 	k_sem_reset(&link_change_sem);
 	disconnect_req = true;
 	k_mutex_unlock(&net_lock);
@@ -702,7 +713,9 @@ static int sock_open(bool tcp, const char *host, uint16_t port)
 		return rc;
 	}
 
-	k_mutex_lock(&net_lock, K_FOREVER);
+	if (k_mutex_lock(&net_lock, NET_LOCK_TIMEOUT) != 0) {
+		return -EBUSY;
+	}
 	int fd = zsock_socket(AF_INET, tcp ? SOCK_STREAM : SOCK_DGRAM,
 			      tcp ? IPPROTO_TCP : IPPROTO_UDP);
 
@@ -749,7 +762,9 @@ static int sock_send(bool tcp, const void *buf, size_t len)
 		return -ENOTCONN;
 	}
 
-	k_mutex_lock(&net_lock, K_FOREVER);
+	if (k_mutex_lock(&net_lock, NET_LOCK_TIMEOUT) != 0) {
+		return -EBUSY;
+	}
 	ssize_t n;
 
 	if (tcp) {
@@ -810,7 +825,9 @@ static int sock_close(bool tcp)
 		return -ENOTCONN;
 	}
 
-	k_mutex_lock(&net_lock, K_FOREVER);
+	if (k_mutex_lock(&net_lock, NET_LOCK_TIMEOUT) != 0) {
+		return -EBUSY;
+	}
 	if (sk->fd >= 0) {
 		zsock_close(sk->fd);
 		sk->fd = -1;

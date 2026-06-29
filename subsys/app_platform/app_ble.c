@@ -28,6 +28,13 @@
 
 #define BLE_NAME_MAX 24
 
+/*
+ * Bounded wait for the BLE request lock: a caller waits at most one in-flight
+ * operation's own timeout plus this margin (in milliseconds), then gets -EBUSY
+ * instead of being parked for ever behind a stuck request.
+ */
+#define BLE_LOCK_MARGIN_MS 2000U
+
 static inline bool app_has_cap(uint32_t mask)
 {
 	return (app_platform_caps_current() & mask) == mask;
@@ -154,9 +161,15 @@ int z_impl_svc_ble_scan(const char *name, uint32_t timeout_ms)
 	strncpy(req.name, name, sizeof(req.name) - 1);
 	req.name[sizeof(req.name) - 1] = '\0';
 
-	k_mutex_lock(&ble_lock, K_FOREVER);
-	(void)k_msgq_put(&ble_req_q, &req, K_FOREVER);
-	(void)k_sem_take(&ble_done, K_FOREVER);
+	if (k_mutex_lock(&ble_lock,
+			 K_MSEC(timeout_ms + BLE_LOCK_MARGIN_MS)) != 0) {
+		return -EBUSY;
+	}
+	(void)k_msgq_put(&ble_req_q, &req, K_NO_WAIT);
+	if (k_sem_take(&ble_done, K_MSEC(timeout_ms + BLE_LOCK_MARGIN_MS)) != 0) {
+		k_mutex_unlock(&ble_lock);
+		return -ETIMEDOUT;
+	}
 	int rc = ble_result;
 
 	k_mutex_unlock(&ble_lock);
@@ -353,9 +366,15 @@ int z_impl_svc_ble_hr_read(uint32_t timeout_ms, uint8_t *out_bpm)
 
 	struct ble_req req = { .op = BLE_OP_HR_READ, .timeout_ms = timeout_ms };
 
-	k_mutex_lock(&ble_lock, K_FOREVER);
-	(void)k_msgq_put(&ble_req_q, &req, K_FOREVER);
-	(void)k_sem_take(&ble_done, K_FOREVER);
+	if (k_mutex_lock(&ble_lock,
+			 K_MSEC(timeout_ms + BLE_LOCK_MARGIN_MS)) != 0) {
+		return -EBUSY;
+	}
+	(void)k_msgq_put(&ble_req_q, &req, K_NO_WAIT);
+	if (k_sem_take(&ble_done, K_MSEC(timeout_ms + BLE_LOCK_MARGIN_MS)) != 0) {
+		k_mutex_unlock(&ble_lock);
+		return -ETIMEDOUT;
+	}
 	int rc = ble_result;
 
 	if (rc == 0) {

@@ -23,6 +23,9 @@
 #include <errno.h>
 
 #define DMA_MAX  256
+
+/* Bounded wait for the shared lock; -EBUSY rather than parking the caller. */
+#define SVC_LOCK_TIMEOUT K_SECONDS(2)
 #define DMA_CHAN 0U
 
 static inline bool app_has_cap(uint32_t mask)
@@ -60,7 +63,9 @@ int z_impl_svc_dma_copy(const uint8_t *src, uint8_t *dst, size_t len)
 		return -ENODEV;
 	}
 
-	k_mutex_lock(&dma_lock, K_FOREVER);
+	if (k_mutex_lock(&dma_lock, SVC_LOCK_TIMEOUT) != 0) {
+		return -EBUSY;
+	}
 
 	memcpy(dma_src, src, len);
 	sys_cache_data_flush_range(dma_src, len);

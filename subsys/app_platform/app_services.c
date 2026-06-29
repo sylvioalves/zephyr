@@ -51,6 +51,14 @@ bool app_platform_log_is_enabled(void)
 
 #define SVC_XFER_MAX 256
 
+/*
+ * Bound how long an application waits for a shared-resource lock. The protected
+ * sections are short, so reaching this cap means the resource is genuinely
+ * wedged; the service then returns -EBUSY instead of parking the caller for
+ * ever, so a stuck or greedy application cannot block a well-behaved one.
+ */
+#define SVC_LOCK_TIMEOUT K_SECONDS(2)
+
 static K_MUTEX_DEFINE(flash_lock);
 
 /* A shared, lock-serialized key/value store namespaced by application id. */
@@ -222,7 +230,9 @@ int z_impl_svc_kv_set(const char *key, uint32_t value)
 	struct kv_entry *slot = NULL;
 	int rc = -ENOSPC;
 
-	k_mutex_lock(&kv_lock, K_FOREVER);
+	if (k_mutex_lock(&kv_lock, SVC_LOCK_TIMEOUT) != 0) {
+		return -EBUSY;
+	}
 	for (int i = 0; i < KV_SLOTS; i++) {
 		if (kv_store[i].used && kv_store[i].owner == owner &&
 		    strcmp(kv_store[i].key, key) == 0) {
@@ -256,7 +266,9 @@ int z_impl_svc_kv_get(const char *key, uint32_t *out)
 	int owner = app_platform_id_current();
 	int rc = -ENOENT;
 
-	k_mutex_lock(&kv_lock, K_FOREVER);
+	if (k_mutex_lock(&kv_lock, SVC_LOCK_TIMEOUT) != 0) {
+		return -EBUSY;
+	}
 	for (int i = 0; i < KV_SLOTS; i++) {
 		if (kv_store[i].used && kv_store[i].owner == owner &&
 		    strcmp(kv_store[i].key, key) == 0) {
@@ -287,7 +299,10 @@ int z_impl_svc_flash_read(uint32_t off, uint8_t *buf, size_t len)
 	int rc = -EINVAL;
 
 	if ((off + len) <= fa->fa_size) {
-		k_mutex_lock(&flash_lock, K_FOREVER);
+		if (k_mutex_lock(&flash_lock, SVC_LOCK_TIMEOUT) != 0) {
+			flash_area_close(fa);
+			return -EBUSY;
+		}
 		rc = flash_area_read(fa, off, buf, len);
 		k_mutex_unlock(&flash_lock);
 	}
@@ -318,7 +333,10 @@ int z_impl_svc_flash_write(uint32_t off, const uint8_t *buf, size_t len)
 	int rc = -EINVAL;
 
 	if ((off + len) <= fa->fa_size) {
-		k_mutex_lock(&flash_lock, K_FOREVER);
+		if (k_mutex_lock(&flash_lock, SVC_LOCK_TIMEOUT) != 0) {
+			flash_area_close(fa);
+			return -EBUSY;
+		}
 		rc = flash_area_write(fa, off, buf, len);
 		k_mutex_unlock(&flash_lock);
 		if (rc == 0) {
@@ -350,7 +368,10 @@ int z_impl_svc_flash_erase(uint32_t off, size_t len)
 
 	/* Erase is bounded only by the partition; it spans whole sectors. */
 	if ((off + len) <= fa->fa_size) {
-		k_mutex_lock(&flash_lock, K_FOREVER);
+		if (k_mutex_lock(&flash_lock, SVC_LOCK_TIMEOUT) != 0) {
+			flash_area_close(fa);
+			return -EBUSY;
+		}
 		rc = flash_area_erase(fa, off, len);
 		k_mutex_unlock(&flash_lock);
 	}
@@ -460,7 +481,9 @@ int z_impl_svc_rtc_set(uint32_t epoch_sec)
 	if (!app_has_cap(APP_CAP_TIME)) {
 		return -EPERM;
 	}
-	k_mutex_lock(&rtc_lock, K_FOREVER);
+	if (k_mutex_lock(&rtc_lock, SVC_LOCK_TIMEOUT) != 0) {
+		return -EBUSY;
+	}
 	rtc_seed_sec = epoch_sec;
 	rtc_seed_uptime = k_uptime_get();
 	k_mutex_unlock(&rtc_lock);
@@ -472,7 +495,9 @@ int z_impl_svc_rtc_now(uint32_t *epoch_sec)
 	if (!app_has_cap(APP_CAP_TIME)) {
 		return -EPERM;
 	}
-	k_mutex_lock(&rtc_lock, K_FOREVER);
+	if (k_mutex_lock(&rtc_lock, SVC_LOCK_TIMEOUT) != 0) {
+		return -EBUSY;
+	}
 	int64_t now = rtc_seed_sec + (k_uptime_get() - rtc_seed_uptime) / 1000;
 
 	k_mutex_unlock(&rtc_lock);
@@ -526,7 +551,9 @@ int z_impl_svc_ipc_register(const char *name)
 	if (id < 0 || id >= MAX_APPS) {
 		return -EINVAL;
 	}
-	k_mutex_lock(&ipc_dir_lock, K_FOREVER);
+	if (k_mutex_lock(&ipc_dir_lock, SVC_LOCK_TIMEOUT) != 0) {
+		return -EBUSY;
+	}
 	strncpy(ipc_names[id], name, IPC_NAME_MAX - 1);
 	ipc_names[id][IPC_NAME_MAX - 1] = '\0';
 	k_mutex_unlock(&ipc_dir_lock);
@@ -544,7 +571,9 @@ int z_impl_svc_ipc_send_to(const char *name, const void *buf, size_t len)
 
 	int dest = -1;
 
-	k_mutex_lock(&ipc_dir_lock, K_FOREVER);
+	if (k_mutex_lock(&ipc_dir_lock, SVC_LOCK_TIMEOUT) != 0) {
+		return -EBUSY;
+	}
 	for (int i = 0; i < MAX_APPS; i++) {
 		if (ipc_names[i][0] != '\0' && strcmp(ipc_names[i], name) == 0) {
 			dest = i;
@@ -570,7 +599,9 @@ int z_impl_svc_topic_subscribe(const char *topic)
 	if (id < 0 || id >= MAX_APPS) {
 		return -EINVAL;
 	}
-	k_mutex_lock(&ipc_dir_lock, K_FOREVER);
+	if (k_mutex_lock(&ipc_dir_lock, SVC_LOCK_TIMEOUT) != 0) {
+		return -EBUSY;
+	}
 	strncpy(ipc_topics[id], topic, IPC_TOPIC_MAX - 1);
 	ipc_topics[id][IPC_TOPIC_MAX - 1] = '\0';
 	k_mutex_unlock(&ipc_dir_lock);
@@ -588,7 +619,9 @@ int z_impl_svc_topic_publish(const char *topic, const void *buf, size_t len)
 
 	int delivered = 0;
 
-	k_mutex_lock(&ipc_dir_lock, K_FOREVER);
+	if (k_mutex_lock(&ipc_dir_lock, SVC_LOCK_TIMEOUT) != 0) {
+		return -EBUSY;
+	}
 	for (int i = 0; i < MAX_APPS; i++) {
 		if (ipc_topics[i][0] != '\0' && strcmp(ipc_topics[i], topic) == 0) {
 			if (mailbox_put(i, buf, len) == 0) {

@@ -23,6 +23,9 @@
 
 #define CAN_PAYLOAD_MAX 8
 
+/* Bounded wait for the shared lock; -EBUSY rather than parking the caller. */
+#define SVC_LOCK_TIMEOUT K_SECONDS(2)
+
 static inline bool app_has_cap(uint32_t mask)
 {
 	return (app_platform_caps_current() & mask) == mask;
@@ -46,7 +49,9 @@ static int can_ensure_up(void)
 	if (can_ready) {
 		return 0;
 	}
-	k_mutex_lock(&can_lock, K_FOREVER);
+	if (k_mutex_lock(&can_lock, SVC_LOCK_TIMEOUT) != 0) {
+		return -EBUSY;
+	}
 	int rc = 0;
 
 	if (!can_ready) {

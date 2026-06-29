@@ -26,6 +26,9 @@
 #define PEER_PORT 4242
 #define MSG_MAX   64
 
+/* Bounded wait for the shared lock; -EBUSY rather than parking the caller. */
+#define SVC_LOCK_TIMEOUT K_SECONDS(2)
+
 static inline bool app_has_cap(uint32_t mask)
 {
 	return (app_platform_caps_current() & mask) == mask;
@@ -119,7 +122,9 @@ static int radio_ensure_up(void)
 {
 	int rc = 0;
 
-	k_mutex_lock(&radio_lock, K_FOREVER);
+	if (k_mutex_lock(&radio_lock, SVC_LOCK_TIMEOUT) != 0) {
+		return -EBUSY;
+	}
 	if (!radio_ready) {
 		rc = radio_open();
 		if (rc == 0) {

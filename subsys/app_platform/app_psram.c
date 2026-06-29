@@ -25,6 +25,9 @@
 #define MAX_APPS  CONFIG_APP_PLATFORM_MAX_APPS
 #define PSRAM_MIN 1024U
 
+/* Bounded wait for the shared lock; -EBUSY rather than parking the caller. */
+#define SVC_LOCK_TIMEOUT K_SECONDS(2)
+
 static inline bool app_has_cap(uint32_t mask)
 {
 	return (app_platform_caps_current() & mask) == mask;
@@ -82,7 +85,9 @@ int z_impl_svc_psram_map(size_t size, uintptr_t *out_addr, size_t *out_size)
 		return -EINVAL;
 	}
 
-	k_mutex_lock(&psram_lock, K_FOREVER);
+	if (k_mutex_lock(&psram_lock, SVC_LOCK_TIMEOUT) != 0) {
+		return -EBUSY;
+	}
 	if (regions[id].used) {
 		k_mutex_unlock(&psram_lock);
 		return -EEXIST;
