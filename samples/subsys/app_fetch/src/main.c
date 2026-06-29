@@ -66,7 +66,7 @@ static void wifi_connect(void)
 	p.psk_length = strlen(CONFIG_APP_FETCH_WIFI_PSK);
 	p.security = WIFI_SECURITY_TYPE_PSK;
 	p.channel = WIFI_CHANNEL_ANY;
-	p.band = WIFI_FREQ_BAND_2_4_GHZ;
+	p.band = WIFI_FREQ_BAND_UNKNOWN;
 	p.mfp = WIFI_MFP_OPTIONAL;
 
 	printk("connecting to Wi-Fi '%s'...\n", CONFIG_APP_FETCH_WIFI_SSID);
@@ -287,8 +287,10 @@ int main(void)
 		return 0;
 	}
 
-	/* Let the Wi-Fi interface finish coming up before requesting a
-	 * connection, then retry a few times.
+	/* Let the Wi-Fi interface finish coming up, then issue a single
+	 * connection request and wait for an address. The connect is
+	 * asynchronous, so re-requesting while it is in progress only confuses
+	 * the driver; wait it out instead.
 	 */
 	net_mgmt_init_event_callback(&ipv4_cb, ipv4_evt, NET_EVENT_IPV4_ADDR_ADD);
 	net_mgmt_add_event_callback(&ipv4_cb);
@@ -301,14 +303,11 @@ int main(void)
 	}
 	k_msleep(1000);
 
-	for (int attempt = 0; attempt < 3; attempt++) {
-		wifi_connect();
-		if (k_sem_take(&got_ip, K_SECONDS(20)) == 0) {
-			printk("online. fetch an app with: app fetch <name> "
-			       "<server-ip>\n");
-			return 0;
-		}
-		printk("Wi-Fi attempt %d got no IP; retrying...\n", attempt + 1);
+	wifi_connect();
+	if (k_sem_take(&got_ip, K_SECONDS(45)) == 0) {
+		printk("online. fetch an app with: app fetch <name> "
+		       "<server-ip>\n");
+		return 0;
 	}
 	printk("no IP address; check Wi-Fi credentials/band (2.4GHz)\n");
 	return 0;
