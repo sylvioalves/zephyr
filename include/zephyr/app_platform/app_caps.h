@@ -45,6 +45,7 @@
 #define APP_CAP_CAN     BIT(19)  /**< CAN bus messaging */
 #define APP_CAP_DMA     BIT(20)  /**< memory-to-memory DMA copy */
 #define APP_CAP_PSRAM   BIT(21)  /**< map external RAM into the app domain */
+#define APP_CAP_SOCKET  BIT(22)  /**< raw UDP/TCP datagrams and name resolution */
 
 /** Grant every capability (for a fully trusted application). */
 #define APP_CAP_ALL     (~0U)

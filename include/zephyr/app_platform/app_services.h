@@ -297,6 +297,103 @@ __syscall int svc_wifi_connect(const char *ssid, const char *psk);
 __syscall int svc_wifi_disconnect(void);
 
 /**
+ * @brief Resolve a hostname to an IPv4 address. Needs @ref APP_CAP_SOCKET.
+ *
+ * Turns @p host into a dotted IPv4 string through the platform's resolver. The
+ * shared Wi-Fi link must be up (see @ref svc_net_ready).
+ *
+ * @param host Hostname or dotted address to resolve.
+ * @param out_ip Destination for the dotted IPv4 string.
+ * @param cap Size of @p out_ip (16 is enough for IPv4).
+ * @retval 0 on success, -EPERM without the capability, negative errno otherwise.
+ */
+__syscall int svc_resolve(const char *host, char *out_ip, size_t cap);
+
+/**
+ * @brief Open the calling application's UDP socket to a peer.
+ *        Needs @ref APP_CAP_SOCKET.
+ *
+ * Per-app-keyed: each application gets one platform-owned UDP socket bound to a
+ * peer @p host : @p port. The application never holds the socket. The shared
+ * Wi-Fi link must be up first (see @ref svc_net_ready).
+ *
+ * @param host Peer hostname or dotted IPv4 address.
+ * @param port Peer UDP port.
+ * @retval 0 on success, -EPERM without the capability, negative errno otherwise.
+ */
+__syscall int svc_udp_open(const char *host, uint16_t port);
+
+/**
+ * @brief Send a datagram on the application's UDP socket. Needs @ref APP_CAP_SOCKET.
+ *
+ * @param buf Payload.
+ * @param len Payload length.
+ * @retval >=0 bytes queued, -EPERM without the capability, negative errno otherwise.
+ */
+__syscall int svc_udp_send(const void *buf, size_t len);
+
+/**
+ * @brief Receive a datagram from the application's UDP socket.
+ *        Needs @ref APP_CAP_SOCKET.
+ *
+ * @param buf Destination buffer.
+ * @param cap Size of @p buf.
+ * @param timeout_ms How long to wait for a datagram.
+ * @retval >=0 the datagram length, -EAGAIN on timeout, -EPERM without the
+ *         capability, negative errno otherwise.
+ */
+__syscall int svc_udp_recv(void *buf, size_t cap, uint32_t timeout_ms);
+
+/**
+ * @brief Close the application's UDP socket. Needs @ref APP_CAP_SOCKET.
+ *
+ * @retval 0 on success, -EPERM without the capability, negative errno otherwise.
+ */
+__syscall int svc_udp_close(void);
+
+/**
+ * @brief Open the calling application's TCP stream to a server.
+ *        Needs @ref APP_CAP_SOCKET.
+ *
+ * Per-app-keyed: each application gets one platform-owned TCP socket connected
+ * to @p host : @p port. The application never holds the socket. The shared
+ * Wi-Fi link must be up first (see @ref svc_net_ready).
+ *
+ * @param host Server hostname or dotted IPv4 address.
+ * @param port Server TCP port.
+ * @retval 0 on success, -EPERM without the capability, negative errno otherwise.
+ */
+__syscall int svc_tcp_connect(const char *host, uint16_t port);
+
+/**
+ * @brief Send bytes on the application's TCP stream. Needs @ref APP_CAP_SOCKET.
+ *
+ * @param buf Payload.
+ * @param len Payload length.
+ * @retval >=0 bytes sent, -EPERM without the capability, negative errno otherwise.
+ */
+__syscall int svc_tcp_send(const void *buf, size_t len);
+
+/**
+ * @brief Receive bytes from the application's TCP stream.
+ *        Needs @ref APP_CAP_SOCKET.
+ *
+ * @param buf Destination buffer.
+ * @param cap Size of @p buf.
+ * @param timeout_ms How long to wait for data.
+ * @retval >0 bytes read, 0 on a closed stream, -EAGAIN on timeout, -EPERM
+ *         without the capability, negative errno otherwise.
+ */
+__syscall int svc_tcp_recv(void *buf, size_t cap, uint32_t timeout_ms);
+
+/**
+ * @brief Close the application's TCP stream. Needs @ref APP_CAP_SOCKET.
+ *
+ * @retval 0 on success, -EPERM without the capability, negative errno otherwise.
+ */
+__syscall int svc_tcp_close(void);
+
+/**
  * @brief Number of GPIO lines the platform exposes. Needs @ref APP_CAP_GPIO.
  *
  * The lines come from the board's @c leds devicetree node.

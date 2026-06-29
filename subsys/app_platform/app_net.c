@@ -72,6 +72,30 @@ struct session {
 
 static struct session sessions[MAX_SESSIONS];
 
+/* Raw UDP/TCP datagram buffer carried across the user/kernel boundary. */
+#define SOCK_PAYLOAD_MAX 256
+
+struct sock_msg {
+	uint16_t len;
+	uint8_t  data[SOCK_PAYLOAD_MAX];
+};
+
+/*
+ * One platform-owned raw socket per application, keyed by group id. The
+ * application never holds the socket; the supervisor net thread pumps incoming
+ * bytes into the inbox and the send syscall writes directly under net_lock.
+ */
+struct app_sock {
+	bool                    used;
+	bool                    is_tcp;
+	int                     fd;
+	struct sockaddr_in      peer;
+	struct k_msgq           inbox;
+	char                    inbox_buf[4 * sizeof(struct sock_msg)];
+};
+
+static struct app_sock socks[MAX_SESSIONS];
+
 struct pub_req {
 	int  id;
 	char payload[PAYLOAD_MAX];
@@ -191,6 +215,24 @@ static int resolve_broker(void)
 	b->sin_addr = r->sin_addr;
 	zsock_freeaddrinfo(res);
 	broker_resolved = true;
+	return 0;
+}
+
+/* Resolve host:port into an IPv4 sockaddr. Runs in the calling context. */
+static int resolve_host(const char *host, uint16_t port, struct sockaddr_in *out)
+{
+	struct zsock_addrinfo *res, hints = { .ai_family = AF_INET,
+					      .ai_socktype = SOCK_DGRAM };
+	int rc = zsock_getaddrinfo(host, NULL, &hints, &res);
+
+	if (rc != 0 || !res) {
+		return -EHOSTUNREACH;
+	}
+	memset(out, 0, sizeof(*out));
+	out->sin_family = AF_INET;
+	out->sin_port = htons(port);
+	out->sin_addr = ((struct sockaddr_in *)res->ai_addr)->sin_addr;
+	zsock_freeaddrinfo(res);
 	return 0;
 }
 
@@ -345,6 +387,10 @@ static void net_thread(void *a, void *b, void *c)
 	}
 #endif
 
+	for (int i = 0; i < MAX_SESSIONS; i++) {
+		socks[i].fd = -1;
+	}
+
 	for (;;) {
 		struct pub_req req;
 
@@ -401,6 +447,34 @@ static void net_thread(void *a, void *b, void *c)
 				k_mutex_lock(&net_lock, K_FOREVER);
 				mqtt_live(&s->client);
 				k_mutex_unlock(&net_lock);
+			}
+		}
+
+		/* Pump each open raw socket: drain ready bytes into its inbox. */
+		for (int i = 0; i < MAX_SESSIONS; i++) {
+			struct app_sock *sk = &socks[i];
+
+			if (!sk->used || sk->fd < 0) {
+				continue;
+			}
+			struct zsock_pollfd fd = { .fd = sk->fd,
+						   .events = ZSOCK_POLLIN };
+
+			if (zsock_poll(&fd, 1, 0) <= 0) {
+				continue;
+			}
+			struct sock_msg m;
+			int n = zsock_recv(sk->fd, m.data, sizeof(m.data), 0);
+
+			if (n > 0) {
+				m.len = (uint16_t)n;
+				(void)k_msgq_put(&sk->inbox, &m, K_NO_WAIT);
+			} else if (n == 0 && sk->is_tcp) {
+				/* Peer closed the stream: signal end with a
+				 * zero-length message so the reader sees it.
+				 */
+				m.len = 0;
+				(void)k_msgq_put(&sk->inbox, &m, K_NO_WAIT);
 			}
 		}
 		k_msleep(20);
@@ -577,6 +651,215 @@ int z_impl_svc_wifi_disconnect(void)
 	return 0;
 }
 
+/* ---- raw UDP/TCP datagram services ---- */
+
+int z_impl_svc_resolve(const char *host, char *out_ip, size_t cap)
+{
+	if (!app_has_cap(APP_CAP_SOCKET)) {
+		return -EPERM;
+	}
+	if (!link_ready) {
+		return -ENETDOWN;
+	}
+
+	struct sockaddr_in addr;
+	int rc = resolve_host(host, 0, &addr);
+
+	if (rc != 0) {
+		return rc;
+	}
+	if (zsock_inet_ntop(AF_INET, &addr.sin_addr, out_ip, cap) == NULL) {
+		return -ENOSPC;
+	}
+	return 0;
+}
+
+static int sock_open(bool tcp, const char *host, uint16_t port)
+{
+	if (!app_has_cap(APP_CAP_SOCKET)) {
+		return -EPERM;
+	}
+	if (!link_ready) {
+		return -ENETDOWN;
+	}
+
+	int id = app_platform_id_current();
+
+	if (id < 0 || id >= MAX_SESSIONS) {
+		return -EINVAL;
+	}
+
+	struct app_sock *sk = &socks[id];
+
+	if (sk->used) {
+		return -EALREADY;
+	}
+
+	struct sockaddr_in peer;
+	int rc = resolve_host(host, port, &peer);
+
+	if (rc != 0) {
+		return rc;
+	}
+
+	k_mutex_lock(&net_lock, K_FOREVER);
+	int fd = zsock_socket(AF_INET, tcp ? SOCK_STREAM : SOCK_DGRAM,
+			      tcp ? IPPROTO_TCP : IPPROTO_UDP);
+
+	if (fd < 0) {
+		k_mutex_unlock(&net_lock);
+		return -errno;
+	}
+	if (tcp) {
+		rc = zsock_connect(fd, (struct sockaddr *)&peer, sizeof(peer));
+		if (rc != 0) {
+			zsock_close(fd);
+			k_mutex_unlock(&net_lock);
+			return -ECONNREFUSED;
+		}
+	}
+	int flags = zsock_fcntl(fd, F_GETFL, 0);
+
+	(void)zsock_fcntl(fd, F_SETFL, flags | O_NONBLOCK);
+
+	sk->fd = fd;
+	sk->is_tcp = tcp;
+	sk->peer = peer;
+	k_msgq_init(&sk->inbox, sk->inbox_buf, sizeof(struct sock_msg), 4);
+	sk->used = true;
+	k_mutex_unlock(&net_lock);
+	return 0;
+}
+
+static int sock_send(bool tcp, const void *buf, size_t len)
+{
+	if (!app_has_cap(APP_CAP_SOCKET)) {
+		return -EPERM;
+	}
+
+	int id = app_platform_id_current();
+
+	if (id < 0 || id >= MAX_SESSIONS) {
+		return -EINVAL;
+	}
+
+	struct app_sock *sk = &socks[id];
+
+	if (!sk->used || sk->fd < 0 || sk->is_tcp != tcp) {
+		return -ENOTCONN;
+	}
+
+	k_mutex_lock(&net_lock, K_FOREVER);
+	ssize_t n;
+
+	if (tcp) {
+		n = zsock_send(sk->fd, buf, len, 0);
+	} else {
+		n = zsock_sendto(sk->fd, buf, len, 0,
+				 (struct sockaddr *)&sk->peer, sizeof(sk->peer));
+	}
+	k_mutex_unlock(&net_lock);
+	return (n < 0) ? -errno : (int)n;
+}
+
+static int sock_recv(bool tcp, void *buf, size_t cap, uint32_t timeout_ms)
+{
+	if (!app_has_cap(APP_CAP_SOCKET)) {
+		return -EPERM;
+	}
+
+	int id = app_platform_id_current();
+
+	if (id < 0 || id >= MAX_SESSIONS) {
+		return -EINVAL;
+	}
+
+	struct app_sock *sk = &socks[id];
+
+	if (!sk->used || sk->is_tcp != tcp) {
+		return -ENOTCONN;
+	}
+
+	struct sock_msg m;
+
+	if (k_msgq_get(&sk->inbox, &m, K_MSEC(timeout_ms)) != 0) {
+		return -EAGAIN;
+	}
+
+	size_t n = MIN((size_t)m.len, cap);
+
+	memcpy(buf, m.data, n);
+	return (int)n;
+}
+
+static int sock_close(bool tcp)
+{
+	if (!app_has_cap(APP_CAP_SOCKET)) {
+		return -EPERM;
+	}
+
+	int id = app_platform_id_current();
+
+	if (id < 0 || id >= MAX_SESSIONS) {
+		return -EINVAL;
+	}
+
+	struct app_sock *sk = &socks[id];
+
+	if (!sk->used || sk->is_tcp != tcp) {
+		return -ENOTCONN;
+	}
+
+	k_mutex_lock(&net_lock, K_FOREVER);
+	if (sk->fd >= 0) {
+		zsock_close(sk->fd);
+		sk->fd = -1;
+	}
+	sk->used = false;
+	k_mutex_unlock(&net_lock);
+	return 0;
+}
+
+int z_impl_svc_udp_open(const char *host, uint16_t port)
+{
+	return sock_open(false, host, port);
+}
+
+int z_impl_svc_udp_send(const void *buf, size_t len)
+{
+	return sock_send(false, buf, len);
+}
+
+int z_impl_svc_udp_recv(void *buf, size_t cap, uint32_t timeout_ms)
+{
+	return sock_recv(false, buf, cap, timeout_ms);
+}
+
+int z_impl_svc_udp_close(void)
+{
+	return sock_close(false);
+}
+
+int z_impl_svc_tcp_connect(const char *host, uint16_t port)
+{
+	return sock_open(true, host, port);
+}
+
+int z_impl_svc_tcp_send(const void *buf, size_t len)
+{
+	return sock_send(true, buf, len);
+}
+
+int z_impl_svc_tcp_recv(void *buf, size_t cap, uint32_t timeout_ms)
+{
+	return sock_recv(true, buf, cap, timeout_ms);
+}
+
+int z_impl_svc_tcp_close(void)
+{
+	return sock_close(true);
+}
+
 #ifdef CONFIG_USERSPACE
 static inline int z_vrfy_svc_net_ready(void)
 {
@@ -661,4 +944,110 @@ static inline int z_vrfy_svc_wifi_disconnect(void)
 	return z_impl_svc_wifi_disconnect();
 }
 #include <zephyr/syscalls/svc_wifi_disconnect_mrsh.c>
+
+static inline int z_vrfy_svc_resolve(const char *host, char *out_ip, size_t cap)
+{
+	char h[64];
+
+	if (cap == 0 || cap > 64) {
+		return -EINVAL;
+	}
+	if (k_usermode_string_copy(h, (char *)host, sizeof(h)) != 0) {
+		return -EFAULT;
+	}
+	K_OOPS(K_SYSCALL_MEMORY_WRITE(out_ip, cap));
+
+	char buf[64];
+	int rc = z_impl_svc_resolve(h, buf, sizeof(buf));
+
+	if (rc == 0 && k_usermode_to_copy(out_ip, buf, strlen(buf) + 1) != 0) {
+		return -EFAULT;
+	}
+	return rc;
+}
+#include <zephyr/syscalls/svc_resolve_mrsh.c>
+
+static inline int z_vrfy_svc_udp_open(const char *host, uint16_t port)
+{
+	char h[64];
+
+	if (k_usermode_string_copy(h, (char *)host, sizeof(h)) != 0) {
+		return -EFAULT;
+	}
+	return z_impl_svc_udp_open(h, port);
+}
+#include <zephyr/syscalls/svc_udp_open_mrsh.c>
+
+static inline int z_vrfy_svc_udp_send(const void *buf, size_t len)
+{
+	K_OOPS(K_SYSCALL_MEMORY_READ(buf, len));
+	return z_impl_svc_udp_send(buf, len);
+}
+#include <zephyr/syscalls/svc_udp_send_mrsh.c>
+
+static inline int z_vrfy_svc_udp_recv(void *buf, size_t cap, uint32_t timeout_ms)
+{
+	char tmp[SOCK_PAYLOAD_MAX];
+
+	if (cap == 0 || cap > sizeof(tmp)) {
+		return -EINVAL;
+	}
+	K_OOPS(K_SYSCALL_MEMORY_WRITE(buf, cap));
+
+	int rc = z_impl_svc_udp_recv(tmp, cap, timeout_ms);
+
+	if (rc > 0 && k_usermode_to_copy(buf, tmp, rc) != 0) {
+		return -EFAULT;
+	}
+	return rc;
+}
+#include <zephyr/syscalls/svc_udp_recv_mrsh.c>
+
+static inline int z_vrfy_svc_udp_close(void)
+{
+	return z_impl_svc_udp_close();
+}
+#include <zephyr/syscalls/svc_udp_close_mrsh.c>
+
+static inline int z_vrfy_svc_tcp_connect(const char *host, uint16_t port)
+{
+	char h[64];
+
+	if (k_usermode_string_copy(h, (char *)host, sizeof(h)) != 0) {
+		return -EFAULT;
+	}
+	return z_impl_svc_tcp_connect(h, port);
+}
+#include <zephyr/syscalls/svc_tcp_connect_mrsh.c>
+
+static inline int z_vrfy_svc_tcp_send(const void *buf, size_t len)
+{
+	K_OOPS(K_SYSCALL_MEMORY_READ(buf, len));
+	return z_impl_svc_tcp_send(buf, len);
+}
+#include <zephyr/syscalls/svc_tcp_send_mrsh.c>
+
+static inline int z_vrfy_svc_tcp_recv(void *buf, size_t cap, uint32_t timeout_ms)
+{
+	char tmp[SOCK_PAYLOAD_MAX];
+
+	if (cap == 0 || cap > sizeof(tmp)) {
+		return -EINVAL;
+	}
+	K_OOPS(K_SYSCALL_MEMORY_WRITE(buf, cap));
+
+	int rc = z_impl_svc_tcp_recv(tmp, cap, timeout_ms);
+
+	if (rc > 0 && k_usermode_to_copy(buf, tmp, rc) != 0) {
+		return -EFAULT;
+	}
+	return rc;
+}
+#include <zephyr/syscalls/svc_tcp_recv_mrsh.c>
+
+static inline int z_vrfy_svc_tcp_close(void)
+{
+	return z_impl_svc_tcp_close();
+}
+#include <zephyr/syscalls/svc_tcp_close_mrsh.c>
 #endif
