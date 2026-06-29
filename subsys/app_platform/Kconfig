@@ -114,11 +114,11 @@ if APP_PLATFORM_NET
 
 config APP_PLATFORM_NET_WIFI_SSID
 	string "Wi-Fi SSID"
-	default "Internet"
+	default "CHANGE_ME_SSID"
 
 config APP_PLATFORM_NET_WIFI_PSK
 	string "Wi-Fi PSK"
-	default "netsemfio123456"
+	default "CHANGE_ME_PSK"
 
 config APP_PLATFORM_NET_BROKER_HOST
 	string "MQTT broker hostname"

@@ -68,17 +68,30 @@ int main(void)
 		return 0;
 	}
 
+	/* TRIO_APPS is a bitmask selecting which apps to launch, so each can be
+	 * brought up alone or together: bit0 pub, bit1 bridge, bit2 printer.
+	 * Default: all three.
+	 */
+#ifndef TRIO_APPS
+#define TRIO_APPS 0x7
+#endif
+	printk("trio: launching set 0x%x\n", TRIO_APPS);
+
 	/* Printer first so its IPC name is registered before the bridge sends. */
-	launch("printer", print_app, ARRAY_SIZE(print_app), print_hash,
-	       APP_CAP_LOG | APP_CAP_IPC);
-	k_msleep(200);
+	if (TRIO_APPS & 0x4) {
+		launch("printer", print_app, ARRAY_SIZE(print_app), print_hash,
+		       APP_CAP_LOG | APP_CAP_IPC);
+		k_msleep(200);
+	}
+	if (TRIO_APPS & 0x2) {
+		launch("bridge", bridge_app, ARRAY_SIZE(bridge_app), bridge_hash,
+		       APP_CAP_LOG | APP_CAP_NET | APP_CAP_IPC);
+	}
+	if (TRIO_APPS & 0x1) {
+		launch("pub", pub_app, ARRAY_SIZE(pub_app), pub_hash,
+		       APP_CAP_LOG | APP_CAP_NET | APP_CAP_TIME | APP_CAP_SENSOR);
+	}
 
-	launch("bridge", bridge_app, ARRAY_SIZE(bridge_app), bridge_hash,
-	       APP_CAP_LOG | APP_CAP_NET | APP_CAP_IPC);
-
-	launch("pub", pub_app, ARRAY_SIZE(pub_app), pub_hash,
-	       APP_CAP_LOG | APP_CAP_NET | APP_CAP_TIME | APP_CAP_SENSOR);
-
-	printk("*** launched pub/bridge/printer; watch the temp flow ***\n");
+	printk("*** launched set 0x%x; watch the flow ***\n", TRIO_APPS);
 	return 0;
 }
