@@ -238,6 +238,22 @@ __syscall int svc_mqtt_open(const char *client_id, const char *pub_topic,
 __syscall int svc_mqtt_publish(const char *payload);
 
 /**
+ * @brief Receive a message from the application's subscribed topic.
+ *        Needs @ref APP_CAP_NET.
+ *
+ * Returns the next message that arrived on the topic passed as sub_topic to
+ * @ref svc_mqtt_open, copied into @p payload and NUL-terminated. Per-app-keyed:
+ * reads only this application's own session.
+ *
+ * @param payload Destination buffer.
+ * @param cap Size of @p payload.
+ * @param timeout_ms How long to wait for a message.
+ * @retval >=0 the payload length, -EAGAIN on timeout, -EPERM without the
+ *         capability, negative errno otherwise.
+ */
+__syscall int svc_mqtt_recv(char *payload, size_t cap, uint32_t timeout_ms);
+
+/**
  * @brief Number of GPIO lines the platform exposes. Needs @ref APP_CAP_GPIO.
  *
  * The lines come from the board's @c leds devicetree node.

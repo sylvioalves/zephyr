@@ -40,6 +40,11 @@ static inline bool app_has_cap(uint32_t mask)
 	return (app_platform_caps_current() & mask) == mask;
 }
 
+struct inbox_msg {
+	uint16_t len;
+	char     data[PAYLOAD_MAX];
+};
+
 struct session {
 	bool                    used;
 	bool                    connected;
@@ -50,6 +55,9 @@ struct session {
 	struct sockaddr_storage broker;
 	uint8_t                 rx_buf[256];
 	uint8_t                 tx_buf[256];
+	/* Incoming messages on this session's subscribed topic. */
+	struct k_msgq           inbox;
+	char                    inbox_buf[4 * sizeof(struct inbox_msg)];
 };
 
 static struct session sessions[MAX_SESSIONS];
@@ -134,6 +142,25 @@ static void mqtt_evt(struct mqtt_client *c, const struct mqtt_evt *e)
 		       s->connected ? "CONNECTED" : "refused");
 	} else if (e->type == MQTT_EVT_DISCONNECT) {
 		s->connected = false;
+	} else if (e->type == MQTT_EVT_PUBLISH) {
+		/* A message arrived on this session's subscribed topic: read its
+		 * payload and queue it for the application to receive.
+		 */
+		const struct mqtt_publish_param *p = &e->param.publish;
+		struct inbox_msg m = { 0 };
+		size_t cap = MIN(p->message.payload.len, sizeof(m.data) - 1);
+		int rc = mqtt_read_publish_payload(c, m.data, cap);
+
+		if (rc >= 0) {
+			m.data[rc] = '\0';
+			m.len = (uint16_t)rc;
+			(void)k_msgq_put(&s->inbox, &m, K_NO_WAIT);
+		}
+		if (p->message.topic.qos == MQTT_QOS_1_AT_LEAST_ONCE) {
+			struct mqtt_puback_param ack = {
+				.message_id = p->message_id };
+			(void)mqtt_publish_qos1_ack(c, &ack);
+		}
 	}
 }
 
@@ -278,12 +305,39 @@ int z_impl_svc_mqtt_open(const char *client_id, const char *pub_topic,
 	strncpy(s->client_id, client_id, sizeof(s->client_id) - 1);
 	strncpy(s->pub_topic, pub_topic, sizeof(s->pub_topic) - 1);
 	strncpy(s->sub_topic, sub_topic, sizeof(s->sub_topic) - 1);
+	k_msgq_init(&s->inbox, s->inbox_buf, sizeof(struct inbox_msg), 4);
 
 	k_mutex_lock(&net_lock, K_FOREVER);
 	int rc = session_connect(s);
 
 	k_mutex_unlock(&net_lock);
 	return rc;
+}
+
+int z_impl_svc_mqtt_recv(char *payload, size_t cap, uint32_t timeout_ms)
+{
+	if (!app_has_cap(APP_CAP_NET)) {
+		return -EPERM;
+	}
+
+	int id = app_platform_id_current();
+
+	if (id < 0 || id >= MAX_SESSIONS || !sessions[id].used) {
+		return -EINVAL;
+	}
+
+	struct inbox_msg m;
+	int rc = k_msgq_get(&sessions[id].inbox, &m, K_MSEC(timeout_ms));
+
+	if (rc != 0) {
+		return -EAGAIN;
+	}
+
+	size_t n = MIN(m.len, cap - 1);
+
+	memcpy(payload, m.data, n);
+	payload[n] = '\0';
+	return (int)n;
 }
 
 int z_impl_svc_mqtt_publish(const char *payload)
@@ -337,4 +391,23 @@ static inline int z_vrfy_svc_mqtt_publish(const char *payload)
 	return z_impl_svc_mqtt_publish(buf);
 }
 #include <zephyr/syscalls/svc_mqtt_publish_mrsh.c>
+
+static inline int z_vrfy_svc_mqtt_recv(char *payload, size_t cap,
+				       uint32_t timeout_ms)
+{
+	char buf[PAYLOAD_MAX];
+
+	if (cap == 0 || cap > sizeof(buf)) {
+		return -EINVAL;
+	}
+	K_OOPS(K_SYSCALL_MEMORY_WRITE(payload, cap));
+
+	int rc = z_impl_svc_mqtt_recv(buf, cap, timeout_ms);
+
+	if (rc > 0 && k_usermode_to_copy(payload, buf, rc + 1) != 0) {
+		return -EFAULT;
+	}
+	return rc;
+}
+#include <zephyr/syscalls/svc_mqtt_recv_mrsh.c>
 #endif

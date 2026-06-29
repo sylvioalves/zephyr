@@ -420,6 +420,11 @@ static void trampoline(void *entry, void *u1, void *u2)
 {
 	ARG_UNUSED(u1); ARG_UNUSED(u2);
 	((app_entry_t)entry)(NULL);
+	/* The app returned. Exit through the kernel so a user-mode thread does
+	 * not fall off its entry into an undefined return address; the death-
+	 * watcher then reclaims the slot.
+	 */
+	k_thread_abort(k_current_get());
 }
 
 int app_platform_init(void)
