@@ -4,6 +4,7 @@
 zephyr_library()
 
 zephyr_library_sources(app_manager.c)
+zephyr_library_sources_ifdef(CONFIG_SHELL                 app_shell.c)
 zephyr_library_sources_ifdef(CONFIG_APP_PLATFORM_LOADER   app_loader.c)
 zephyr_library_sources_ifdef(CONFIG_APP_PLATFORM_REGISTRY app_registry.c)
 zephyr_library_sources_ifdef(CONFIG_APP_PLATFORM_SERVICES app_services.c)
