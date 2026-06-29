@@ -1,0 +1,9 @@
+/*
+ * Copyright (c) 2026 Espressif Systems (Shanghai) Co., Ltd.
+ * SPDX-License-Identifier: Apache-2.0
+ */
+
+/* Enable the SoC die-temperature sensor (die_temp0 alias). */
+&coretemp {
+	status = "okay";
+};
