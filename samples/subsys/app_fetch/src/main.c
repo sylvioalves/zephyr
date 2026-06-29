@@ -1,0 +1,278 @@
+/*
+ * Copyright (c) 2026 Espressif Systems (Shanghai) Co., Ltd.
+ *
+ * SPDX-License-Identifier: Apache-2.0
+ */
+
+/*
+ * App store over Wi-Fi: the device pulls a signed application from a server.
+ *
+ * At boot the device joins Wi-Fi and waits for an address. The shell command
+ *   app fetch <name> <server-ip>
+ * downloads two files over HTTP into storage:
+ *   http://<server-ip>:8000/<name>.llext     -> /lfs/<name>.llext
+ *   http://<server-ip>:8000/<name>.manifest  -> /lfs/<name>.manifest
+ * then verifies the signed manifest against the public key compiled into the
+ * firmware, binds the module to it, records it in the registry, and launches it
+ * as an isolated user-mode app - streamed from flash. A tampered or unsigned
+ * download is rejected. This is the app store pulling a release from a server.
+ */
+
+#include <zephyr/app_platform/app_platform.h>
+#include <zephyr/app_platform/app_loader.h>
+#include <zephyr/app_platform/app_registry.h>
+#include <zephyr/app_platform/app_manifest.h>
+#include <zephyr/app_platform/app_caps.h>
+#include <zephyr/kernel.h>
+#include <zephyr/shell/shell.h>
+#include <zephyr/fs/fs.h>
+#include <zephyr/net/net_mgmt.h>
+#include <zephyr/net/net_event.h>
+#include <zephyr/net/wifi_mgmt.h>
+#include <zephyr/net/socket.h>
+#include <zephyr/net/http/client.h>
+#include <string.h>
+
+static const uint8_t trusted_pubkey[] = {
+#include "fetch_app.pubkey.inc"
+};
+
+#define APP_CAPS     (APP_CAP_LOG | APP_CAP_TIME)
+#define MOUNT_POINT  CONFIG_APP_PLATFORM_REGISTRY_MOUNT_POINT
+#define SERVER_PORT  8000
+
+static K_SEM_DEFINE(got_ip, 0, 1);
+static struct net_mgmt_event_callback ipv4_cb;
+
+static void ipv4_evt(struct net_mgmt_event_callback *cb, uint64_t ev,
+		     struct net_if *iface)
+{
+	ARG_UNUSED(cb);
+	ARG_UNUSED(iface);
+
+	if (ev == NET_EVENT_IPV4_ADDR_ADD) {
+		k_sem_give(&got_ip);
+	}
+}
+
+static void wifi_connect(void)
+{
+	struct net_if *iface = net_if_get_first_wifi();
+	static struct wifi_connect_req_params p;
+
+	p.ssid = (const uint8_t *)CONFIG_APP_FETCH_WIFI_SSID;
+	p.ssid_length = strlen(CONFIG_APP_FETCH_WIFI_SSID);
+	p.psk = (const uint8_t *)CONFIG_APP_FETCH_WIFI_PSK;
+	p.psk_length = strlen(CONFIG_APP_FETCH_WIFI_PSK);
+	p.security = WIFI_SECURITY_TYPE_PSK;
+	p.channel = WIFI_CHANNEL_ANY;
+	p.band = WIFI_FREQ_BAND_2_4_GHZ;
+	p.mfp = WIFI_MFP_OPTIONAL;
+
+	net_mgmt_init_event_callback(&ipv4_cb, ipv4_evt, NET_EVENT_IPV4_ADDR_ADD);
+	net_mgmt_add_event_callback(&ipv4_cb);
+
+	printk("connecting to Wi-Fi '%s'...\n", CONFIG_APP_FETCH_WIFI_SSID);
+	if (net_mgmt(NET_REQUEST_WIFI_CONNECT, iface, &p, sizeof(p))) {
+		printk("Wi-Fi connect request failed\n");
+		return;
+	}
+}
+
+/* A small file written incrementally as HTTP body chunks arrive. */
+struct dl {
+	struct fs_file_t f;
+	bool open;
+	int err;
+};
+
+static int dl_http_cb(struct http_response *rsp, enum http_final_call final,
+		      void *user)
+{
+	struct dl *d = user;
+
+	ARG_UNUSED(final);
+	if (d->err) {
+		return d->err;
+	}
+	if (rsp->body_frag_len && rsp->body_frag_start) {
+		ssize_t n = fs_write(&d->f, rsp->body_frag_start,
+				     rsp->body_frag_len);
+
+		if (n < 0 || (size_t)n != rsp->body_frag_len) {
+			d->err = -EIO;
+		}
+	}
+	return 0;
+}
+
+/* GET http://<host>:8000/<remote> into <local>. */
+static int http_get_to_file(const char *host, const char *remote,
+			    const char *local)
+{
+	struct sockaddr_in addr = {0};
+
+	addr.sin_family = AF_INET;
+	addr.sin_port = htons(SERVER_PORT);
+	if (net_addr_pton(AF_INET, host, &addr.sin_addr) != 0) {
+		return -EINVAL;
+	}
+
+	int sock = zsock_socket(AF_INET, SOCK_STREAM, IPPROTO_TCP);
+
+	if (sock < 0) {
+		return -errno;
+	}
+	if (zsock_connect(sock, (struct sockaddr *)&addr, sizeof(addr)) < 0) {
+		zsock_close(sock);
+		return -errno;
+	}
+
+	struct dl d = {0};
+
+	fs_file_t_init(&d.f);
+	if (fs_open(&d.f, local, FS_O_CREATE | FS_O_WRITE | FS_O_TRUNC) != 0) {
+		zsock_close(sock);
+		return -EIO;
+	}
+
+	static uint8_t recv_buf[512];
+	struct http_request req = {0};
+
+	req.method = HTTP_GET;
+	req.url = remote;
+	req.host = host;
+	req.protocol = "HTTP/1.1";
+	req.response = dl_http_cb;
+	req.recv_buf = recv_buf;
+	req.recv_buf_len = sizeof(recv_buf);
+
+	int rc = http_client_req(sock, &req, 10000, &d);
+
+	fs_close(&d.f);
+	zsock_close(sock);
+
+	if (rc < 0) {
+		return rc;
+	}
+	return d.err;
+}
+
+static int read_manifest(const char *name, struct app_manifest *mf,
+			 uint8_t *sig, size_t sig_cap)
+{
+	char path[64];
+	int n = snprintk(path, sizeof(path), "%s/%s.manifest", MOUNT_POINT, name);
+
+	if (n <= 0 || (size_t)n >= sizeof(path) || sig_cap < APP_MANIFEST_SIG_LEN) {
+		return -EINVAL;
+	}
+
+	struct fs_file_t f;
+
+	fs_file_t_init(&f);
+	if (fs_open(&f, path, FS_O_READ) != 0) {
+		return -ENOENT;
+	}
+
+	ssize_t r = fs_read(&f, mf, sizeof(*mf));
+
+	if (r == (ssize_t)sizeof(*mf)) {
+		r = fs_read(&f, sig, APP_MANIFEST_SIG_LEN);
+		r = (r == APP_MANIFEST_SIG_LEN) ? 0 : -EIO;
+	} else {
+		r = -EIO;
+	}
+	fs_close(&f);
+	return (r == 0) ? 0 : -EIO;
+}
+
+static int cmd_fetch(const struct shell *sh, size_t argc, char **argv)
+{
+	const char *name = argv[1];
+	const char *host = argv[2];
+	char rpath[48];
+	char lpath[64];
+
+	shell_print(sh, "fetching '%s' from %s ...", name, host);
+
+	/* Manifest first. */
+	snprintk(rpath, sizeof(rpath), "/%s.manifest", name);
+	snprintk(lpath, sizeof(lpath), "%s/%s.manifest", MOUNT_POINT, name);
+	if (http_get_to_file(host, rpath, lpath) != 0) {
+		shell_error(sh, "manifest download failed");
+		return -EIO;
+	}
+
+	/* Then the module. */
+	snprintk(rpath, sizeof(rpath), "/%s.llext", name);
+	if (app_registry_blob_path(name, lpath, sizeof(lpath)) != 0 ||
+	    http_get_to_file(host, rpath, lpath) != 0) {
+		shell_error(sh, "module download failed");
+		return -EIO;
+	}
+	shell_print(sh, "downloaded; verifying signature ...");
+
+	struct app_manifest mf;
+	uint8_t sig[APP_MANIFEST_SIG_LEN];
+
+	if (read_manifest(name, &mf, sig, sizeof(sig)) != 0) {
+		shell_error(sh, "manifest unreadable");
+		return -EIO;
+	}
+	if (strncmp(mf.name, name, APP_MANIFEST_NAME_MAX) != 0) {
+		shell_error(sh, "manifest names '%s', not '%s' - refused",
+			    mf.name, name);
+		return -EPERM;
+	}
+
+	struct llext *ext = NULL;
+	void *entry = NULL;
+	int rc = app_loader_verify_load_manifest_file(&mf, sig,
+						      APP_MANIFEST_SIG_LEN, lpath,
+						      trusted_pubkey,
+						      ARRAY_SIZE(trusted_pubkey),
+						      "app_main", &ext, &entry);
+
+	if (rc != 0) {
+		shell_error(sh, "verify/load failed (%d) - rejected", rc);
+		return rc;
+	}
+	if (app_registry_install_versioned(name, true, mf.version) != 0) {
+		shell_error(sh, "registry install failed");
+		return -EIO;
+	}
+
+	rc = app_platform_launch_llext(mf.name, ext, (app_entry_t)entry, APP_CAPS);
+	if (rc < 0) {
+		shell_error(sh, "launch refused (%d)", rc);
+		return rc;
+	}
+	shell_print(sh, "fetched, verified and launched '%s' v%u (isolated app %d)",
+		    mf.name, mf.version, rc);
+	return 0;
+}
+
+SHELL_STATIC_SUBCMD_SET_CREATE(app_cmds,
+	SHELL_CMD_ARG(fetch, NULL, "fetch <name> <server-ip>: download+verify+launch",
+		      cmd_fetch, 3, 0),
+	SHELL_SUBCMD_SET_END);
+SHELL_CMD_REGISTER(app, &app_cmds, "App platform commands", NULL);
+
+int main(void)
+{
+	printk("\n*** app store over Wi-Fi (C5) ***\n");
+
+	if (app_platform_init() != 0 || app_registry_load() != 0) {
+		printk("platform init failed\n");
+		return 0;
+	}
+
+	wifi_connect();
+	if (k_sem_take(&got_ip, K_SECONDS(30)) != 0) {
+		printk("no IP address; check Wi-Fi credentials\n");
+		return 0;
+	}
+	printk("online. fetch an app with: app fetch <name> <server-ip>\n");
+	return 0;
+}

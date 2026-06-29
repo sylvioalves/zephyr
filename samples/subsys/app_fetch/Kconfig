@@ -1,0 +1,14 @@
+# Copyright (c) 2026 Espressif Systems (Shanghai) Co., Ltd.
+# SPDX-License-Identifier: Apache-2.0
+
+mainmenu "App fetch sample"
+
+config APP_FETCH_WIFI_SSID
+	string "Wi-Fi SSID to join"
+	default "CHANGE_ME_SSID"
+
+config APP_FETCH_WIFI_PSK
+	string "Wi-Fi password"
+	default "CHANGE_ME_PSK"
+
+source "Kconfig.zephyr"
