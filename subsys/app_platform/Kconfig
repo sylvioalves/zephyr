@@ -5,6 +5,7 @@ menuconfig APP_PLATFORM
 	bool "Application platform"
 	depends on USERSPACE
 	depends on TASK_WDT
+	select THREAD_CUSTOM_DATA
 	help
 	  A runtime that launches applications as isolated, supervised groups:
 	  each application runs as a user-mode thread in its own memory domain,
