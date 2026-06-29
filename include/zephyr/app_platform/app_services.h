@@ -258,6 +258,7 @@ struct svc_wifi_status {
 	uint8_t  connected;  /**< Non-zero when the link has an IPv4 address. */
 	char     ssid[33];   /**< SSID the link is joined to (NUL-terminated). */
 	char     ipv4[16];   /**< Dotted IPv4 address, empty when none. */
+	int8_t   rssi;       /**< Cached signal strength in dBm, 0 if unknown. */
 };
 
 /**
@@ -343,6 +344,24 @@ __syscall int svc_udp_send(const void *buf, size_t len);
  *         capability, negative errno otherwise.
  */
 __syscall int svc_udp_recv(void *buf, size_t cap, uint32_t timeout_ms);
+
+/**
+ * @brief Receive a datagram and learn who sent it. Needs @ref APP_CAP_SOCKET.
+ *
+ * Like @ref svc_udp_recv, but also reports the sender's address and port. Pass
+ * NULL for @p src_ip or @p src_port to skip either.
+ *
+ * @param buf Destination buffer.
+ * @param cap Size of @p buf.
+ * @param timeout_ms How long to wait for a datagram.
+ * @param src_ip Destination for the sender's dotted IPv4 string, or NULL.
+ * @param ip_cap Size of @p src_ip (16 is enough for IPv4).
+ * @param src_port Destination for the sender's port, or NULL.
+ * @retval >=0 the datagram length, -EAGAIN on timeout, -EPERM without the
+ *         capability, negative errno otherwise.
+ */
+__syscall int svc_udp_recv_from(void *buf, size_t cap, uint32_t timeout_ms,
+				char *src_ip, size_t ip_cap, uint16_t *src_port);
 
 /**
  * @brief Close the application's UDP socket. Needs @ref APP_CAP_SOCKET.

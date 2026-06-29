@@ -79,8 +79,10 @@ static struct session sessions[MAX_SESSIONS];
 #define SOCK_PAYLOAD_MAX 256
 
 struct sock_msg {
-	uint16_t len;
-	uint8_t  data[SOCK_PAYLOAD_MAX];
+	uint16_t           len;
+	uint16_t           src_port;          /* sender's port, host order */
+	struct in_addr     src_addr;          /* sender's IPv4 address */
+	uint8_t            data[SOCK_PAYLOAD_MAX];
 };
 
 /*
@@ -117,6 +119,10 @@ static bool broker_resolved;
 static bool reconnect_req;
 static bool disconnect_req;
 static K_SEM_DEFINE(link_change_sem, 0, 1);
+/* Cached signal strength, refreshed on the net thread (the status mgmt call
+ * cannot run from an application thread without blocking it).
+ */
+static int8_t link_rssi;
 
 #ifdef CONFIG_SETTINGS
 /* Persist the live credentials under "app_net/ssid" and "app_net/psk" so a
@@ -466,11 +472,16 @@ static void net_thread(void *a, void *b, void *c)
 			if (zsock_poll(&fd, 1, 0) <= 0) {
 				continue;
 			}
-			struct sock_msg m;
-			int n = zsock_recv(sk->fd, m.data, sizeof(m.data), 0);
+			struct sock_msg m = { 0 };
+			struct sockaddr_in from = { 0 };
+			socklen_t fromlen = sizeof(from);
+			int n = zsock_recvfrom(sk->fd, m.data, sizeof(m.data), 0,
+					       (struct sockaddr *)&from, &fromlen);
 
 			if (n > 0) {
 				m.len = (uint16_t)n;
+				m.src_addr = from.sin_addr;
+				m.src_port = ntohs(from.sin_port);
 				(void)k_msgq_put(&sk->inbox, &m, K_NO_WAIT);
 			} else if (n == 0 && sk->is_tcp) {
 				/* Peer closed the stream: signal end with a
@@ -478,6 +489,24 @@ static void net_thread(void *a, void *b, void *c)
 				 */
 				m.len = 0;
 				(void)k_msgq_put(&sk->inbox, &m, K_NO_WAIT);
+			}
+		}
+
+		/* Refresh the cached signal strength roughly every two seconds.
+		 * Querying the interface here keeps the blocking mgmt call off the
+		 * application threads.
+		 */
+		static int64_t rssi_next;
+
+		if (link_ready && k_uptime_get() >= rssi_next) {
+			rssi_next = k_uptime_get() + 2000;
+			struct net_if *iface = net_if_get_first_wifi();
+			struct wifi_iface_status st = { 0 };
+
+			if (iface != NULL &&
+			    net_mgmt(NET_REQUEST_WIFI_IFACE_STATUS, iface, &st,
+				     sizeof(st)) == 0) {
+				link_rssi = (int8_t)st.rssi;
 			}
 		}
 		k_msleep(20);
@@ -595,11 +624,12 @@ int z_impl_svc_wifi_status(struct svc_wifi_status *out)
 
 	memset(out, 0, sizeof(*out));
 	out->connected = link_ready ? 1 : 0;
+	out->rssi = link_rssi;
 	strncpy(out->ssid, wifi_ssid, sizeof(out->ssid) - 1);
 
 	/* Read only cached interface state. A WIFI_IFACE_STATUS mgmt round-trip
-	 * would query the driver and can block in this app-thread context, so it
-	 * is left out; rssi stays 0 (unknown).
+	 * would query the driver and can block in this app-thread context, so the
+	 * signal strength comes from the value the net thread caches instead.
 	 */
 	struct net_if *iface = net_if_get_first_wifi();
 
@@ -777,7 +807,8 @@ static int sock_send(bool tcp, const void *buf, size_t len)
 	return (n < 0) ? -errno : (int)n;
 }
 
-static int sock_recv(bool tcp, void *buf, size_t cap, uint32_t timeout_ms)
+static int sock_recv(bool tcp, void *buf, size_t cap, uint32_t timeout_ms,
+		     struct in_addr *src_addr, uint16_t *src_port)
 {
 	if (!app_has_cap(APP_CAP_SOCKET)) {
 		return -EPERM;
@@ -799,6 +830,13 @@ static int sock_recv(bool tcp, void *buf, size_t cap, uint32_t timeout_ms)
 
 	if (k_msgq_get(&sk->inbox, &m, K_MSEC(timeout_ms)) != 0) {
 		return -EAGAIN;
+	}
+
+	if (src_addr != NULL) {
+		*src_addr = m.src_addr;
+	}
+	if (src_port != NULL) {
+		*src_port = m.src_port;
 	}
 
 	size_t n = MIN((size_t)m.len, cap);
@@ -849,7 +887,28 @@ int z_impl_svc_udp_send(const void *buf, size_t len)
 
 int z_impl_svc_udp_recv(void *buf, size_t cap, uint32_t timeout_ms)
 {
-	return sock_recv(false, buf, cap, timeout_ms);
+	return sock_recv(false, buf, cap, timeout_ms, NULL, NULL);
+}
+
+int z_impl_svc_udp_recv_from(void *buf, size_t cap, uint32_t timeout_ms,
+			     char *src_ip, size_t ip_cap, uint16_t *src_port)
+{
+	struct in_addr addr = { 0 };
+	uint16_t port = 0;
+	int rc = sock_recv(false, buf, cap, timeout_ms, &addr, &port);
+
+	if (rc < 0) {
+		return rc;
+	}
+	if (src_ip != NULL && ip_cap > 0) {
+		if (zsock_inet_ntop(AF_INET, &addr, src_ip, ip_cap) == NULL) {
+			src_ip[0] = '\0';
+		}
+	}
+	if (src_port != NULL) {
+		*src_port = port;
+	}
+	return rc;
 }
 
 int z_impl_svc_udp_close(void)
@@ -869,7 +928,7 @@ int z_impl_svc_tcp_send(const void *buf, size_t len)
 
 int z_impl_svc_tcp_recv(void *buf, size_t cap, uint32_t timeout_ms)
 {
-	return sock_recv(true, buf, cap, timeout_ms);
+	return sock_recv(true, buf, cap, timeout_ms, NULL, NULL);
 }
 
 int z_impl_svc_tcp_close(void)
@@ -1019,6 +1078,46 @@ static inline int z_vrfy_svc_udp_recv(void *buf, size_t cap, uint32_t timeout_ms
 	return rc;
 }
 #include <zephyr/syscalls/svc_udp_recv_mrsh.c>
+
+static inline int z_vrfy_svc_udp_recv_from(void *buf, size_t cap,
+					   uint32_t timeout_ms, char *src_ip,
+					   size_t ip_cap, uint16_t *src_port)
+{
+	char tmp[SOCK_PAYLOAD_MAX];
+	char ip[16];
+	uint16_t port = 0;
+
+	if (cap == 0 || cap > sizeof(tmp) || ip_cap > sizeof(ip)) {
+		return -EINVAL;
+	}
+	K_OOPS(K_SYSCALL_MEMORY_WRITE(buf, cap));
+	if (src_ip != NULL) {
+		K_OOPS(K_SYSCALL_MEMORY_WRITE(src_ip, ip_cap));
+	}
+	if (src_port != NULL) {
+		K_OOPS(K_SYSCALL_MEMORY_WRITE(src_port, sizeof(*src_port)));
+	}
+
+	int rc = z_impl_svc_udp_recv_from(tmp, cap, timeout_ms, ip,
+					  src_ip ? ip_cap : 0, &port);
+
+	if (rc < 0) {
+		return rc;
+	}
+	if (rc > 0 && k_usermode_to_copy(buf, tmp, rc) != 0) {
+		return -EFAULT;
+	}
+	if (src_ip != NULL &&
+	    k_usermode_to_copy(src_ip, ip, strlen(ip) + 1) != 0) {
+		return -EFAULT;
+	}
+	if (src_port != NULL &&
+	    k_usermode_to_copy(src_port, &port, sizeof(port)) != 0) {
+		return -EFAULT;
+	}
+	return rc;
+}
+#include <zephyr/syscalls/svc_udp_recv_from_mrsh.c>
 
 static inline int z_vrfy_svc_udp_close(void)
 {
