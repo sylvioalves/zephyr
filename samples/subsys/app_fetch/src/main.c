@@ -272,11 +272,12 @@ static int cmd_fetch(const struct shell *sh, size_t argc, char **argv)
 	return 0;
 }
 
-SHELL_STATIC_SUBCMD_SET_CREATE(app_cmds,
+SHELL_STATIC_SUBCMD_SET_CREATE(store_cmds,
 	SHELL_CMD_ARG(fetch, NULL, "fetch <name> <server-ip>: download+verify+launch",
 		      cmd_fetch, 3, 0),
 	SHELL_SUBCMD_SET_END);
-SHELL_CMD_REGISTER(app, &app_cmds, "App platform commands", NULL);
+SHELL_CMD_REGISTER(store, &store_cmds, "App store: fetch apps over the network",
+		   NULL);
 
 int main(void)
 {
