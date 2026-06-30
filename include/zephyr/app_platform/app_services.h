@@ -433,6 +433,15 @@ __syscall int svc_gpio_count(void);
 __syscall int svc_gpio_set(int line, int on);
 
 /**
+ * @brief Resolve a GPIO line's devicetree name to its index. Needs @ref
+ *        APP_CAP_GPIO. Resolve once and pass the index to @ref svc_gpio_set.
+ *
+ * @param name Line devicetree label (or node name when it has no label).
+ * @retval >=0 the line index, -ENOENT if no line has that name.
+ */
+__syscall int svc_gpio_find(const char *name);
+
+/**
  * @brief Grant an application a set of GPIO lines.
  *
  * Called by the launcher (supervisor) before or after starting an application
@@ -567,6 +576,15 @@ __syscall int svc_app_info(int id, struct svc_app_info *out);
  */
 __syscall int svc_pwm_set(int ch, uint32_t permille);
 
+/**
+ * @brief Resolve a PWM channel's devicetree name to its index. Needs @ref
+ *        APP_CAP_PWM. Resolve once and pass the index to @ref svc_pwm_set.
+ *
+ * @param name PWM channel devicetree label (or node name when it has none).
+ * @retval >=0 the channel index, -ENOENT if no channel has that name.
+ */
+__syscall int svc_pwm_find(const char *name);
+
 /** @brief Grant an application a set of PWM channels. */
 void app_platform_grant_pwm(int id, uint32_t ch_mask);
 
@@ -594,6 +612,16 @@ __syscall int svc_led_set(int pin, int on);
 
 /** @brief Number of status LEDs the platform exposes (0 if none). */
 __syscall int svc_led_count(void);
+
+/**
+ * @brief Resolve a LED's devicetree name to its index. Resolve once at startup
+ *        and pass the index to @ref svc_led_set, rather than hard-coding a
+ *        position that shifts if LEDs are added.
+ *
+ * @param name LED devicetree label (or node name when it has no label).
+ * @retval >=0 the LED index, -ENOENT if no LED has that name.
+ */
+__syscall int svc_led_find(const char *name);
 
 /** @brief Grant an application a set of LED pins (bit N = pin N). */
 void app_platform_grant_led(int id, uint32_t pin_mask);

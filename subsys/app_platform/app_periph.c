@@ -17,6 +17,7 @@
 
 #include <zephyr/kernel.h>
 #include <zephyr/internal/syscall_handler.h>
+#include <string.h>
 #include <zephyr/drivers/pwm.h>
 #include <zephyr/drivers/adc.h>
 #include <errno.h>
@@ -30,6 +31,9 @@ static inline bool app_has_cap(uint32_t mask)
 
 /* ---- PWM ---- */
 
+#define PWM_NAME(alias_node) \
+	DT_PROP_OR(alias_node, label, DT_NODE_FULL_NAME(alias_node))
+
 #if DT_HAS_ALIAS(app_pwm0)
 static const struct pwm_dt_spec pwm_ch[] = {
 	PWM_DT_SPEC_GET(DT_ALIAS(app_pwm0)),
@@ -38,6 +42,13 @@ static const struct pwm_dt_spec pwm_ch[] = {
 #endif
 };
 #define PWM_COUNT ARRAY_SIZE(pwm_ch)
+
+static const char *const pwm_name[] = {
+	PWM_NAME(DT_ALIAS(app_pwm0)),
+#if DT_HAS_ALIAS(app_pwm1)
+	PWM_NAME(DT_ALIAS(app_pwm1)),
+#endif
+};
 #else
 #define PWM_COUNT 0
 #endif
@@ -76,6 +87,23 @@ int z_impl_svc_pwm_set(int ch, uint32_t permille)
 	ARG_UNUSED(permille);
 	return -ENODEV;
 #endif
+}
+
+int z_impl_svc_pwm_find(const char *name)
+{
+	if (!app_has_cap(APP_CAP_PWM)) {
+		return -EPERM;
+	}
+#if DT_HAS_ALIAS(app_pwm0)
+	for (int i = 0; i < (int)PWM_COUNT; i++) {
+		if (strcmp(pwm_name[i], name) == 0) {
+			return i;
+		}
+	}
+#else
+	ARG_UNUSED(name);
+#endif
+	return -ENOENT;
 }
 
 /* ---- ADC ---- */
@@ -151,6 +179,17 @@ static inline int z_vrfy_svc_pwm_set(int ch, uint32_t permille)
 	return z_impl_svc_pwm_set(ch, permille);
 }
 #include <zephyr/syscalls/svc_pwm_set_mrsh.c>
+
+static inline int z_vrfy_svc_pwm_find(const char *name)
+{
+	char buf[24];
+
+	if (k_usermode_string_copy(buf, (char *)name, sizeof(buf)) != 0) {
+		return -EFAULT;
+	}
+	return z_impl_svc_pwm_find(buf);
+}
+#include <zephyr/syscalls/svc_pwm_find_mrsh.c>
 
 static inline int z_vrfy_svc_adc_read(int ch)
 {

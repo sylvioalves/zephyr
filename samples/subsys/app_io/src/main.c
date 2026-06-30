@@ -36,9 +36,22 @@ static void io_app(void *arg)
 		svc_log(line);
 	}
 
-	/* Walk the granted LED pins on a few rounds, reacting to any press. */
+	/* Resolve LEDs by their devicetree name once, then use the indices. The
+	 * app addresses LEDs by a stable name, not a position that could shift.
+	 */
+	int led_a = svc_led_find("status LED 0");
+	int led_b = svc_led_find("status LED 1");
+
+	if (led_a < 0 || led_b < 0) {
+		svc_log("io: could not resolve LED names");
+		return;
+	}
+	svc_log("io: resolved LEDs by name");
+	int pins[2] = { led_a, led_b };
+
+	/* Walk the granted LEDs on a few rounds, reacting to any press. */
 	for (int round = 0; round < 5; round++) {
-		int pin = round % 2;        /* pins 0 and 1 are granted */
+		int pin = pins[round % 2];
 		int rc = svc_button_wait(1000);
 
 		if (rc >= 0) {
@@ -51,15 +64,19 @@ static void io_app(void *arg)
 		svc_checkpoint_set((uint32_t)(round + 1));
 	}
 
-	/* Pin 2 was never granted: the boundary must refuse it. */
-	if (svc_led_set(2, 1) == -EPERM) {
-		svc_log("io: ungranted led pin 2 correctly denied");
+	/* The third LED, resolved by name, was never granted: the boundary must
+	 * refuse it even though the app can name it.
+	 */
+	int led_c = svc_led_find("status LED 2");
+
+	if (led_c >= 0 && svc_led_set(led_c, 1) == -EPERM) {
+		svc_log("io: ungranted led 'status LED 2' correctly denied");
 	} else {
-		svc_log("io: ERROR ungranted led pin 2 was allowed");
+		svc_log("io: ERROR ungranted led was allowed");
 	}
 
-	svc_led_set(0, 0);
-	svc_led_set(1, 0);
+	svc_led_set(led_a, 0);
+	svc_led_set(led_b, 0);
 	svc_log("io: done");
 }
 

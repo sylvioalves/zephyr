@@ -22,8 +22,10 @@
 #include <zephyr/drivers/gpio.h>
 #include <zephyr/internal/syscall_handler.h>
 #include <errno.h>
+#include <string.h>
 
 #define MAX_APPS CONFIG_APP_PLATFORM_MAX_APPS
+#define IO_NAME_MAX 24
 
 static inline bool app_has_cap(uint32_t mask)
 {
@@ -31,6 +33,12 @@ static inline bool app_has_cap(uint32_t mask)
 }
 
 /* ---- status LEDs ---- */
+
+/* A LED's devicetree node may carry a free-text "label"; fall back to the
+ * alias name when it does not, so every LED is addressable by a stable name.
+ */
+#define LED_NAME(alias_node) \
+	DT_PROP_OR(alias_node, label, DT_NODE_FULL_NAME(alias_node))
 
 #if DT_HAS_ALIAS(led0)
 static const struct gpio_dt_spec led[] = {
@@ -43,6 +51,16 @@ static const struct gpio_dt_spec led[] = {
 #endif
 };
 #define LED_COUNT ARRAY_SIZE(led)
+
+static const char *const led_name[] = {
+	LED_NAME(DT_ALIAS(led0)),
+#if DT_HAS_ALIAS(led1)
+	LED_NAME(DT_ALIAS(led1)),
+#endif
+#if DT_HAS_ALIAS(led2)
+	LED_NAME(DT_ALIAS(led2)),
+#endif
+};
 
 /* Per-pin grant: bit N set means an application may drive LED pin N. */
 static uint32_t led_grant[MAX_APPS];
@@ -80,6 +98,24 @@ int z_impl_svc_led_count(void)
 {
 	return (int)LED_COUNT;
 }
+
+/* Resolve a LED name to its index, so an application can address a LED by a
+ * stable devicetree label instead of a position that shifts if LEDs are added.
+ */
+static int led_find(const char *name)
+{
+	for (int i = 0; i < (int)LED_COUNT; i++) {
+		if (strcmp(led_name[i], name) == 0) {
+			return i;
+		}
+	}
+	return -ENOENT;
+}
+
+int z_impl_svc_led_find(const char *name)
+{
+	return led_find(name);
+}
 #else  /* no led alias */
 void app_platform_grant_led(int id, uint32_t pin_mask)
 {
@@ -95,6 +131,12 @@ int z_impl_svc_led_set(int pin, int on)
 int z_impl_svc_led_count(void)
 {
 	return 0;
+}
+
+int z_impl_svc_led_find(const char *name)
+{
+	ARG_UNUSED(name);
+	return -ENOENT;
 }
 #endif /* DT_HAS_ALIAS(led0) */
 
@@ -194,6 +236,17 @@ static inline int z_vrfy_svc_led_count(void)
 	return z_impl_svc_led_count();
 }
 #include <zephyr/syscalls/svc_led_count_mrsh.c>
+
+static inline int z_vrfy_svc_led_find(const char *name)
+{
+	char buf[IO_NAME_MAX];
+
+	if (k_usermode_string_copy(buf, (char *)name, sizeof(buf)) != 0) {
+		return -EFAULT;
+	}
+	return z_impl_svc_led_find(buf);
+}
+#include <zephyr/syscalls/svc_led_find_mrsh.c>
 
 static inline int z_vrfy_svc_button_wait(int32_t timeout_ms)
 {

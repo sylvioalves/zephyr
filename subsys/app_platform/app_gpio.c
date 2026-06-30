@@ -19,21 +19,29 @@
 #include <zephyr/internal/syscall_handler.h>
 #include <zephyr/drivers/gpio.h>
 #include <errno.h>
+#include <string.h>
 
 #define LEDS_NODE DT_PATH(leds)
 
 #if DT_NODE_EXISTS(LEDS_NODE)
 #define GPIO_SPEC(node_id) GPIO_DT_SPEC_GET(node_id, gpios),
+#define GPIO_NAME(node_id) \
+	DT_PROP_OR(node_id, label, DT_NODE_FULL_NAME(node_id)),
 
 static const struct gpio_dt_spec lines[] = {
 	DT_FOREACH_CHILD_STATUS_OKAY(LEDS_NODE, GPIO_SPEC)
 };
 #define LINE_COUNT ARRAY_SIZE(lines)
+
+static const char *const line_name[] = {
+	DT_FOREACH_CHILD_STATUS_OKAY(LEDS_NODE, GPIO_NAME)
+};
 #else
 #define LINE_COUNT 0
 #endif
 
 #define MAX_APPS CONFIG_APP_PLATFORM_MAX_APPS
+#define IO_NAME_MAX 24
 
 static uint32_t line_grant[MAX_APPS];
 static bool gpio_ready;
@@ -73,6 +81,23 @@ int z_impl_svc_gpio_count(void)
 	return (int)LINE_COUNT;
 }
 
+int z_impl_svc_gpio_find(const char *name)
+{
+	if (!app_has_cap(APP_CAP_GPIO)) {
+		return -EPERM;
+	}
+#if DT_NODE_EXISTS(LEDS_NODE)
+	for (int i = 0; i < (int)LINE_COUNT; i++) {
+		if (strcmp(line_name[i], name) == 0) {
+			return i;
+		}
+	}
+#else
+	ARG_UNUSED(name);
+#endif
+	return -ENOENT;
+}
+
 int z_impl_svc_gpio_set(int line, int on)
 {
 	if (!app_has_cap(APP_CAP_GPIO)) {
@@ -102,6 +127,17 @@ static inline int z_vrfy_svc_gpio_count(void)
 	return z_impl_svc_gpio_count();
 }
 #include <zephyr/syscalls/svc_gpio_count_mrsh.c>
+
+static inline int z_vrfy_svc_gpio_find(const char *name)
+{
+	char buf[IO_NAME_MAX];
+
+	if (k_usermode_string_copy(buf, (char *)name, sizeof(buf)) != 0) {
+		return -EFAULT;
+	}
+	return z_impl_svc_gpio_find(buf);
+}
+#include <zephyr/syscalls/svc_gpio_find_mrsh.c>
 
 static inline int z_vrfy_svc_gpio_set(int line, int on)
 {
