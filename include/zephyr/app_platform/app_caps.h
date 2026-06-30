@@ -46,6 +46,10 @@
 #define APP_CAP_DMA     BIT(20)  /**< memory-to-memory DMA copy */
 #define APP_CAP_PSRAM   BIT(21)  /**< map external RAM into the app domain */
 #define APP_CAP_SOCKET  BIT(22)  /**< raw UDP/TCP datagrams and name resolution */
+#define APP_CAP_LED     BIT(23)  /**< drive granted status-LED pins */
+#define APP_CAP_INPUT   BIT(24)  /**< receive button/input events */
+#define APP_CAP_COUNTER BIT(25)  /**< hardware pulse counter */
+#define APP_CAP_MOTOR   BIT(26)  /**< motor-control PWM (MCPWM) channels */
 
 /** Grant every capability (for a fully trusted application). */
 #define APP_CAP_ALL     (~0U)

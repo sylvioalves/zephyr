@@ -162,6 +162,26 @@ config APP_PLATFORM_PERIPH
 	  GPIO service. Channels come from devicetree and each service is a
 	  no-op when its node is absent.
 
+config APP_PLATFORM_IO
+	bool "Shared LED, button and checkpoint services"
+	depends on APP_PLATFORM_SERVICES
+	depends on GPIO
+	help
+	  Expose status LEDs and a button as capability-gated services (LEDs by
+	  a per-application pin grant, button presses delivered one at a time)
+	  plus a per-application checkpoint value the platform retains across a
+	  crash and restart. The LED and button services are no-ops when their
+	  devicetree alias is absent.
+
+config APP_PLATFORM_MOTION
+	bool "Shared pulse-counter and motor-control PWM services"
+	depends on APP_PLATFORM_SERVICES
+	depends on PWM && SENSOR
+	help
+	  Expose a hardware pulse counter and a motor-control PWM (MCPWM) output
+	  as capability-gated services. Each service is a no-op when its
+	  devicetree node is absent.
+
 config APP_PLATFORM_BUS
 	bool "Shared I2C, SPI and UART services"
 	depends on APP_PLATFORM_SERVICES

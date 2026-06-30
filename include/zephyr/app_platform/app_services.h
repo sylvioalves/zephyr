@@ -583,6 +583,73 @@ __syscall int svc_adc_read(int ch);
 void app_platform_grant_adc(int id, uint32_t ch_mask);
 
 /**
+ * @brief Drive a granted status LED. Needs @ref APP_CAP_LED and a per-pin grant
+ *        (@ref app_platform_grant_led).
+ *
+ * @param pin LED index in the range [0, @ref svc_led_count).
+ * @param on Non-zero to light the LED, zero to clear it.
+ * @retval 0 on success, -EPERM without the grant, -ENODEV if absent.
+ */
+__syscall int svc_led_set(int pin, int on);
+
+/** @brief Number of status LEDs the platform exposes (0 if none). */
+__syscall int svc_led_count(void);
+
+/** @brief Grant an application a set of LED pins (bit N = pin N). */
+void app_platform_grant_led(int id, uint32_t pin_mask);
+
+/**
+ * @brief Wait for the next button press. Needs @ref APP_CAP_INPUT.
+ *
+ * Blocks until the platform's button is pressed, then returns the running press
+ * count. The platform owns the button and counts edges in supervisor mode.
+ *
+ * @param timeout_ms Milliseconds to wait, or negative to wait forever.
+ * @retval >0 the running press count, -EAGAIN on timeout, -EPERM without the
+ *         capability, -ENODEV if absent.
+ */
+__syscall int svc_button_wait(int32_t timeout_ms);
+
+/**
+ * @brief Store the calling application's checkpoint value.
+ *
+ * The value is kept by the platform outside the application's memory domain, so
+ * it survives the application crashing and being restarted. Part of every
+ * application's own state, so it needs no capability.
+ *
+ * @param value Value to retain.
+ */
+__syscall void svc_checkpoint_set(uint32_t value);
+
+/** @brief Read back the calling application's checkpoint value (0 if unset). */
+__syscall uint32_t svc_checkpoint_get(void);
+
+/**
+ * @brief Emit a burst of pulses on the counter stimulus. Needs @ref APP_CAP_COUNTER.
+ *
+ * @param n Number of pulses to emit.
+ * @retval >=0 the pulses emitted, -EPERM without the capability, -ENODEV if absent.
+ */
+__syscall int svc_pulse_emit(uint32_t n);
+
+/**
+ * @brief Read the hardware pulse counter. Needs @ref APP_CAP_COUNTER.
+ *
+ * @param count Destination for the current count.
+ * @retval 0 on success, -EPERM without the capability, -ENODEV if absent.
+ */
+__syscall int svc_pulse_count(int32_t *count);
+
+/**
+ * @brief Drive a motor-control PWM channel. Needs @ref APP_CAP_MOTOR.
+ *
+ * @param channel MCPWM output channel.
+ * @param duty_pct Duty cycle, 0..100 percent.
+ * @retval 0 on success, -EPERM without the capability, -EINVAL/-ENODEV otherwise.
+ */
+__syscall int svc_motor_set(uint32_t channel, uint32_t duty_pct);
+
+/**
  * @brief Read from an I2C device. Needs @ref APP_CAP_I2C and a per-address grant
  *        (@ref app_platform_grant_i2c).
  *
