@@ -73,6 +73,7 @@ config ESP32P4_EMAC
 	default y if ETH_ESP32
 	default y if ETH_ESP32_DWC_ETHER_1000
 	default y if MDIO_ESP32
+	select ETH_DWC_ETHER_1000_CORE_EDFE if ETH_ESP32_DWC_ETHER_1000
 	help
 	  Hidden option to enable the ESP32-P4 Ethernet
 	  MAC driver. Both Ethernet and MDIO depend on

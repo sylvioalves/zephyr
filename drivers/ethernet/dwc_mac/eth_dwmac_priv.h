@@ -80,6 +80,26 @@
  * Common structure definitions
  */
 
+/* Number of 32-bit words in the hardware descriptor itself. */
+#ifdef CONFIG_ETH_DWC_ETHER_1000_CORE_EDFE
+#define DWMAC_DESC_WORDS	8
+#else
+#define DWMAC_DESC_WORDS	4
+#endif
+
+/*
+ * When a data cache is enabled, descriptors are flushed and invalidated
+ * individually, so each one must occupy its own cache line. Otherwise a DMA
+ * write to one descriptor could be lost when a neighbour on the same line is
+ * flushed by the CPU. Pad the descriptor up to the cache line size in that
+ * case; without a data cache the bare descriptor is enough.
+ */
+#if defined(CONFIG_DCACHE) && (CONFIG_DCACHE_LINE_SIZE > (DWMAC_DESC_WORDS * 4))
+#define DWMAC_DESC_PAD_WORDS	((CONFIG_DCACHE_LINE_SIZE / 4) - DWMAC_DESC_WORDS)
+#else
+#define DWMAC_DESC_PAD_WORDS	0
+#endif
+
 /* hardware descriptor representation */
 struct dwmac_dma_desc {
 	uint32_t des0;
@@ -91,6 +111,9 @@ struct dwmac_dma_desc {
 	uint32_t des5;
 	uint32_t des6;
 	uint32_t des7;
+#endif
+#if DWMAC_DESC_PAD_WORDS > 0
+	uint32_t pad[DWMAC_DESC_PAD_WORDS];
 #endif
 };
 
@@ -154,6 +177,14 @@ int dwmac_bus_init(const struct device *dev);
 int dwmac_platform_init(const struct device *dev);
 void dwmac_isr(const struct device *ddev);
 extern const struct ethernet_api dwmac_api;
+
+/*
+ * Optional platform hook, called once the descriptor rings are set up and the
+ * bus mode register has been configured for chain/enhanced mode, to apply any
+ * platform-specific DMA bus mode tuning. The default implementation does
+ * nothing.
+ */
+void dwmac_platform_dma_setup(const struct device *dev);
 
 /*
  * MAC Register Definitions
@@ -1338,13 +1369,20 @@ extern const struct ethernet_api dwmac_api;
 
 /* DMA operation mode bits */
 #define DWMAC_DMAOMR_SR    BIT(1)
+#define DWMAC_DMAOMR_OSF   BIT(2)
+#define DWMAC_DMAOMR_RTC   GENMASK(4, 3)
 #define DWMAC_DMAOMR_ST    BIT(13)
+#define DWMAC_DMAOMR_TTC   GENMASK(16, 14)
 #define DWMAC_DMAOMR_TSF   BIT(21)
 #define DWMAC_DMAOMR_RSF   BIT(25)
 
 /* DMA bus mode bits */
 #define DWMAC_DMABMR_SR    BIT(0)
+#define DWMAC_DMABMR_DSL   GENMASK(6, 2)
 #define DWMAC_DMABMR_EDFE  BIT(7)
+#define DWMAC_DMABMR_PBL   GENMASK(13, 8)
+#define DWMAC_DMABMR_AAB   BIT(25)
+#define DWMAC_DMABMR_MB    BIT(26)
 
 /* DMA interrupt enable bits */
 #define DWMAC_DMAIER_TIE   BIT(0)

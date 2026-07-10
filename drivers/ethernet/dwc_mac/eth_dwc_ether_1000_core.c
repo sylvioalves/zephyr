@@ -131,6 +131,14 @@ static int dwmac_send(const struct device *dev, struct net_pkt *pkt)
 	d->des0 |= TDES0_OWN | TDES0_FS;
 
 	barrier_dmem_fence_full();
+
+	/* Push the descriptors out so the DMA reads the up-to-date owner and
+	 * control words instead of a stale cached copy.
+	 */
+	for (unsigned int i = p->tx_desc_head; i != d_idx; INC_WRAP(i, NB_TX_DESCS)) {
+		sys_cache_data_flush_range(&p->tx_descs[i], sizeof(p->tx_descs[i]));
+	}
+
 	p->tx_desc_head = d_idx;
 	DWMAC_REG_WRITE(DWMAC_DMATPDR, 0);
 
@@ -156,6 +164,7 @@ static void dwmac_tx_release(const struct device *dev)
 
 	for (d_idx = p->tx_desc_tail; d_idx != p->tx_desc_head; INC_WRAP(d_idx, NB_TX_DESCS)) {
 		d = &p->tx_descs[d_idx];
+		sys_cache_data_invd_range(d, sizeof(*d));
 		des0 = d->des0;
 
 		if ((des0 & TDES0_OWN) != 0U) {
@@ -188,6 +197,7 @@ static void dwmac_receive(const struct device *dev)
 	for (d_idx = p->rx_desc_tail; d_idx != p->rx_desc_head;
 	     INC_WRAP(d_idx, NB_RX_DESCS), k_sem_give(&p->free_rx_descs)) {
 		d = &p->rx_descs[d_idx];
+		sys_cache_data_invd_range(d, sizeof(*d));
 		des0 = d->des0;
 
 		if ((des0 & RDES0_OWN) != 0U) {
@@ -215,18 +225,29 @@ static void dwmac_receive(const struct device *dev)
 
 		sys_cache_data_invd_range(frag->data, frag->size);
 
-		bytes_so_far = RX_LEN_FROM_RDES0(des0);
+		/* The frame length in RDES0 is only valid on the last descriptor
+		 * of the frame. The MAC strips the 4-byte Ethernet FCS from type
+		 * frames (CSTF), so the reported length is already the payload
+		 * length. Intermediate descriptors are always full buffers, so
+		 * size them by the buffer length and derive the last fragment
+		 * from the total.
+		 */
+		if ((des0 & RDES0_LS) != 0U) {
+			bytes_so_far = RX_LEN_FROM_RDES0(des0);
 
-		if (bytes_so_far < p->rx_bytes) {
-			eth_stats_update_errors_rx(p->iface);
-			net_pkt_unref(p->rx_pkt);
-			p->rx_pkt = NULL;
-			net_buf_unref(frag);
-			continue;
+			if (bytes_so_far < p->rx_bytes) {
+				eth_stats_update_errors_rx(p->iface);
+				net_pkt_unref(p->rx_pkt);
+				p->rx_pkt = NULL;
+				net_buf_unref(frag);
+				continue;
+			}
+
+			frag->len = bytes_so_far - p->rx_bytes;
+		} else {
+			frag->len = frag->size;
+			p->rx_bytes += frag->size;
 		}
-
-		frag->len = bytes_so_far - p->rx_bytes;
-		p->rx_bytes = bytes_so_far;
 		net_pkt_frag_add(p->rx_pkt, frag);
 
 		if ((des0 & RDES0_LS) != 0U) {
@@ -235,7 +256,6 @@ static void dwmac_receive(const struct device *dev)
 					net_pkt_unref(p->rx_pkt);
 				}
 			} else {
-				LOG_ERR("rx error (DES0 = 0x%08x)", des0);
 				eth_stats_update_errors_rx(p->iface);
 				net_pkt_unref(p->rx_pkt);
 			}
@@ -272,6 +292,9 @@ static void dwmac_rx_refill(const struct device *dev, unsigned int d_idx)
 	barrier_dmem_fence_full();
 
 	d->des0 = RDES0_OWN;
+
+	barrier_dmem_fence_full();
+	sys_cache_data_flush_range(d, sizeof(*d));
 
 	p->rx_desc_head = INC_WRAP(d_idx, NB_RX_DESCS);
 	DWMAC_REG_WRITE(DWMAC_DMARPDR, 0);
@@ -439,6 +462,12 @@ static void dwmac_iface_init(struct net_if *iface)
 			DWMAC_MACCR_RE);
 }
 
+/* Weak default: platforms that need bus mode tuning override this. */
+__weak void dwmac_platform_dma_setup(const struct device *dev)
+{
+	ARG_UNUSED(dev);
+}
+
 int dwmac_probe(const struct device *dev)
 {
 	struct dwmac_priv *p = dev->data;
@@ -514,7 +543,7 @@ int dwmac_probe(const struct device *dev)
 	memset(p->rx_descs, 0, NB_RX_DESCS * sizeof(struct dwmac_dma_desc));
 
 	for (i = 0; i < NB_TX_DESCS; i++) {
-		p->tx_descs[i].des1 = TDES0_TCH;
+		p->tx_descs[i].des0 = TDES0_TCH;
 		p->tx_descs[i].des3 = TXDESC_PHYS_L((i + 1) % NB_TX_DESCS);
 	}
 
@@ -526,6 +555,8 @@ int dwmac_probe(const struct device *dev)
 	if (IS_ENABLED(CONFIG_ETH_DWC_ETHER_1000_CORE_EDFE)) {
 		DWMAC_REG_WRITE(DWMAC_DMABMR, DWMAC_REG_READ(DWMAC_DMABMR) | DWMAC_DMABMR_EDFE);
 	}
+
+	dwmac_platform_dma_setup(dev);
 
 	DWMAC_REG_WRITE(DWMAC_DMATDLAR, TXDESC_PHYS_L(0));
 	DWMAC_REG_WRITE(DWMAC_DMARDLAR, RXDESC_PHYS_L(0));
