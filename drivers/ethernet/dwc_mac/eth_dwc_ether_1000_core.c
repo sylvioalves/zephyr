@@ -231,7 +231,9 @@ static void dwmac_receive(const struct device *dev)
 
 		if ((des0 & RDES0_LS) != 0U) {
 			if ((des0 & RDES0_ES) == 0U) {
-				net_recv_data(p->iface, p->rx_pkt);
+				if (net_recv_data(p->iface, p->rx_pkt) < 0) {
+					net_pkt_unref(p->rx_pkt);
+				}
 			} else {
 				LOG_ERR("rx error (DES0 = 0x%08x)", des0);
 				eth_stats_update_errors_rx(p->iface);
@@ -302,7 +304,11 @@ void dwmac_isr(const struct device *dev)
 
 	LOG_DBG("DMA status 0x%08x", status);
 
-	if ((status & DWMAC_DMASR_AIS) != 0) {
+	/* Receive and transmit buffer unavailable raise the abnormal summary
+	 * but are normal flow-control events serviced below by draining and
+	 * refilling the rings. Only report an actual fault.
+	 */
+	if ((status & DWMAC_DMASR_FATAL) != 0) {
 		LOG_ERR("abnormal interrupt status (0x%08x)", status);
 	}
 
@@ -310,7 +316,7 @@ void dwmac_isr(const struct device *dev)
 		dwmac_tx_release(dev);
 	}
 
-	if ((status & DWMAC_DMASR_RI) != 0) {
+	if ((status & (DWMAC_DMASR_RI | DWMAC_DMASR_RBUS)) != 0) {
 		dwmac_receive(dev);
 	}
 }
@@ -418,6 +424,7 @@ static void dwmac_iface_init(struct net_if *iface)
 			DWMAC_DMAIER_NISE |
 			DWMAC_DMAIER_RIE |
 			DWMAC_DMAIER_TIE |
+			DWMAC_DMAIER_RBUIE |
 			DWMAC_DMAIER_AISE);
 
 	DWMAC_REG_WRITE(DWMAC_DMAOMR,
@@ -496,6 +503,8 @@ int dwmac_probe(const struct device *dev)
 			(p->feature0 & DWMAC_HWFR_ALTDESC) ? "yes" : "no");
 	}
 
+	DWMAC_REG_WRITE(DWMAC_DMAOMR, DWMAC_DMAOMR_TSF | DWMAC_DMAOMR_RSF);
+
 	ret = dwmac_platform_init(dev);
 	if (ret < 0) {
 		return ret;
@@ -520,7 +529,6 @@ int dwmac_probe(const struct device *dev)
 
 	DWMAC_REG_WRITE(DWMAC_DMATDLAR, TXDESC_PHYS_L(0));
 	DWMAC_REG_WRITE(DWMAC_DMARDLAR, RXDESC_PHYS_L(0));
-	DWMAC_REG_WRITE(DWMAC_DMAOMR, DWMAC_DMAOMR_TSF | DWMAC_DMAOMR_RSF);
 
 	if (IS_ENABLED(CONFIG_ETH_DWC_ETHER_RX_HW_CHECKSUM)) {
 		DWMAC_REG_WRITE(DWMAC_MACCR, DWMAC_REG_READ(DWMAC_MACCR) | DWMAC_MACCR_IPCO);

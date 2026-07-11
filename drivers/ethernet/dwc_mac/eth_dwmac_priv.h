@@ -1317,10 +1317,24 @@ extern const struct ethernet_api dwmac_api;
 
 /* DMA status bits */
 #define DWMAC_DMASR_TI     BIT(0)
+#define DWMAC_DMASR_TPS    BIT(1)
 #define DWMAC_DMASR_TBUS   BIT(2)
+#define DWMAC_DMASR_TJT    BIT(3)
+#define DWMAC_DMASR_OVF    BIT(4)
+#define DWMAC_DMASR_UNF    BIT(5)
 #define DWMAC_DMASR_RI     BIT(6)
 #define DWMAC_DMASR_RBUS   BIT(7)
+#define DWMAC_DMASR_RPS    BIT(8)
+#define DWMAC_DMASR_RWT    BIT(9)
+#define DWMAC_DMASR_FBI    BIT(13)
 #define DWMAC_DMASR_AIS    BIT(15)
+
+/* Abnormal causes that indicate a real fault, as opposed to the receive and
+ * transmit buffer-unavailable events that are handled as normal flow control.
+ */
+#define DWMAC_DMASR_FATAL  (DWMAC_DMASR_TPS | DWMAC_DMASR_TJT | DWMAC_DMASR_OVF | \
+			    DWMAC_DMASR_UNF | DWMAC_DMASR_RPS | DWMAC_DMASR_RWT | \
+			    DWMAC_DMASR_FBI)
 
 /* DMA operation mode bits */
 #define DWMAC_DMAOMR_SR    BIT(1)
