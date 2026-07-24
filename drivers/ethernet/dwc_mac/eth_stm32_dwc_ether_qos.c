@@ -152,12 +152,21 @@ int dwmac_platform_init(const struct device *dev)
 	return eth_stm32_net_eth_mac_load(&mac_cfg, p->mac_addr);
 }
 
+#define ETH_STM32_PTP_CLK_IDX(n)                                                                   \
+	DT_PHA_ELEM_IDX_BY_NAME(                                                                   \
+		DT_DRV_INST(n), clocks,                                                            \
+		COND_CODE_1(DT_INST_CLOCKS_HAS_NAME(n, mac_clk_ptp), (mac_clk_ptp), (stm_eth)))
+
 /* Our private device instance */
 static const struct dwmac_config dwmac_config = {
 	DEVICE_MMIO_ROM_INIT(DT_DRV_INST(0)),
 	.phy_dev = DEVICE_DT_GET_OR_NULL(DT_INST_PHANDLE(0, phy_handle)),
 	.clock = DEVICE_DT_GET(STM32_CLOCK_CONTROL_NODE),
 	.mac_clk = (clock_control_subsys_t)&pclken[0],
+#if defined(CONFIG_PTP_CLOCK_DWC_MAC)
+	.ptp_clock = DEVICE_DT_GET(DT_INST_CHILD(0, ptp_clock)),
+	.ptp_clk = (clock_control_subsys_t)&pclken[ETH_STM32_PTP_CLK_IDX(0)],
+#endif
 };
 
 static struct dwmac_priv dwmac_instance;
