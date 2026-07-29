@@ -93,7 +93,11 @@ int dwmac_bus_init(const struct device *dev)
 	}
 
 #if defined(CONFIG_PTP_CLOCK_DWC_MAC)
-	emac_ll_clock_enable_ptp(EMAC_EXT_ADDR, EMAC_PTP_CLK_SRC_DEFAULT, true);
+	ret = clock_control_on(cfg->clock, cfg->ptp_clk);
+	if (ret < 0 && ret != -EALREADY) {
+		LOG_ERR("Failed to setup PTP reference clock");
+		return ret;
+	}
 #endif
 
 	return 0;
@@ -161,7 +165,7 @@ static const struct dwmac_config dwmac_config = {
 	.mac_clk = (clock_control_subsys_t)DT_INST_CLOCKS_CELL(0, offset),
 #if defined(CONFIG_PTP_CLOCK_DWC_MAC)
 	.ptp_clock = DEVICE_DT_GET(DT_INST_CHILD(0, ptp_clock)),
-	.ptp_clk = (clock_control_subsys_t)DT_INST_CLOCKS_CELL(0, offset), /* FIXME: right clock */
+	.ptp_clk = (clock_control_subsys_t)DT_INST_CLOCKS_CELL_BY_NAME(0, ptp, offset),
 #endif
 };
 
