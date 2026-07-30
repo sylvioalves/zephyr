@@ -1432,6 +1432,24 @@ static void esp_init_work(struct k_work *work)
 #if defined(CONFIG_WIFI_ESP_AT_CIPDINFO_USE)
 		SETUP_CMD_NOHANDLE("AT+CIPDINFO=1"),
 #endif
+#if !defined(CONFIG_WIFI_ESP_AT_ANTENNA_DEFAULT)
+		/*
+		 * XIAO ESP32C6 RF switch: mux GPIO3 and GPIO14 as GPIO
+		 * (IO_MUX MCU_SEL=1), enable both as outputs, then drive
+		 * GPIO3 low to enable the switch control. GPIO14 selects
+		 * the antenna: low is the built-in ceramic antenna, high
+		 * is the external connector.
+		 */
+		SETUP_CMD_NOHANDLE("AT+SYSREG=1,0x60090010,0x1800"),
+		SETUP_CMD_NOHANDLE("AT+SYSREG=1,0x6009003C,0x1800"),
+		SETUP_CMD_NOHANDLE("AT+SYSREG=1,0x60091024,0x4008"),
+		SETUP_CMD_NOHANDLE("AT+SYSREG=1,0x6009100C,0x8"),
+#if defined(CONFIG_WIFI_ESP_AT_ANTENNA_EXTERNAL)
+		SETUP_CMD_NOHANDLE("AT+SYSREG=1,0x60091008,0x4000"),
+#else
+		SETUP_CMD_NOHANDLE("AT+SYSREG=1,0x6009100C,0x4000"),
+#endif
+#endif
 		SETUP_CMD("AT+"_CIPSTAMAC"?", "+"_CIPSTAMAC":",
 			  on_cmd_cipstamac, 1U, ""),
 	};

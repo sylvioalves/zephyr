@@ -34,6 +34,28 @@ config WIFI_ESP_AT_SCAN_RESULT_RSSI_ORDERED
 	help
 	  Order based on RSSI.
 
+choice
+	prompt "XIAO ESP32C6 antenna selection"
+	default WIFI_ESP_AT_ANTENNA_DEFAULT
+	help
+	  Drive the RF switch found on Seeed Studio XIAO ESP32C6
+	  modules during modem setup, using AT+SYSREG register
+	  writes: GPIO3 low enables the switch control and GPIO14
+	  selects the antenna. The commands are part of the init
+	  sequence, so the selection is restored after every modem
+	  reset.
+
+config WIFI_ESP_AT_ANTENNA_DEFAULT
+	bool "Leave the module antenna configuration untouched"
+
+config WIFI_ESP_AT_ANTENNA_INTERNAL
+	bool "Built-in ceramic antenna"
+
+config WIFI_ESP_AT_ANTENNA_EXTERNAL
+	bool "External antenna connector"
+
+endchoice
+
 config WIFI_ESP_AT_RX_STACK_SIZE
 	int "Stack size for the Espressif esp wifi driver RX thread"
 	default 1024
