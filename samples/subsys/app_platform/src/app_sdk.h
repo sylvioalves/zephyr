@@ -36,6 +36,7 @@ __syscall void     app_log(const char *msg);
 __syscall void     app_sleep_ms(uint32_t ms);
 __syscall uint32_t app_uptime_ms(void);
 __syscall int      app_thread_spawn(app_entry_t entry, void *arg);
+__syscall int      app_thread_join(int handle);
 
 /* ---- service discovery (the registry, queryable) ---- */
 __syscall int app_service_count(void);

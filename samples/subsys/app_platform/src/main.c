@@ -17,6 +17,7 @@
 #include <zephyr/kernel.h>
 #include <zephyr/sys/printk.h>
 #include <zephyr/app_memory/app_memdomain.h>
+#include <stdio.h>
 
 #define STACK_SIZE 2048
 #define APP_PRIO   5
@@ -62,18 +63,26 @@ static void app_main(void *p1, void *p2, void *p3)
 		int tier;
 
 		if (app_service_info(i, name, sizeof(name), &tier) == 0) {
-			printk("      service '%s' (%s)\n", name, tier_name(tier));
+			char line[48];
+
+			snprintf(line, sizeof(line), "service '%s' (%s)", name,
+				 tier_name(tier));
+			app_log(line);
 		}
 	}
 
 	/* 2. Multi-threaded: spawn another thread in this same app. */
-	app_thread_spawn(app_worker, NULL);
+	int worker = app_thread_spawn(app_worker, NULL);
 
 	/* 3. Open capability: read a sensor (any app may). */
 	int32_t milli;
 
 	if (app_sensor_read("temperature", &milli) == 0) {
-		printk("      [open] temperature read ok (%d milli-C)\n", milli);
+		char line[48];
+
+		snprintf(line, sizeof(line), "[open] temperature read ok (%d milli-C)",
+			 milli);
+		app_log(line);
 	}
 
 	/* 4. Scoped capability: granted i2c0 @ 0x48, denied elsewhere. */
@@ -82,6 +91,11 @@ static void app_main(void *p1, void *p2, void *p3)
 
 	/* 5. Admin capability: this app is not admin -> denied. */
 	app_admin_wifi_set("HomeNet", "secret123");
+
+	/* Reap the worker so it is joined, not self-aborted from user mode. */
+	if (worker >= 0) {
+		app_thread_join(worker);
+	}
 
 	app_log("app done");
 }

@@ -105,10 +105,16 @@ uint32_t z_impl_app_uptime_ms(void)
 
 /* thread spawn lives in app_rt.c; declared here for the registry view. */
 extern int app_rt_spawn(app_entry_t entry, void *arg);
+extern int app_rt_join(int idx);
 
 int z_impl_app_thread_spawn(app_entry_t entry, void *arg)
 {
 	return app_rt_spawn(entry, arg);
+}
+
+int z_impl_app_thread_join(int handle)
+{
+	return app_rt_join(handle);
 }
 
 /* ---- discovery ---- */
@@ -236,6 +242,12 @@ static inline int z_vrfy_app_thread_spawn(app_entry_t entry, void *arg)
 	return z_impl_app_thread_spawn(entry, arg);
 }
 #include <zephyr/syscalls/app_thread_spawn_mrsh.c>
+
+static inline int z_vrfy_app_thread_join(int handle)
+{
+	return z_impl_app_thread_join(handle);
+}
+#include <zephyr/syscalls/app_thread_join_mrsh.c>
 
 static inline int z_vrfy_app_service_count(void)
 {

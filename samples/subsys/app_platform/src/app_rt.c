@@ -48,3 +48,12 @@ int app_rt_spawn(app_entry_t entry, void *arg)
 	k_thread_start(t);
 	return idx;
 }
+
+int app_rt_join(int idx)
+{
+	if (idx < 0 || idx >= rt_count) {
+		return -EINVAL;
+	}
+
+	return k_thread_join(&rt_threads[idx], K_FOREVER);
+}
