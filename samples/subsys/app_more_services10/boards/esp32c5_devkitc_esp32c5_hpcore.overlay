@@ -1,0 +1,30 @@
+/*
+ * Copyright (c) 2026 Espressif Systems (Shanghai) Co., Ltd.
+ *
+ * SPDX-License-Identifier: Apache-2.0
+ */
+
+/* I2S TX: WS on GPIO6, BCK on GPIO7, SD on GPIO8, streamed over GDMA. */
+/ {
+	aliases {
+		i2s-tx = &i2s;
+	};
+};
+
+&i2s_default {
+	group1 {
+		pinmux = <I2S_O_WS_GPIO6>,
+			 <I2S_O_BCK_GPIO7>,
+			 <I2S_O_SD_GPIO8>;
+	};
+};
+
+&i2s {
+	status = "okay";
+	dmas = <&dma 3>;
+	dma-names = "tx";
+};
+
+&dma {
+	status = "okay";
+};
