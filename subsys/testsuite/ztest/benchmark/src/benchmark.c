@@ -111,11 +111,34 @@ static uint64_t percentile(uint32_t hundredths)
 	return retained[rank - 1U];
 }
 
-static void percentiles_report(const char *suite_name, const char *bench_name,
-			       struct ztest_benchmark_stats *ctrl_stats)
+/*
+ * Samples slower than the median.
+ *
+ * For a kernel latency distribution the median is the baseline: the
+ * operation costs the same on almost every run, and what matters is how
+ * many runs were disturbed and by how much. Counting them says that
+ * directly, where a standard error would only describe how precisely an
+ * average of two different populations had been estimated.
+ */
+static size_t percentiles_outliers(void)
 {
-	double ctrl = (double)ctrl_stats->mean;
+	uint64_t median = percentile(5000);
+	size_t count = 0;
 
+	while ((count < retained_count) && (retained[retained_count - 1 - count] > median)) {
+		count++;
+	}
+
+	return count;
+}
+
+static bool percentiles_available(void)
+{
+	return retained_count != 0;
+}
+
+static void percentiles_prepare(const char *suite_name, const char *bench_name)
+{
 	if (retained_count == 0) {
 		return;
 	}
@@ -127,27 +150,19 @@ static void percentiles_report(const char *suite_name, const char *bench_name,
 		       "raise CONFIG_ZTEST_BENCHMARK_MAX_SAMPLES\n",
 		       suite_name, bench_name, retained_count, dropped_count);
 	}
-
-#ifdef CONFIG_ZTEST_BENCHMARK_OUTPUT_CSV
-	printk("P,%s,%s,%zu,%.3f,%.3f,%.3f,%.3f,%.3f,%.3f,%.3f\n",
-		suite_name, bench_name, retained_count,
-		noise_correction((double)retained[0], ctrl),
-		noise_correction((double)percentile(5000), ctrl),
-		noise_correction((double)percentile(9000), ctrl),
-		noise_correction((double)percentile(9900), ctrl),
-		noise_correction((double)percentile(9990), ctrl),
-		noise_correction((double)percentile(9999), ctrl),
-		noise_correction((double)retained[retained_count - 1], ctrl));
-#endif /* CONFIG_ZTEST_BENCHMARK_OUTPUT_CSV */
-#ifdef CONFIG_ZTEST_BENCHMARK_OUTPUT_VERBOSE
-	printk("\tp50: %.3f\n", noise_correction((double)percentile(5000), ctrl));
-	printk("\tp90: %.3f\n", noise_correction((double)percentile(9000), ctrl));
-	printk("\tp99: %.3f\n", noise_correction((double)percentile(9900), ctrl));
-	printk("\tp99.9: %.3f\n", noise_correction((double)percentile(9990), ctrl));
-	printk("\tp99.99: %.3f\n", noise_correction((double)percentile(9999), ctrl));
-#endif /* CONFIG_ZTEST_BENCHMARK_OUTPUT_VERBOSE */
 }
 #else
+static inline bool percentiles_available(void)
+{
+	return false;
+}
+
+static inline void percentiles_prepare(const char *suite_name, const char *bench_name)
+{
+	ARG_UNUSED(suite_name);
+	ARG_UNUSED(bench_name);
+}
+
 static inline void percentiles_reset(void)
 {
 }
@@ -157,42 +172,27 @@ static inline void percentiles_record(uint64_t cycles)
 	ARG_UNUSED(cycles);
 }
 
-static inline void percentiles_report(const char *suite_name, const char *bench_name,
-				      struct ztest_benchmark_stats *ctrl_stats)
-{
-	ARG_UNUSED(suite_name);
-	ARG_UNUSED(bench_name);
-	ARG_UNUSED(ctrl_stats);
-}
 #endif /* CONFIG_ZTEST_BENCHMARK_PERCENTILES */
 
 /*
- * The very first execution of a benchmark, before anything is warm.
- * Reported separately rather than folded into the distribution, where a
- * single cold sample would move the maximum and tell the reader nothing
- * about the steady state.
+ * Report one benchmark.
+ *
+ * The human-readable block leads with the distribution and ends with
+ * the two facts that stand outside it: how many samples were slower
+ * than the baseline, and what the very first execution cost.
+ *
+ * The standard error is deliberately absent. These distributions are
+ * not samples of one stochastic population but a baseline plus a
+ * handful of disturbed runs, and quoting how precisely their average
+ * was estimated invites the reader to believe in an average that no
+ * single execution ever produced. It remains in the CSV output, whose
+ * column layout is fixed, and the outlier count is what the report
+ * spends the space on instead.
  */
-static void ztest_benchmark_print_cold(const char *suite_name, const char *bench_name,
-				       size_t warmup, uint64_t cold,
-				       struct ztest_benchmark_stats *ctrl_stats)
-{
-	double value = noise_correction((double)cold, (double)ctrl_stats->mean);
-
-	if (cold == 0) {
-		return;
-	}
-
-#ifdef CONFIG_ZTEST_BENCHMARK_OUTPUT_CSV
-	printk("C,%s,%s,%zu,%.3f\n", suite_name, bench_name, warmup, value);
-#endif /* CONFIG_ZTEST_BENCHMARK_OUTPUT_CSV */
-#ifdef CONFIG_ZTEST_BENCHMARK_OUTPUT_VERBOSE
-	printk("\tCold (first run): %.3f, then %zu warmup iterations\n", value, warmup);
-#endif /* CONFIG_ZTEST_BENCHMARK_OUTPUT_VERBOSE */
-}
-
-static void ztest_benchmark_print_stats(const char *suite_name, const char *bench_name,
-					char record_type, struct ztest_benchmark_stats *stats,
-					struct ztest_benchmark_stats *ctrl_stats)
+static void ztest_benchmark_report(const char *suite_name, const char *bench_name,
+				   char record_type, struct ztest_benchmark_stats *stats,
+				   size_t warmup, uint64_t cold,
+				   struct ztest_benchmark_stats *ctrl_stats)
 {
 	double ctrl = (double)ctrl_stats->mean;
 	double stddev = 0.0;
@@ -216,6 +216,8 @@ static void ztest_benchmark_print_stats(const char *suite_name, const char *benc
 		std_error = stddev / sqrt(stats->samples);
 	}
 
+	percentiles_prepare(suite_name, bench_name);
+
 #ifdef CONFIG_ZTEST_BENCHMARK_OUTPUT_CSV
 	printk("%c,%s,%s,%lld,%.3f,%.3f,%.3f,%.3f,%.3f,%lld,%.3f,%lld\n",
 		record_type, suite_name, bench_name,
@@ -224,24 +226,61 @@ static void ztest_benchmark_print_stats(const char *suite_name, const char *benc
 		noise_correction(stats->mean, ctrl), stddev, std_error,
 		noise_correction((double)stats->min.value, ctrl), stats->min.sample,
 		noise_correction((double)stats->max.value, ctrl), stats->max.sample);
+
+	if (cold != 0) {
+		printk("C,%s,%s,%zu,%.3f\n", suite_name, bench_name, warmup,
+			noise_correction((double)cold, ctrl));
+	}
 #endif /* CONFIG_ZTEST_BENCHMARK_OUTPUT_CSV */
+
 #ifdef CONFIG_ZTEST_BENCHMARK_OUTPUT_VERBOSE
 	printk_line(bench_name, '=');
-	printk("\tSample size:%lld, total cycles: %.3f\n", stats->samples,
-			noise_correction((double)stats->total, ctrl * (double)stats->samples));
-
-	printk("\tMean(u): %.3f\n", noise_correction(stats->mean, ctrl));
-	printk("\tStandard deviation(s): %.3f\n", stddev);
-	printk("\tStandard Error(SE): %.3f\n", std_error);
-	printk("\tMin: %.3f (run #%llu)\n", noise_correction((double)stats->min.value, ctrl),
-		stats->min.sample);
-	printk("\tMax: %.3f (run #%llu)\n", noise_correction((double)stats->max.value, ctrl),
-		stats->max.sample);
+	printk("\tSample size: %lld\n", stats->samples);
+	printk("\tMean:      %11.3f\n", noise_correction(stats->mean, ctrl));
+	printk("\tStddev:    %11.3f\n", stddev);
+	printk("\tMin:       %11.3f\n", noise_correction((double)stats->min.value, ctrl));
 #endif /* CONFIG_ZTEST_BENCHMARK_OUTPUT_VERBOSE */
 
-	percentiles_report(suite_name, bench_name, ctrl_stats);
-}
+	if (percentiles_available()) {
+#ifdef CONFIG_ZTEST_BENCHMARK_PERCENTILES
+#ifdef CONFIG_ZTEST_BENCHMARK_OUTPUT_CSV
+		printk("P,%s,%s,%zu,%.3f,%.3f,%.3f,%.3f,%.3f,%.3f,%.3f,%zu\n",
+			suite_name, bench_name, retained_count,
+			noise_correction((double)retained[0], ctrl),
+			noise_correction((double)percentile(5000), ctrl),
+			noise_correction((double)percentile(9000), ctrl),
+			noise_correction((double)percentile(9900), ctrl),
+			noise_correction((double)percentile(9990), ctrl),
+			noise_correction((double)percentile(9999), ctrl),
+			noise_correction((double)retained[retained_count - 1], ctrl),
+			percentiles_outliers());
+#endif /* CONFIG_ZTEST_BENCHMARK_OUTPUT_CSV */
+#ifdef CONFIG_ZTEST_BENCHMARK_OUTPUT_VERBOSE
+		printk("\tMedian:    %11.3f\n", noise_correction((double)percentile(5000), ctrl));
+		printk("\tp90:       %11.3f\n", noise_correction((double)percentile(9000), ctrl));
+		printk("\tp99:       %11.3f\n", noise_correction((double)percentile(9900), ctrl));
+		printk("\tp99.9:     %11.3f\n", noise_correction((double)percentile(9990), ctrl));
+		printk("\tp99.99:    %11.3f\n", noise_correction((double)percentile(9999), ctrl));
+#endif /* CONFIG_ZTEST_BENCHMARK_OUTPUT_VERBOSE */
+#endif /* CONFIG_ZTEST_BENCHMARK_PERCENTILES */
+	}
 
+#ifdef CONFIG_ZTEST_BENCHMARK_OUTPUT_VERBOSE
+	printk("\tMax:       %11.3f (run #%llu)\n",
+		noise_correction((double)stats->max.value, ctrl), stats->max.sample);
+
+#ifdef CONFIG_ZTEST_BENCHMARK_PERCENTILES
+	if (percentiles_available()) {
+		printk("\tOutliers:  %11zu / %zu\n", percentiles_outliers(), retained_count);
+	}
+#endif /* CONFIG_ZTEST_BENCHMARK_PERCENTILES */
+
+	if (cold != 0) {
+		printk("\tCold:      %11.3f\n", noise_correction((double)cold, ctrl));
+	}
+	printk("\tWarmup:    %11zu\n", warmup);
+#endif /* CONFIG_ZTEST_BENCHMARK_OUTPUT_VERBOSE */
+}
 
 static void update_metrics(struct ztest_benchmark_stats *stats, uint64_t cycles)
 {
@@ -492,11 +531,9 @@ void benchmark_main(void)
 				continue;
 			}
 			ztest_benchmark_run(benchmark);
-			ztest_benchmark_print_stats(suite->name, benchmark->name, 'S',
-						    &benchmark->stats, &ctrl.stats);
-			ztest_benchmark_print_cold(suite->name, benchmark->name,
-						   benchmark->warmup, benchmark->cold,
-						   &ctrl.stats);
+			ztest_benchmark_report(suite->name, benchmark->name, 'S',
+					       &benchmark->stats, benchmark->warmup,
+					       benchmark->cold, &ctrl.stats);
 		}
 
 		STRUCT_SECTION_FOREACH(ztest_benchmark_manual, benchmark) {
@@ -504,11 +541,9 @@ void benchmark_main(void)
 				continue;
 			}
 			ztest_benchmark_manual_run(benchmark);
-			ztest_benchmark_print_stats(suite->name, benchmark->name, 'M',
-						    &benchmark->stats, &ctrl.stats);
-			ztest_benchmark_print_cold(suite->name, benchmark->name,
-						   benchmark->warmup, benchmark->cold,
-						   &ctrl.stats);
+			ztest_benchmark_report(suite->name, benchmark->name, 'M',
+					       &benchmark->stats, benchmark->warmup,
+					       benchmark->cold, &ctrl.stats);
 		}
 
 		STRUCT_SECTION_FOREACH(ztest_benchmark_timed, benchmark) {

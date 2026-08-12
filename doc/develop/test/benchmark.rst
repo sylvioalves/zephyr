@@ -156,6 +156,17 @@ Standard Benchmarking Results
 Statistical Metrics
 """""""""""""""""""
 
+.. note::
+
+   The human-readable report does not carry the standard error. A kernel latency
+   distribution is usually a baseline plus a handful of disturbed runs rather than samples of
+   one stochastic population, and a standard error over the two suggests an average that no
+   single execution ever produced -- ten thousand runs of 760 cycles and one of 1240 give a
+   mean of 760.042 and a standard error of 0.048, which reads as precision and is not. The
+   report spends that space on the **outlier count** instead, the number of samples slower
+   than the median, which says the same thing usefully: 1 / 10000. The standard error remains
+   in the CSV output, whose column layout is fixed.
+
 * **Mean (u)**: The average number of cycles taken per sample. It provides a
   central value representing the expected cost of execution.
 
@@ -236,6 +247,17 @@ Timed Benchmarking Results
 
 Statistical Metrics
 """""""""""""""""""
+
+.. note::
+
+   The human-readable report does not carry the standard error. A kernel latency
+   distribution is usually a baseline plus a handful of disturbed runs rather than samples of
+   one stochastic population, and a standard error over the two suggests an average that no
+   single execution ever produced -- ten thousand runs of 760 cycles and one of 1240 give a
+   mean of 760.042 and a standard error of 0.048, which reads as precision and is not. The
+   report spends that space on the **outlier count** instead, the number of samples slower
+   than the median, which says the same thing usefully: 1 / 10000. The standard error remains
+   in the CSV output, whose column layout is fixed.
 * **Total Time**: The total time taken for all samples of the benchmark, including overhead.
 
 * **Work Time**: The total time taken for the code under test, excluding the overhead of the

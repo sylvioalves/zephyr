@@ -45,6 +45,14 @@ config ZTEST_BENCHMARK_PERCENTILES
 	  characterised by how bad an individual operation can be, and
 	  that lives in the tail of the distribution.
 
+	  The percentiles also give the report its outlier count, the number of samples slower
+	  than the median. For a kernel latency distribution that is the number of runs that were
+	  disturbed, which is what the human-readable report carries instead of a standard error:
+	  these distributions are a baseline plus a few interrupted runs rather than samples of one
+	  stochastic population, and quoting how precisely their average was estimated suggests an
+	  average that no single execution ever produced. The standard error stays in the CSV
+	  output, whose columns are fixed.
+
 	  A percentile needs enough samples to be resolved at all. p99
 	  needs at least 100, p99.9 at least 1000 and p99.99 at least
 	  10000; below that the reported value degenerates to the
@@ -133,11 +141,12 @@ config ZTEST_BENCHMARK_OUTPUT_CSV
 	  With CONFIG_ZTEST_BENCHMARK_PERCENTILES, every sampled and manual benchmark emits an
 	  additional row of the form:
 
-	    P, suite, name, samples, min, p50, p90, p99, p999, p9999, max
+	    P, suite, name, samples, min, p50, p90, p99, p999, p9999, max, outliers
 
 	  - samples: number of retained samples the percentiles were taken over
 	  - min / max: extreme cycle values
 	  - p50 ... p9999: nearest-rank percentiles, p9999 being the 99.99th
+	  - outliers: samples slower than the median
 
 	  All values are noise-corrected against the control measurement.
 endchoice
