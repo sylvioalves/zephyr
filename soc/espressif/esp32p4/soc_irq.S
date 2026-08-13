@@ -60,18 +60,20 @@ SECTION_FUNC(exception.other, __soc_restore_context)
 	lw t0, __soc_esf_t_mintthresh_OFFSET(a0)
 	csrw 0x347, t0
 #endif
+	/*
+	 * The frame being resumed carries its own entry type. A context switch
+	 * resumes a frame saved by an earlier trap, so the live mcause belongs
+	 * to a different trap and must not decide the fixup.
+	 */
 	lw t0, __soc_esf_t_mcause_OFFSET(a0)
-	/* live mcause = entry type of this trap */
-	csrr t2, mcause
-	bltz t2, 1f
+	bltz t0, 1f
 	/* Exception-entered: keep mcause.interrupt clear; mil stays 0. */
 	li t1, ~RISCV_MCAUSE_IRQ_BIT
 	and t0, t0, t1
 	j 2f
 1:	/* Interrupt-entered: set mcause.interrupt so mret reloads
-	 * mil from mpil; exception-saved frames resume at mil 0.
+	 * mil from mpil.
 	 */
-	bltz t0, 2f
 	li t1, 0xFF00FFFF
 	and t0, t0, t1
 	li t1, RISCV_MCAUSE_IRQ_BIT
