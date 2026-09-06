@@ -110,9 +110,16 @@ static int dl_http_cb(struct http_response *rsp, enum http_final_call final,
 	return 0;
 }
 
-/* GET http://<host>:8000/<remote> into <local>. */
-static int http_get_to_file(const char *host, const char *remote,
-			    const char *local)
+/*
+ * GET http://<host>:8000/<remote> into <local>.
+ *
+ * Progress goes to @p sh, not to printk: a shell command's own output is
+ * ordered against the rest of the command, while printk from the same thread
+ * is deferred and surfaces after the command has already reported its result.
+ * A NULL @p sh silences the progress lines (the boot path has no shell).
+ */
+static int http_get_to_file(const struct shell *sh, const char *host,
+			    const char *remote, const char *local)
 {
 	struct sockaddr_in addr = {0};
 
@@ -128,15 +135,19 @@ static int http_get_to_file(const char *host, const char *remote,
 	for (int attempt = 0; attempt < 5; attempt++) {
 		sock = zsock_socket(AF_INET, SOCK_STREAM, IPPROTO_TCP);
 		if (sock < 0) {
-			printk("  socket() failed: %d\n", errno);
+			if (sh != NULL) {
+				shell_error(sh, "  socket() failed: %d", errno);
+			}
 			return -errno;
 		}
 		crc = zsock_connect(sock, (struct sockaddr *)&addr, sizeof(addr));
 		if (crc == 0) {
 			break;
 		}
-		printk("  connect attempt %d to %s:%d failed: %d\n", attempt + 1,
-		       host, SERVER_PORT, errno);
+		if (sh != NULL) {
+			shell_warn(sh, "  connect attempt %d to %s:%d failed: %d",
+				   attempt + 1, host, SERVER_PORT, errno);
+		}
 		zsock_close(sock);
 		sock = -1;
 		k_msleep(500);
@@ -144,7 +155,9 @@ static int http_get_to_file(const char *host, const char *remote,
 	if (crc != 0) {
 		return -ETIMEDOUT;
 	}
-	printk("  connected to %s:%d\n", host, SERVER_PORT);
+	if (sh != NULL) {
+		shell_print(sh, "  connected to %s:%d", host, SERVER_PORT);
+	}
 
 	struct dl d = {0};
 
@@ -167,7 +180,9 @@ static int http_get_to_file(const char *host, const char *remote,
 
 	int rc = http_client_req(sock, &req, 10000, &d);
 
-	printk("  http_client_req rc=%d, body_err=%d\n", rc, d.err);
+	if (sh != NULL) {
+		shell_print(sh, "  http_client_req rc=%d, body_err=%d", rc, d.err);
+	}
 	fs_close(&d.f);
 	zsock_close(sock);
 
@@ -259,7 +274,7 @@ static int cmd_fetch(const struct shell *sh, size_t argc, char **argv)
 	/* Manifest first. */
 	snprintk(rpath, sizeof(rpath), "/%s.manifest", name);
 	snprintk(lpath, sizeof(lpath), "%s/%s.manifest", MOUNT_POINT, name);
-	if (http_get_to_file(host, rpath, lpath) != 0) {
+	if (http_get_to_file(sh, host, rpath, lpath) != 0) {
 		shell_error(sh, "manifest download failed");
 		return -EIO;
 	}
@@ -267,7 +282,7 @@ static int cmd_fetch(const struct shell *sh, size_t argc, char **argv)
 	/* Then the module. */
 	snprintk(rpath, sizeof(rpath), "/%s.llext", name);
 	if (app_registry_blob_path(name, lpath, sizeof(lpath)) != 0 ||
-	    http_get_to_file(host, rpath, lpath) != 0) {
+	    http_get_to_file(sh, host, rpath, lpath) != 0) {
 		shell_error(sh, "module download failed");
 		return -EIO;
 	}
