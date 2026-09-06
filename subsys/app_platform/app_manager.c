@@ -39,6 +39,10 @@ LOG_MODULE_REGISTER(app_platform, CONFIG_APP_PLATFORM_LOG_LEVEL);
 #define APP_PRIO    CONFIG_APP_PLATFORM_APP_PRIORITY
 #define WDT_TIMEOUT CONFIG_APP_PLATFORM_WDT_TIMEOUT_MS
 
+/* Bounded wait for the reaper to release a slot: 100 tries of 2 ms. */
+#define CLEANUP_WAIT_TRIES 100
+#define CLEANUP_WAIT_MS    2
+
 /* A running app: an isolated user-mode group with its own memory domain. */
 struct running_app {
 	const char         *name;
@@ -317,6 +321,21 @@ static void run_cleanup(int id, bool full, struct llext *ext)
 	apps[id].cleaning = false;
 }
 
+/*
+ * Wait for the reaper to finish releasing a slot. The reaper runs below the
+ * supervisor, so a slot reclaimed from the supervisor is still marked cleaning
+ * when control returns; anything that reuses or restarts that slot has to give
+ * the reaper a chance to run first. The wait is bounded and touches no driver
+ * or service lock, so the supervisor stays detached from both.
+ */
+static bool wait_cleanup_done(struct running_app *a)
+{
+	for (int i = 0; i < CLEANUP_WAIT_TRIES && a->cleaning; i++) {
+		k_msleep(CLEANUP_WAIT_MS);
+	}
+	return !a->cleaning;
+}
+
 static void reaper(void *p1, void *p2, void *p3)
 {
 	ARG_UNUSED(p1); ARG_UNUSED(p2); ARG_UNUSED(p3);
@@ -414,10 +433,7 @@ static int restart_thread(struct running_app *a)
 	/* Wait for any pending reaper cleanup of this slot to finish, so its
 	 * per-app service resources are released before the app runs again.
 	 */
-	for (int i = 0; i < 100 && a->cleaning; i++) {
-		k_msleep(2);
-	}
-	if (a->cleaning) {
+	if (!wait_cleanup_done(a)) {
 		return -EBUSY;
 	}
 
@@ -512,7 +528,18 @@ static void supervisor(void *p1, void *p2, void *p3)
 
 		if (restart) {
 			LOG_INF("restarting app '%s' after fault", name);
-			(void)launch(name, entry, caps, NULL, true, monitored);
+			/* Let the reaper release this slot before relaunching:
+			 * launch() skips a slot that is still being cleaned, so
+			 * without the wait every restart leaks a slot and the
+			 * app disappears once they run out.
+			 */
+			if (!wait_cleanup_done(a)) {
+				LOG_ERR("app '%s' not restarted: cleanup stuck", name);
+				continue;
+			}
+			if (launch(name, entry, caps, NULL, true, monitored) < 0) {
+				LOG_ERR("app '%s' could not be restarted", name);
+			}
 		}
 	}
 }
