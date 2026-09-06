@@ -135,6 +135,9 @@ static inline bool app_has_cap(uint32_t mask)
 
 void z_impl_svc_log(const char *msg)
 {
+	if (!app_has_cap(APP_CAP_LOG)) {
+		return;
+	}
 	if (!app_log_enabled) {
 		return;
 	}

@@ -93,12 +93,18 @@ int z_impl_svc_pulse_count(int32_t *count)
 #else  /* no pcnt node */
 int z_impl_svc_pulse_emit(uint32_t n)
 {
+	if (!app_has_cap(APP_CAP_COUNTER)) {
+		return -EPERM;
+	}
 	ARG_UNUSED(n);
 	return -ENODEV;
 }
 
 int z_impl_svc_pulse_count(int32_t *count)
 {
+	if (!app_has_cap(APP_CAP_COUNTER)) {
+		return -EPERM;
+	}
 	ARG_UNUSED(count);
 	return -ENODEV;
 }
@@ -130,6 +136,9 @@ int z_impl_svc_motor_set(uint32_t channel, uint32_t duty_pct)
 #else  /* no mcpwm0 node */
 int z_impl_svc_motor_set(uint32_t channel, uint32_t duty_pct)
 {
+	if (!app_has_cap(APP_CAP_MOTOR)) {
+		return -EPERM;
+	}
 	ARG_UNUSED(channel); ARG_UNUSED(duty_pct);
 	return -ENODEV;
 }

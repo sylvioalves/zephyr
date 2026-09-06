@@ -124,6 +124,9 @@ void app_platform_grant_led(int id, uint32_t pin_mask)
 
 int z_impl_svc_led_set(int pin, int on)
 {
+	if (!app_has_cap(APP_CAP_LED)) {
+		return -EPERM;
+	}
 	ARG_UNUSED(pin); ARG_UNUSED(on);
 	return -ENODEV;
 }
@@ -185,6 +188,9 @@ int z_impl_svc_button_wait(int32_t timeout_ms)
 #else  /* no sw0 alias */
 int z_impl_svc_button_wait(int32_t timeout_ms)
 {
+	if (!app_has_cap(APP_CAP_INPUT)) {
+		return -EPERM;
+	}
 	ARG_UNUSED(timeout_ms);
 	return -ENODEV;
 }

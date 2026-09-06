@@ -21,17 +21,32 @@
  * loadable application calls these without linking any driver code; a loadable
  * application that calls only these stays a few kilobytes.
  *
- * Every service enforces its capability bit (see @ref app_platform_caps) at the
- * syscall boundary and returns -EPERM to an ungranted caller. Each service is
+ * Every service that touches hardware or another application enforces its
+ * capability bit (see @ref app_platform_caps) as its first act at the syscall
+ * boundary, and returns -EPERM to an ungranted caller; the few that expose only
+ * the calling application's own state or the platform's static topology say so
+ * in their own documentation. Each service is
  * written to be safe under concurrent calls from several isolated applications:
  * it is either stateless, keyed by the calling application's group id, or
  * serialized internally.
  */
 
-/** Log a line, prefixed with the calling application's group id. */
+/**
+ * @brief Log a line, prefixed with the calling application's group id.
+ *
+ * Needs @ref APP_CAP_LOG. The line is dropped without it; a void service has
+ * no way to report the denial, and an application that cannot log is not a
+ * reason to fault it.
+ */
 __syscall void svc_log(const char *msg);
 
-/** Feed the calling application's liveness watchdog (if monitored). */
+/**
+ * @brief Feed the calling application's liveness watchdog (if monitored).
+ *
+ * Deliberately needs no capability: the heartbeat is how the supervisor learns
+ * the application is still progressing, so gating it would let a provisioning
+ * mistake be reported as a hang.
+ */
 __syscall void svc_heartbeat(void);
 
 /**
