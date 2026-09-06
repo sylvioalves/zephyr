@@ -25,10 +25,13 @@
  * capability bit (see @ref app_platform_caps) as its first act at the syscall
  * boundary, and returns -EPERM to an ungranted caller; the few that expose only
  * the calling application's own state or the platform's static topology say so
- * in their own documentation. Each service is
- * written to be safe under concurrent calls from several isolated applications:
- * it is either stateless, keyed by the calling application's group id, or
- * serialized internally.
+ * in their own documentation. A service that is additionally scoped to
+ * individual resources - a GPIO line, an ADC channel, an I2C address - keeps
+ * the two refusals apart: -EPERM says the capability itself was never granted,
+ * -EACCES says the capability is held but this particular resource is not
+ * assigned to the caller. Each service is written to be safe under concurrent
+ * calls from several isolated applications: it is either stateless, keyed by
+ * the calling application's group id, or serialized internally.
  */
 
 /**
@@ -443,7 +446,9 @@ __syscall int svc_gpio_count(void);
  *
  * @param line Line index in [0, @ref svc_gpio_count).
  * @param on   Non-zero to drive high.
- * @retval 0 on success, -EPERM without the capability or line grant.
+ * @retval 0 on success.
+ * @retval -EPERM without @ref APP_CAP_GPIO.
+ * @retval -EACCES with the capability but without a grant for this line.
  */
 __syscall int svc_gpio_set(int line, int on);
 
@@ -587,7 +592,9 @@ __syscall int svc_app_info(int id, struct svc_app_info *out);
  *
  * @param ch       Channel index.
  * @param permille Duty cycle in tenths of a percent (0..1000).
- * @retval 0 on success, -EPERM without the capability or channel grant.
+ * @retval 0 on success.
+ * @retval -EPERM without @ref APP_CAP_PWM.
+ * @retval -EACCES with the capability but without a grant for this channel.
  */
 __syscall int svc_pwm_set(int ch, uint32_t permille);
 
@@ -608,7 +615,9 @@ void app_platform_grant_pwm(int id, uint32_t ch_mask);
  *        (@ref app_platform_grant_adc).
  *
  * @param ch Channel index.
- * @retval >=0 the raw sample, -EPERM without the capability or channel grant.
+ * @retval >=0 the raw sample.
+ * @retval -EPERM without @ref APP_CAP_ADC.
+ * @retval -EACCES with the capability but without a grant for this channel.
  */
 __syscall int svc_adc_read(int ch);
 
@@ -621,7 +630,10 @@ void app_platform_grant_adc(int id, uint32_t ch_mask);
  *
  * @param pin LED index in the range [0, @ref svc_led_count).
  * @param on Non-zero to light the LED, zero to clear it.
- * @retval 0 on success, -EPERM without the grant, -ENODEV if absent.
+ * @retval 0 on success.
+ * @retval -EPERM without @ref APP_CAP_LED.
+ * @retval -EACCES with the capability but without a grant for this pin.
+ * @retval -ENODEV if the board has no such LED.
  */
 __syscall int svc_led_set(int pin, int on);
 
@@ -699,7 +711,9 @@ __syscall int svc_motor_set(uint32_t channel, uint32_t duty_pct);
  * @param addr 7-bit device address.
  * @param buf  Receives the bytes.
  * @param len  Number of bytes (bounded by the platform).
- * @retval 0 on success, -EPERM without the capability or address grant.
+ * @retval 0 on success.
+ * @retval -EPERM without @ref APP_CAP_I2C.
+ * @retval -EACCES with the capability but without a grant for this address.
  */
 __syscall int svc_i2c_read(uint16_t addr, uint8_t *buf, size_t len);
 
@@ -713,7 +727,9 @@ void app_platform_grant_i2c(int id, uint16_t addr);
  * @param tx  Bytes to send.
  * @param rx  Receives the bytes clocked in.
  * @param len Transfer length (bounded by the platform).
- * @retval 0 on success, -EPERM without the capability or grant.
+ * @retval 0 on success.
+ * @retval -EPERM without @ref APP_CAP_SPI.
+ * @retval -EACCES with the capability but without a grant for the bus.
  */
 __syscall int svc_spi_xfer(const uint8_t *tx, uint8_t *rx, size_t len);
 

@@ -224,13 +224,20 @@ uint32_t z_impl_svc_checkpoint_get(void)
 #ifdef CONFIG_USERSPACE
 static inline int z_vrfy_svc_led_set(int pin, int on)
 {
+	/* The capability is checked before the grant, as everywhere else, so a
+	 * caller without APP_CAP_LED gets -EPERM and cannot tell an ungranted
+	 * pin from one it was never entitled to reach.
+	 */
+	if (!app_has_cap(APP_CAP_LED)) {
+		return -EPERM;
+	}
 #if DT_HAS_ALIAS(led0)
 	/* Reject any LED pin the calling application was not granted. */
 	int id = app_platform_id_current();
 
 	if (pin < 0 || pin >= (int)LED_COUNT || id < 0 || id >= MAX_APPS ||
 	    (led_grant[id] & BIT(pin)) == 0U) {
-		return -EPERM;
+		return -EACCES;
 	}
 #endif
 	return z_impl_svc_led_set(pin, on);

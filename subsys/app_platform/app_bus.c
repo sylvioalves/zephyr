@@ -58,7 +58,7 @@ int z_impl_svc_i2c_read(uint16_t addr, uint8_t *buf, size_t len)
 		return -EINVAL;
 	}
 	if (i2c_grant[id] == 0U || i2c_grant[id] != addr) {
-		return -EPERM;
+		return -EACCES;
 	}
 #if DT_HAS_ALIAS(app_i2c)
 	if (!device_is_ready(i2c_dev)) {
@@ -102,7 +102,7 @@ int z_impl_svc_spi_xfer(const uint8_t *tx, uint8_t *rx, size_t len)
 		return -EINVAL;
 	}
 	if (!spi_grant[id]) {
-		return -EPERM;
+		return -EACCES;
 	}
 #if DT_HAS_ALIAS(app_spi)
 	if (!device_is_ready(spi_dev)) {

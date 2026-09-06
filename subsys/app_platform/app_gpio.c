@@ -110,7 +110,7 @@ int z_impl_svc_gpio_set(int line, int on)
 		return -EINVAL;
 	}
 	if ((line_grant[id] & BIT(line)) == 0U) {
-		return -EPERM;
+		return -EACCES;
 	}
 #if DT_NODE_EXISTS(LEDS_NODE)
 	gpio_ready_init();

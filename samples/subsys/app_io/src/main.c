@@ -69,7 +69,7 @@ static void io_app(void *arg)
 	 */
 	int led_c = svc_led_find("status LED 2");
 
-	if (led_c >= 0 && svc_led_set(led_c, 1) == -EPERM) {
+	if (led_c >= 0 && svc_led_set(led_c, 1) == -EACCES) {
 		svc_log("io: ungranted led 'status LED 2' correctly denied");
 	} else {
 		svc_log("io: ERROR ungranted led was allowed");

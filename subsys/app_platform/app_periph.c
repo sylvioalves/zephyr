@@ -74,7 +74,7 @@ int z_impl_svc_pwm_set(int ch, uint32_t permille)
 		return -EINVAL;
 	}
 	if ((pwm_grant[id] & BIT(ch)) == 0U) {
-		return -EPERM;
+		return -EACCES;
 	}
 #if DT_HAS_ALIAS(app_pwm0)
 	if (!pwm_is_ready_dt(&pwm_ch[ch])) {
@@ -145,7 +145,7 @@ int z_impl_svc_adc_read(int ch)
 		return -EINVAL;
 	}
 	if ((adc_grant[id] & BIT(ch)) == 0U) {
-		return -EPERM;
+		return -EACCES;
 	}
 #if ADC_HAS_CH
 	if (!adc_ready) {
