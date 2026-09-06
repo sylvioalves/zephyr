@@ -60,6 +60,33 @@ int app_registry_count(void);
 /** Fetch an installed application record by index. */
 int app_registry_get(int idx, struct app_record *out);
 
+/**
+ * @brief Launch callback for @ref app_registry_autostart_all.
+ *
+ * Called once per enabled autostart record. The callback owns the load and
+ * launch policy - which key to verify against, which capabilities to grant -
+ * because that is application, not platform, policy.
+ *
+ * @param rec  The installed-application record to launch.
+ * @param user Opaque pointer passed through from the caller.
+ * @return The application id on success, negative errno on failure.
+ */
+typedef int (*app_registry_launch_t)(const struct app_record *rec, void *user);
+
+/**
+ * @brief Launch every installed application flagged for autostart.
+ *
+ * Walks the registry in install order and invokes @p launch for each enabled
+ * record whose autostart flag is set. A record that fails to launch is skipped
+ * so one bad application does not stop the rest from starting.
+ *
+ * @param launch Callback that loads and launches one record.
+ * @param user   Opaque pointer handed to @p launch.
+ * @retval >=0 the number of applications launched.
+ * @retval -EINVAL if @p launch is NULL.
+ */
+int app_registry_autostart_all(app_registry_launch_t launch, void *user);
+
 /** Remove an installed application and persist. */
 int app_registry_uninstall(const char *name);
 

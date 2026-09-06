@@ -206,6 +206,47 @@ static int read_manifest(const char *name, struct app_manifest *mf,
 	return (r == 0) ? 0 : -EIO;
 }
 
+/*
+ * Load and launch one installed application from flash. The manifest and the
+ * module are re-verified against the trusted key on every boot, so a record in
+ * the registry is not by itself permission to run: the signature still has to
+ * check against the image on flash.
+ */
+static int autostart_one(const struct app_record *rec, void *user)
+{
+	ARG_UNUSED(user);
+	struct app_manifest mf;
+	uint8_t sig[APP_MANIFEST_SIG_LEN];
+	char lpath[64];
+
+	if (read_manifest(rec->name, &mf, sig, sizeof(sig)) != 0) {
+		return -ENOENT;
+	}
+	if (app_registry_blob_path(rec->name, lpath, sizeof(lpath)) != 0) {
+		return -ENAMETOOLONG;
+	}
+
+	struct llext *ext = NULL;
+	void *entry = NULL;
+	int rc = app_loader_verify_load_manifest_file(&mf, sig,
+						      APP_MANIFEST_SIG_LEN, lpath,
+						      trusted_pubkey,
+						      ARRAY_SIZE(trusted_pubkey),
+						      "app_main", &ext, &entry);
+
+	if (rc != 0) {
+		return rc;
+	}
+	rc = app_platform_launch_llext(mf.name, ext, (app_entry_t)entry, APP_CAPS);
+	if (rc < 0) {
+		app_loader_forget(ext);
+		llext_unload(&ext);
+		return rc;
+	}
+	printk("autostarted '%s' v%u (isolated app %d)\n", mf.name, mf.version, rc);
+	return rc;
+}
+
 static int cmd_fetch(const struct shell *sh, size_t argc, char **argv)
 {
 	const char *name = argv[1];
@@ -287,6 +328,15 @@ int main(void)
 		printk("platform init failed\n");
 		return 0;
 	}
+
+	/* Relaunch what is installed before touching the network: an installed
+	 * application is expected to be running after a reboot, and its image
+	 * is already on flash.
+	 */
+	int n = app_registry_autostart_all(autostart_one, NULL);
+
+	printk("autostart: %d of %d installed apps launched\n", n,
+	       app_registry_count());
 
 	/* Let the Wi-Fi interface finish coming up, then issue a single
 	 * connection request and wait for an address. The connect is

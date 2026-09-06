@@ -170,6 +170,30 @@ int app_registry_get(int idx, struct app_record *out)
 	return 0;
 }
 
+int app_registry_autostart_all(app_registry_launch_t launch, void *user)
+{
+	int started = 0;
+
+	if (launch == NULL) {
+		return -EINVAL;
+	}
+	for (uint32_t i = 0; i < reg.count; i++) {
+		const struct app_record *r = &reg.apps[i];
+
+		if (r->enabled == 0U || r->autostart == 0U) {
+			continue;
+		}
+		int rc = launch(r, user);
+
+		if (rc < 0) {
+			LOG_WRN("autostart of '%s' failed (%d)", r->name, rc);
+			continue;
+		}
+		started++;
+	}
+	return started;
+}
+
 int app_registry_uninstall(const char *name)
 {
 	int idx = find(name);
