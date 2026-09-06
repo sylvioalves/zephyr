@@ -1,0 +1,119 @@
+/*
+ * Copyright (c) 2026 Espressif Systems (Shanghai) Co., Ltd.
+ *
+ * SPDX-License-Identifier: Apache-2.0
+ */
+
+#include <zephyr/dt-bindings/pinctrl/esp32c5-pinctrl.h>
+#include <zephyr/dt-bindings/pwm/pwm.h>
+
+/ {
+	leds {
+		compatible = "gpio-leds";
+
+		led_a: led_0 {
+			gpios = <&gpio0 2 GPIO_ACTIVE_HIGH>;
+			label = "probe LED 0";
+		};
+
+		led_b: led_1 {
+			gpios = <&gpio0 3 GPIO_ACTIVE_HIGH>;
+			label = "probe LED 1";
+		};
+	};
+
+	app_pwm: app_pwm {
+		compatible = "pwm-leds";
+
+		app_pwm_ch0: app_pwm_ch0 {
+			pwms = <&ledc0 0 PWM_HZ(1000) PWM_POLARITY_NORMAL>;
+			label = "probe pwm ch0";
+		};
+	};
+
+	zephyr,user {
+		io-channels = <&adc0 2>;
+	};
+
+	aliases {
+		led0 = &led_a;
+		led1 = &led_b;
+		app-pwm0 = &app_pwm_ch0;
+		app-i2c = &i2c0;
+		app-spi = &spi2;
+	};
+
+	chosen {
+		app-uart = &uart0;
+	};
+};
+
+&pinctrl {
+	ledc0_default: ledc0_default {
+		group1 {
+			pinmux = <LEDC_CH0_GPIO2>;
+			output-enable;
+		};
+	};
+
+	twai_default: twai_default {
+		group1 {
+			pinmux = <TWAI0_RX_GPIO5>;
+			output-enable;
+		};
+
+		group2 {
+			pinmux = <TWAI0_TX_GPIO5>;
+			input-enable;
+		};
+	};
+};
+
+&ledc0 {
+	pinctrl-0 = <&ledc0_default>;
+	pinctrl-names = "default";
+	status = "okay";
+	#address-cells = <1>;
+	#size-cells = <0>;
+
+	channel0@0 {
+		reg = <0x0>;
+		timer = <0>;
+	};
+};
+
+&adc0 {
+	#address-cells = <1>;
+	#size-cells = <0>;
+	status = "okay";
+
+	channel@2 {
+		reg = <2>;
+		zephyr,gain = "ADC_GAIN_1_4";
+		zephyr,reference = "ADC_REF_INTERNAL";
+		zephyr,acquisition-time = <ADC_ACQ_TIME_DEFAULT>;
+		zephyr,resolution = <12>;
+	};
+};
+
+&twai0 {
+	status = "okay";
+	pinctrl-0 = <&twai_default>;
+	pinctrl-names = "default";
+
+	can-transceiver {
+		max-bitrate = <1000000>;
+	};
+};
+
+&dma {
+	status = "okay";
+};
+
+&ieee802154 {
+	status = "okay";
+};
+
+&coretemp {
+	status = "okay";
+};
