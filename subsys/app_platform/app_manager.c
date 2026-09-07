@@ -30,6 +30,7 @@
 #endif
 #include <zephyr/sys/libc-hooks.h>
 #include <zephyr/logging/log.h>
+#include <string.h>
 #include <errno.h>
 
 LOG_MODULE_REGISTER(app_platform, CONFIG_APP_PLATFORM_LOG_LEVEL);
@@ -44,8 +45,16 @@ LOG_MODULE_REGISTER(app_platform, CONFIG_APP_PLATFORM_LOG_LEVEL);
 #define CLEANUP_WAIT_MS    2
 
 /* A running app: an isolated user-mode group with its own memory domain. */
+/*
+ * Application name length, including the terminator. An application's name
+ * outlives the call that launched it (the fault handler, the watchdog and the
+ * thread name all read it), so the slot keeps its own copy rather than the
+ * caller's pointer, which is often a stack local.
+ */
+#define APP_NAME_LEN 24
+
 struct running_app {
-	const char         *name;
+	char                name[APP_NAME_LEN];
 	bool                active;    /* slot occupied (running or stopped) */
 	bool                running;   /* thread is alive */
 	bool                restart;   /* relaunch (built-in) after a fault */
@@ -516,7 +525,14 @@ static void supervisor(void *p1, void *p2, void *p3)
 			continue;   /* already reclaimed (e.g. double signal) */
 		}
 
-		const char *name = a->name;
+		/* Copy the name out: a relaunch writes it back into this same
+		 * slot, so passing the slot's own buffer would alias.
+		 */
+		char name[APP_NAME_LEN];
+
+		(void)strncpy(name, a->name, sizeof(name) - 1);
+		name[sizeof(name) - 1] = '\0';
+
 		app_entry_t entry = a->entry;
 		uint32_t caps = a->caps;
 		bool monitored = a->monitored;
@@ -591,7 +607,8 @@ static int launch(const char *name, app_entry_t entry, uint32_t caps,
 		}
 		struct running_app *a = &apps[i];
 
-		a->name = name;
+		(void)strncpy(a->name, name, sizeof(a->name) - 1);
+		a->name[sizeof(a->name) - 1] = '\0';
 		a->entry = entry;
 		a->caps = caps;
 		a->restart = restart;
