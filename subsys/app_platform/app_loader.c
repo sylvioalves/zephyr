@@ -468,6 +468,30 @@ int app_loader_verify_load_manifest_file(const struct app_manifest *mf,
 	LOG_INF("verify OK for '%s' v%u (streamed, manifest authentic, module "
 		"bound)", mf->name, mf->version);
 
-	/* 3. Load the extension straight from the same file. */
-	return fs_load_checked(mf->name, path, entry_sym, ext, entry);
+	/* 3. Load the extension from the same file. The loader re-opens the
+	 * path, so the bytes it links are not provably the bytes just hashed.
+	 */
+	int rc = fs_load_checked(mf->name, path, entry_sym, ext, entry);
+
+	if (rc != 0) {
+		return rc;
+	}
+
+	/* 4. Re-hash the file now that loading is done. A writer that swapped
+	 * the contents between the two reads changes the digest, so the module
+	 * that was linked is dropped rather than left running unverified.
+	 */
+	uint8_t recheck[32];
+	size_t recheck_len = 0;
+
+	if (sha256_file(path, recheck, &recheck_len, NULL, 0) != 0 || recheck_len != len ||
+	    memcmp(recheck, mf->module_sha256, 32) != 0) {
+		LOG_WRN("'%s' module changed while loading, rejected", mf->name);
+		app_loader_forget(*ext);
+		llext_unload(ext);
+		*entry = NULL;
+		return -EPERM;
+	}
+
+	return 0;
 }
