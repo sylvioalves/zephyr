@@ -786,6 +786,32 @@ __syscall int svc_ble_scan(const char *name, uint32_t timeout_ms);
 __syscall int svc_ble_hr_read(uint32_t timeout_ms, uint8_t *out_bpm);
 
 /**
+ * @brief Fetch a signed application from a BLE peer. Needs @ref APP_CAP_BLE.
+ *
+ * Connects to the peer advertising as @p name, pulls its manifest, signature
+ * and module over GATT and leaves all three on flash, keyed by @p name. Nothing
+ * is verified or launched here: the transfer is untrusted, and the caller
+ * checks the signature and the module hash exactly as it would for a download
+ * over any other transport.
+ *
+ * @param name       Peer's advertised name, which is also the application name
+ *                   the manifest must claim.
+ * @param timeout_ms Per-exchange timeout.
+ * @param[out] out_len Receives the number of module bytes stored. May be NULL.
+ *
+ * @retval 0 on success.
+ * @retval -EPERM without @ref APP_CAP_BLE, or if the manifest names a
+ *         different application than @p name.
+ * @retval -EBADMSG if the manifest is malformed or the peer sent fewer module
+ *         bytes than it declared.
+ * @retval -EFBIG if the module is larger than the loader accepts.
+ * @retval -EBUSY if another BLE request is in flight.
+ * @retval -ETIMEDOUT if the peer did not answer in time.
+ */
+__syscall int svc_ble_ota_fetch(const char *name, uint32_t timeout_ms,
+				uint32_t *out_len);
+
+/**
  * @brief Send a datagram to the 802.15.4 peer. Needs @ref APP_CAP_RADIO.
  *
  * The platform owns the radio and the socket; the application hands off a copied

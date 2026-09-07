@@ -203,6 +203,18 @@ config APP_PLATFORM_BLE
 	  for a peer by name, or to connect to a heart-rate peer and read one
 	  measurement, without linking any of the BLE stack.
 
+config APP_PLATFORM_BLE_OTA
+	bool "Fetch applications over BLE"
+	depends on APP_PLATFORM_BLE
+	depends on APP_PLATFORM_LOADER && APP_PLATFORM_REGISTRY
+	depends on FILE_SYSTEM
+	help
+	  Add svc_ble_ota_fetch, which pulls a signed application's manifest,
+	  signature and module from a BLE peer over GATT and stores them, so a
+	  device with no network connection can still be updated. The transfer
+	  is untrusted: the caller verifies the signature and the module hash
+	  before anything is installed or launched.
+
 config APP_PLATFORM_RADIO
 	bool "Shared 802.15.4 messaging service"
 	depends on APP_PLATFORM_SERVICES
