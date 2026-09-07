@@ -177,7 +177,11 @@ void app_loader_forget(const struct llext *ext)
 static int finish_load(const char *name, struct llext *loaded,
 		       const char *entry_sym, struct llext **ext, void **entry)
 {
-	void *fn = llext_find_sym(&loaded->exp_tab, entry_sym);
+	/* The lookup hands back a const pointer into the extension's export
+	 * table; the entry is called, not written, so casting the constness
+	 * away here is deliberate.
+	 */
+	void *fn = (void *)llext_find_sym(&loaded->exp_tab, entry_sym);
 
 	if (fn == NULL) {
 		LOG_ERR("no '%s' entry in '%s'", entry_sym, name);

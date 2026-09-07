@@ -351,7 +351,7 @@ int z_impl_svc_flash_read(uint32_t off, uint8_t *buf, size_t len)
 #if defined(CONFIG_FLASH_MAP) && DT_NODE_EXISTS(DT_NODELABEL(storage_partition))
 	const struct flash_area *fa;
 
-	if (flash_area_open(FIXED_PARTITION_ID(storage_partition), &fa) != 0) {
+	if (flash_area_open(PARTITION_ID(storage_partition), &fa) != 0) {
 		return -EIO;
 	}
 
@@ -386,7 +386,7 @@ int z_impl_svc_flash_write(uint32_t off, const uint8_t *buf, size_t len)
 #if defined(CONFIG_FLASH_MAP) && DT_NODE_EXISTS(DT_NODELABEL(storage_partition))
 	const struct flash_area *fa;
 
-	if (flash_area_open(FIXED_PARTITION_ID(storage_partition), &fa) != 0) {
+	if (flash_area_open(PARTITION_ID(storage_partition), &fa) != 0) {
 		return -EIO;
 	}
 
@@ -421,7 +421,7 @@ int z_impl_svc_flash_erase(uint32_t off, size_t len)
 #if defined(CONFIG_FLASH_MAP) && DT_NODE_EXISTS(DT_NODELABEL(storage_partition))
 	const struct flash_area *fa;
 
-	if (flash_area_open(FIXED_PARTITION_ID(storage_partition), &fa) != 0) {
+	if (flash_area_open(PARTITION_ID(storage_partition), &fa) != 0) {
 		return -EIO;
 	}
 

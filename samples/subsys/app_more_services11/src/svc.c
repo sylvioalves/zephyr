@@ -15,7 +15,7 @@
 #define XFER_MAX 256
 
 /* The platform owns the storage partition; the app is confined to it. */
-#define PART_ID FIXED_PARTITION_ID(storage_partition)
+#define PART_ID PARTITION_ID(storage_partition)
 
 static const struct flash_area *fa;
 

@@ -33,7 +33,7 @@ void svc_devices_init(void)
 	if (gpio_is_ready_dt(&led)) {
 		(void)gpio_pin_configure_dt(&led, GPIO_OUTPUT_INACTIVE);
 	}
-	(void)flash_area_open(FIXED_PARTITION_ID(storage_partition), &fa);
+	(void)flash_area_open(PARTITION_ID(storage_partition), &fa);
 
 	/* Seed the wall clock so reads return a sensible time. */
 	if (device_is_ready(rtc)) {
