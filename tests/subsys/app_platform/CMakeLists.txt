@@ -7,7 +7,7 @@ project(app_platform_test)
 set(APP_NAME    "testmod")
 set(APP_VERSION 1)
 
-target_sources(app PRIVATE src/main.c)
+target_sources(app PRIVATE src/main.c src/hostile.c src/loader_neg.c)
 
 set(ext_src ${PROJECT_SOURCE_DIR}/module/src/test_mod.c)
 set(bin ${PROJECT_BINARY_DIR}/llext/test_mod.llext)
