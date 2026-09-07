@@ -1,13 +1,14 @@
 common:
   tags: app_platform
+  harness: ztest
+  ignore_faults: true
+  # The suites launch real user-mode applications and load signed llext
+  # modules from a filesystem, so a target needs userspace, llext, a storage
+  # partition and PSA crypto, and the module fixtures are built as 32-bit
+  # ELF. That is what limits the platform list rather than any board detail.
   platform_allow:
     - esp32c5_devkitc/esp32c5/hpcore
     - esp32c6_devkitc/esp32c6/hpcore
-  harness: console
-  harness_config:
-    type: one_line
-    regex:
-      - "PROJECT EXECUTION SUCCESSFUL"
 tests:
-  app_platform.registry_loader:
+  app_platform.core:
     timeout: 60
