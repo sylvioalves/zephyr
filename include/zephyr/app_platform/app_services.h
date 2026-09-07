@@ -79,6 +79,9 @@ __syscall int svc_random(uint8_t *buf, size_t len);
  * @brief Milliseconds since boot. Needs @ref APP_CAP_TIME.
  *
  * Stateless.
+ *
+ * @return Milliseconds since boot, or zero without the capability, which is
+ *         indistinguishable from a genuine reading taken at boot.
  */
 __syscall uint32_t svc_uptime_ms(void);
 
@@ -86,6 +89,8 @@ __syscall uint32_t svc_uptime_ms(void);
  * @brief Free-running CPU cycle count. Needs @ref APP_CAP_TIME.
  *
  * Stateless.
+ *
+ * @return The cycle counter, or zero without the capability.
  */
 __syscall uint32_t svc_cycles(void);
 
@@ -94,6 +99,11 @@ __syscall uint32_t svc_cycles(void);
  * Needs @ref APP_CAP_SENSOR.
  *
  * Stateless: a fetch-and-read of a shared sensor, safe under concurrent callers.
+ *
+ * @retval >=0 Temperature in millidegrees Celsius.
+ * @retval -EPERM The application does not hold @ref APP_CAP_SENSOR.
+ * @retval -EIO The sensor could not be read.
+ * @retval -ENODEV The board exposes no die-temperature sensor.
  */
 __syscall int svc_die_temp_milli(void);
 
@@ -453,6 +463,9 @@ __syscall int svc_tcp_close(void);
  * @brief Number of GPIO lines the platform exposes. Needs @ref APP_CAP_GPIO.
  *
  * The lines come from the board's @c leds devicetree node.
+ *
+ * @retval >=0 The number of lines, which may be zero.
+ * @retval -EPERM The application does not hold @ref APP_CAP_GPIO.
  */
 __syscall int svc_gpio_count(void);
 
@@ -589,6 +602,9 @@ struct svc_app_info {
 
 /**
  * @brief Number of application group slots. Needs @ref APP_CAP_INSPECT.
+ *
+ * @retval >=0 The number of slots.
+ * @retval -EPERM The application does not hold @ref APP_CAP_INSPECT.
  */
 __syscall int svc_app_count(void);
 
@@ -656,7 +672,14 @@ void app_platform_grant_adc(int id, uint32_t ch_mask);
  */
 __syscall int svc_led_set(int pin, int on);
 
-/** @brief Number of status LEDs the platform exposes (0 if none). */
+/**
+ * @brief Number of status LEDs the platform exposes.
+ *
+ * Topology, so it is deliberately ungated: an application may ask how many
+ * LEDs exist without holding @ref APP_CAP_LED.
+ *
+ * @return The number of LEDs, zero when the board exposes none.
+ */
 __syscall int svc_led_count(void);
 
 /**
@@ -695,7 +718,14 @@ __syscall int svc_button_wait(int32_t timeout_ms);
  */
 __syscall void svc_checkpoint_set(uint32_t value);
 
-/** @brief Read back the calling application's checkpoint value (0 if unset). */
+/**
+ * @brief Read back the calling application's checkpoint value.
+ *
+ * Own state, so it is deliberately ungated.
+ *
+ * @return The value last stored by @ref svc_checkpoint_set, or zero when the
+ *         application has stored none.
+ */
 __syscall uint32_t svc_checkpoint_get(void);
 
 /**

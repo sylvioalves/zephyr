@@ -39,10 +39,33 @@ struct app_record {
 	uint32_t version;             /**< signed image version, monotonic */
 };
 
-/** Mount the storage and load the registry. Call once at boot. */
+/**
+ * @brief Mount the storage and load the registry. Call once at boot.
+ *
+ * An absent, unreadable or inconsistent registry is replaced with an empty one
+ * rather than treated as an error, so a first boot and a corrupted file behave
+ * alike.
+ *
+ * @retval 0 Success.
+ * @retval -errno The storage could not be mounted, or the rebuilt registry
+ *         could not be written back.
+ */
 int app_registry_load(void);
 
-/** Install (or update) an application record and persist it. */
+/**
+ * @brief Install (or update) an application record and persist it.
+ *
+ * Equivalent to @ref app_registry_install_versioned with version zero, for a
+ * caller that does not track versions.
+ *
+ * @param name Application name, shorter than @ref APP_NAME_MAX.
+ * @param autostart Whether the platform launches it at boot.
+ *
+ * @retval 0 Success.
+ * @retval -ENAMETOOLONG @p name does not fit a record.
+ * @retval -ENOSPC The registry already holds @ref APP_REG_MAX records.
+ * @retval -errno The registry could not be written back.
+ */
 int app_registry_install(const char *name, bool autostart);
 
 /**
@@ -60,10 +83,22 @@ int app_registry_install(const char *name, bool autostart);
 int app_registry_install_versioned(const char *name, bool autostart,
 				   uint32_t version);
 
-/** Number of installed applications. */
+/**
+ * @brief Number of installed applications.
+ *
+ * @return The record count, always zero or more.
+ */
 int app_registry_count(void);
 
-/** Fetch an installed application record by index. */
+/**
+ * @brief Fetch an installed application record by index.
+ *
+ * @param idx Index below @ref app_registry_count.
+ * @param out Receives a copy of the record.
+ *
+ * @retval 0 Success.
+ * @retval -EINVAL @p idx is out of range, or @p out is NULL.
+ */
 int app_registry_get(int idx, struct app_record *out);
 
 /**
@@ -93,7 +128,15 @@ typedef int (*app_registry_launch_t)(const struct app_record *rec, void *user);
  */
 int app_registry_autostart_all(app_registry_launch_t launch, void *user);
 
-/** Remove an installed application and persist. */
+/**
+ * @brief Remove an installed application and persist the registry.
+ *
+ * @param name Name of the record to remove.
+ *
+ * @retval 0 Success.
+ * @retval -ENOENT No record carries that name.
+ * @retval -errno The registry could not be written back.
+ */
 int app_registry_uninstall(const char *name);
 
 /**
@@ -102,6 +145,14 @@ int app_registry_uninstall(const char *name);
  * Stores the verified module bytes so the application can be reloaded after a
  * reboot, keyed by name. Pair this with @ref app_registry_install to record
  * the metadata.
+ *
+ * @param name Application name, used as the storage key.
+ * @param buf  Module bytes to persist.
+ * @param len  Number of bytes.
+ *
+ * @retval 0 Success.
+ * @retval -EIO The image was written only in part.
+ * @retval -errno The file could not be created or written.
  */
 int app_registry_store_blob(const char *name, const uint8_t *buf, size_t len);
 

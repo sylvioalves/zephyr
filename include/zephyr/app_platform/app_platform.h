@@ -157,11 +157,18 @@ int app_platform_set_restart(int id, bool restart);
  * @brief The grant mask of the currently running application (0 if none).
  *
  * A service uses this to enforce the application's capabilities.
+ *
+ * @return The capability mask, or zero when the caller is not an application.
  */
 uint32_t app_platform_caps_current(void);
 
 /**
- * @brief The group id of the currently running application (-1 if none).
+ * @brief The group id of the currently running application.
+ *
+ * The identity follows the calling thread, which the kernel owns, so an
+ * application cannot present itself as a different one.
+ *
+ * @return The group id, or -1 when the caller is not an application.
  */
 int app_platform_id_current(void);
 
@@ -195,7 +202,11 @@ int app_platform_on_reclaim(app_reclaim_hook_t hook);
  */
 void app_platform_log_enable(bool en);
 
-/** @brief Whether per-application log output is currently enabled. */
+/**
+ * @brief Whether per-application log output is currently enabled.
+ *
+ * @return True while application log output is enabled.
+ */
 bool app_platform_log_is_enabled(void);
 
 /** A snapshot of one application group's identity and resource use. */
@@ -216,6 +227,8 @@ struct app_platform_status {
  * @brief Number of application group slots.
  *
  * Group ids run from 0 to this minus one; iterate to inspect every slot.
+ *
+ * @return The number of slots, which is a build-time constant.
  */
 int app_platform_count(void);
 
