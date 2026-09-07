@@ -44,6 +44,14 @@ static const char *const line_name[] = {
 #define IO_NAME_MAX 24
 
 static uint32_t line_grant[MAX_APPS];
+
+/* Drop every line grant of a slot that is being handed to a new application. */
+void app_platform_clear_gpio_grants(int id)
+{
+	if (id >= 0 && id < MAX_APPS) {
+		line_grant[id] = 0U;
+	}
+}
 static bool gpio_ready;
 
 static inline bool app_has_cap(uint32_t mask)

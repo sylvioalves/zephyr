@@ -83,6 +83,15 @@ static struct spi_config spi_cfg = {
 
 static bool spi_grant[MAX_APPS];
 
+/* Drop the bus grants of a slot being handed to a new application. */
+void app_platform_clear_bus_grants(int id)
+{
+	if (id >= 0 && id < MAX_APPS) {
+		i2c_grant[id] = 0U;
+		spi_grant[id] = false;
+	}
+}
+
 void app_platform_grant_spi(int id, bool allow)
 {
 	if (id >= 0 && id < MAX_APPS) {

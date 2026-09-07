@@ -293,6 +293,15 @@ static struct {
 	uint32_t len;
 } flash_grant[MAX_APPS];
 
+/* Drop the flash window of a slot being handed to a new application. */
+void app_platform_clear_flash_grants(int id)
+{
+	if (id >= 0 && id < MAX_APPS) {
+		flash_grant[id].base = 0U;
+		flash_grant[id].len = 0U;
+	}
+}
+
 void app_platform_grant_flash(int id, uint32_t base, uint32_t len)
 {
 	if (id >= 0 && id < MAX_APPS) {

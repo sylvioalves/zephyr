@@ -40,6 +40,19 @@ static inline bool app_has_cap(uint32_t mask)
 #define LED_NAME(alias_node) \
 	DT_PROP_OR(alias_node, label, DT_NODE_FULL_NAME(alias_node))
 
+/* Per-pin grant: bit N set means an application may drive LED pin N. Kept
+ * outside the alias guard so the manager can always drop a slot's grants,
+ * even on a board that wires no LED at all.
+ */
+static uint32_t led_grant[MAX_APPS];
+
+void app_platform_clear_led_grants(int id)
+{
+	if (id >= 0 && id < MAX_APPS) {
+		led_grant[id] = 0U;
+	}
+}
+
 #if DT_HAS_ALIAS(led0)
 static const struct gpio_dt_spec led[] = {
 	GPIO_DT_SPEC_GET(DT_ALIAS(led0), gpios),
@@ -61,9 +74,6 @@ static const char *const led_name[] = {
 	LED_NAME(DT_ALIAS(led2)),
 #endif
 };
-
-/* Per-pin grant: bit N set means an application may drive LED pin N. */
-static uint32_t led_grant[MAX_APPS];
 
 static int led_init(void)
 {

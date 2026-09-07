@@ -124,6 +124,15 @@ static const struct adc_dt_spec adc_ch[] = {
 #endif
 
 static uint32_t adc_grant[MAX_APPS];
+
+/* Drop the channel grants of a slot being handed to a new application. */
+void app_platform_clear_periph_grants(int id)
+{
+	if (id >= 0 && id < MAX_APPS) {
+		pwm_grant[id] = 0U;
+		adc_grant[id] = 0U;
+	}
+}
 static bool adc_ready;
 
 void app_platform_grant_adc(int id, uint32_t ch_mask)

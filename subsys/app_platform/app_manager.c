@@ -28,6 +28,8 @@
 #ifdef CONFIG_APP_PLATFORM_LOADER
 #include <zephyr/app_platform/app_loader.h>
 #endif
+
+#include "app_grants.h"
 #include <zephyr/sys/libc-hooks.h>
 #include <zephyr/logging/log.h>
 #include <string.h>
@@ -76,6 +78,7 @@ struct running_app {
 
 static struct running_app apps[MAX_APPS];
 static K_THREAD_STACK_ARRAY_DEFINE(app_stacks, MAX_APPS, APP_STACK);
+
 
 static void trampoline(void *entry, void *unused1, void *u2);
 
@@ -299,6 +302,30 @@ static void death_watch(void *p_app, void *p_id, void *u)
  * unload the module. This runs ONLY on the reaper-helper thread, never on the
  * supervisor, so the supervisor stays detached from drivers and service locks.
  */
+/* Release the per-resource grants of a slot as it is reclaimed, so the next
+ * application to take it inherits nothing. Clearing here rather than at launch
+ * keeps the documented order working, where a caller assigns resources to a
+ * slot before the application that uses them is started.
+ */
+static void clear_grants(int id)
+{
+	if (IS_ENABLED(CONFIG_APP_PLATFORM_GPIO)) {
+		app_platform_clear_gpio_grants(id);
+	}
+	if (IS_ENABLED(CONFIG_APP_PLATFORM_IO)) {
+		app_platform_clear_led_grants(id);
+	}
+	if (IS_ENABLED(CONFIG_APP_PLATFORM_PERIPH)) {
+		app_platform_clear_periph_grants(id);
+	}
+	if (IS_ENABLED(CONFIG_APP_PLATFORM_BUS)) {
+		app_platform_clear_bus_grants(id);
+	}
+	if (IS_ENABLED(CONFIG_APP_PLATFORM_SERVICES)) {
+		app_platform_clear_flash_grants(id);
+	}
+}
+
 static void run_cleanup(int id, bool full, struct llext *ext)
 {
 	for (int i = 0; i < CONFIG_APP_PLATFORM_RECLAIM_HOOKS; i++) {
@@ -306,6 +333,7 @@ static void run_cleanup(int id, bool full, struct llext *ext)
 			reclaim_hooks[i](id);
 		}
 	}
+	clear_grants(id);
 
 	if (full) {
 #ifdef CONFIG_LLEXT
