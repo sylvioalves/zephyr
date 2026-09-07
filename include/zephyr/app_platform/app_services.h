@@ -125,38 +125,57 @@ __syscall int svc_kv_get(const char *key, uint32_t *out);
  * @brief Read from the raw storage partition. Needs @ref APP_CAP_FLASH.
  *
  * Lock-serialized: the partition is a shared peripheral, so accesses are
- * serialized and every offset and length is bounds-checked against the
- * partition.
+ * serialized. The offset is relative to the window the application was
+ * granted (see @ref app_platform_grant_flash), never the whole partition.
  *
- * @param off Offset within the storage partition.
+ * @param off Offset within the application's window.
  * @param buf Receives the bytes.
  * @param len Number of bytes (bounded by the platform).
- * @retval 0 on success, -EPERM without the capability, negative errno otherwise.
+ * @retval 0 Success.
+ * @retval -EPERM The application does not hold @ref APP_CAP_FLASH.
+ * @retval -EACCES No window granted, or the range leaves it.
  */
 __syscall int svc_flash_read(uint32_t off, uint8_t *buf, size_t len);
 
 /**
  * @brief Write to the raw storage partition. Needs @ref APP_CAP_FLASH.
  *
- * Lock-serialized and bounds-checked against the partition.
+ * Lock-serialized and bounded by the application's granted window.
  *
- * @param off Offset within the storage partition.
+ * @param off Offset within the application's window.
  * @param buf Bytes to write.
  * @param len Number of bytes (bounded by the platform).
- * @retval >=0 bytes written, -EPERM without the capability, negative errno.
+ * @retval >=0 Bytes written.
+ * @retval -EPERM The application does not hold @ref APP_CAP_FLASH.
+ * @retval -EACCES No window granted, or the range leaves it.
  */
 __syscall int svc_flash_write(uint32_t off, const uint8_t *buf, size_t len);
 
 /**
  * @brief Erase a span of the raw storage partition. Needs @ref APP_CAP_FLASH.
  *
- * Lock-serialized and bounds-checked against the partition.
+ * Lock-serialized and bounded by the application's granted window.
  *
- * @param off Offset within the storage partition.
+ * @param off Offset within the application's window.
  * @param len Length to erase.
- * @retval 0 on success, -EPERM without the capability, negative errno.
+ * @retval 0 Success.
+ * @retval -EPERM The application does not hold @ref APP_CAP_FLASH.
+ * @retval -EACCES No window granted, or the range leaves it.
  */
 __syscall int svc_flash_erase(uint32_t off, size_t len);
+
+/**
+ * @brief Grant an application a window into the storage partition.
+ *
+ * The partition also holds the registry and the signed modules, so an
+ * application addresses only the range granted here; offsets passed to the
+ * flash services are relative to @p base. A length of zero revokes the grant.
+ *
+ * @param id Application id.
+ * @param base Absolute offset of the window within the partition.
+ * @param len Window length in bytes, or 0 for no access.
+ */
+void app_platform_grant_flash(int id, uint32_t base, uint32_t len);
 
 /**
  * @brief Read the SoC unique device id. Needs @ref APP_CAP_TIME.

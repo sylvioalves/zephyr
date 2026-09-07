@@ -284,6 +284,53 @@ int z_impl_svc_kv_get(const char *key, uint32_t *out)
 	return rc;
 }
 
+/* Per-application window into the storage partition (len 0 = no grant). The
+ * partition also holds the registry and the signed modules, so an application
+ * reaches only the range the platform assigned to it.
+ */
+static struct {
+	uint32_t base;
+	uint32_t len;
+} flash_grant[MAX_APPS];
+
+void app_platform_grant_flash(int id, uint32_t base, uint32_t len)
+{
+	if (id >= 0 && id < MAX_APPS) {
+		flash_grant[id].base = base;
+		flash_grant[id].len = len;
+	}
+}
+
+#if defined(CONFIG_FLASH_MAP) && DT_NODE_EXISTS(DT_NODELABEL(storage_partition))
+/* Translate an application-relative range to an absolute partition offset.
+ * Returns 0 and stores the offset when the whole range lies inside the
+ * application's window. Only the flash services call it, so it follows their
+ * guard rather than being built for a target that has no storage partition.
+ */
+static int flash_window(uint32_t off, size_t len, uint32_t size, uint32_t *abs)
+{
+	int id = app_platform_id_current();
+
+	if (id < 0 || id >= MAX_APPS) {
+		return -EINVAL;
+	}
+	uint32_t base = flash_grant[id].base;
+	uint32_t win = flash_grant[id].len;
+
+	if (win == 0U) {
+		return -EACCES;
+	}
+	if (off > win || len > win - off) {
+		return -EACCES;
+	}
+	if (base > size || win > size - base) {
+		return -EACCES;
+	}
+	*abs = base + off;
+	return 0;
+}
+#endif /* CONFIG_FLASH_MAP && storage_partition */
+
 int z_impl_svc_flash_read(uint32_t off, uint8_t *buf, size_t len)
 {
 	if (!app_has_cap(APP_CAP_FLASH)) {
@@ -299,14 +346,15 @@ int z_impl_svc_flash_read(uint32_t off, uint8_t *buf, size_t len)
 		return -EIO;
 	}
 
-	int rc = -EINVAL;
+	uint32_t abs_off;
+	int rc = flash_window(off, len, fa->fa_size, &abs_off);
 
-	if (off <= fa->fa_size && len <= fa->fa_size - off) {
+	if (rc == 0) {
 		if (k_mutex_lock(&flash_lock, SVC_LOCK_TIMEOUT) != 0) {
 			flash_area_close(fa);
 			return -EBUSY;
 		}
-		rc = flash_area_read(fa, off, buf, len);
+		rc = flash_area_read(fa, abs_off, buf, len);
 		k_mutex_unlock(&flash_lock);
 	}
 	flash_area_close(fa);
@@ -333,14 +381,15 @@ int z_impl_svc_flash_write(uint32_t off, const uint8_t *buf, size_t len)
 		return -EIO;
 	}
 
-	int rc = -EINVAL;
+	uint32_t abs_off;
+	int rc = flash_window(off, len, fa->fa_size, &abs_off);
 
-	if (off <= fa->fa_size && len <= fa->fa_size - off) {
+	if (rc == 0) {
 		if (k_mutex_lock(&flash_lock, SVC_LOCK_TIMEOUT) != 0) {
 			flash_area_close(fa);
 			return -EBUSY;
 		}
-		rc = flash_area_write(fa, off, buf, len);
+		rc = flash_area_write(fa, abs_off, buf, len);
 		k_mutex_unlock(&flash_lock);
 		if (rc == 0) {
 			rc = (int)len;
@@ -367,15 +416,16 @@ int z_impl_svc_flash_erase(uint32_t off, size_t len)
 		return -EIO;
 	}
 
-	int rc = -EINVAL;
+	/* Erase spans whole sectors, but never past the application's window. */
+	uint32_t abs_off;
+	int rc = flash_window(off, len, fa->fa_size, &abs_off);
 
-	/* Erase is bounded only by the partition; it spans whole sectors. */
-	if (off <= fa->fa_size && len <= fa->fa_size - off) {
+	if (rc == 0) {
 		if (k_mutex_lock(&flash_lock, SVC_LOCK_TIMEOUT) != 0) {
 			flash_area_close(fa);
 			return -EBUSY;
 		}
-		rc = flash_area_erase(fa, off, len);
+		rc = flash_area_erase(fa, abs_off, len);
 		k_mutex_unlock(&flash_lock);
 	}
 	flash_area_close(fa);
