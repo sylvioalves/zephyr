@@ -24,6 +24,7 @@
 
 #define MAX_APPS  CONFIG_APP_PLATFORM_MAX_APPS
 #define PSRAM_MIN 1024U
+#define PSRAM_MAX ((size_t)CONFIG_APP_PLATFORM_PSRAM_MAX_BYTES)
 
 /* Bounded wait for the shared lock; -EBUSY rather than parking the caller. */
 #define SVC_LOCK_TIMEOUT K_SECONDS(2)
@@ -43,11 +44,15 @@ struct psram_region {
 static struct psram_region regions[MAX_APPS];
 static K_MUTEX_DEFINE(psram_lock);
 
+/* Smallest power of two at or above @p v, for the NAPOT-style alignment the
+ * memory partition needs. The caller bounds v by PSRAM_MAX, so the shift
+ * cannot walk p into an overflow.
+ */
 static size_t round_pow2(size_t v)
 {
 	size_t p = PSRAM_MIN;
 
-	while (p < v) {
+	while (p < v && p < PSRAM_MAX) {
 		p <<= 1;
 	}
 	return p;
@@ -82,6 +87,12 @@ int z_impl_svc_psram_map(size_t size, uintptr_t *out_addr, size_t *out_size)
 	struct k_mem_domain *dom = app_platform_domain(id);
 
 	if (id < 0 || id >= MAX_APPS || dom == NULL) {
+		return -EINVAL;
+	}
+	/* Bound the request before any rounding, so a wild size cannot spin the
+	 * search for a power of two while the shared lock is held.
+	 */
+	if (size == 0U || size > PSRAM_MAX) {
 		return -EINVAL;
 	}
 

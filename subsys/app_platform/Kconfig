@@ -104,6 +104,16 @@ config APP_PLATFORM_PSRAM
 	  so the application accesses it directly at full speed, with no per-
 	  access syscall. The region is freed when the application is reclaimed.
 
+config APP_PLATFORM_PSRAM_MAX_BYTES
+	int "Largest external RAM region one application may map"
+	depends on APP_PLATFORM_PSRAM
+	default 1048576
+	help
+	  Upper bound on a single svc_psram_map request. The size an
+	  application asks for is rounded up to a power of two for the memory
+	  partition, so this bound also keeps that rounding finite. Requests
+	  above it are refused with -EINVAL.
+
 config APP_PLATFORM_SERVICES
 	bool "Shared capability-gated service library"
 	help
