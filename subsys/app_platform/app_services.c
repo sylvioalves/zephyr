@@ -301,7 +301,7 @@ int z_impl_svc_flash_read(uint32_t off, uint8_t *buf, size_t len)
 
 	int rc = -EINVAL;
 
-	if ((off + len) <= fa->fa_size) {
+	if (off <= fa->fa_size && len <= fa->fa_size - off) {
 		if (k_mutex_lock(&flash_lock, SVC_LOCK_TIMEOUT) != 0) {
 			flash_area_close(fa);
 			return -EBUSY;
@@ -335,7 +335,7 @@ int z_impl_svc_flash_write(uint32_t off, const uint8_t *buf, size_t len)
 
 	int rc = -EINVAL;
 
-	if ((off + len) <= fa->fa_size) {
+	if (off <= fa->fa_size && len <= fa->fa_size - off) {
 		if (k_mutex_lock(&flash_lock, SVC_LOCK_TIMEOUT) != 0) {
 			flash_area_close(fa);
 			return -EBUSY;
@@ -370,7 +370,7 @@ int z_impl_svc_flash_erase(uint32_t off, size_t len)
 	int rc = -EINVAL;
 
 	/* Erase is bounded only by the partition; it spans whole sectors. */
-	if ((off + len) <= fa->fa_size) {
+	if (off <= fa->fa_size && len <= fa->fa_size - off) {
 		if (k_mutex_lock(&flash_lock, SVC_LOCK_TIMEOUT) != 0) {
 			flash_area_close(fa);
 			return -EBUSY;
