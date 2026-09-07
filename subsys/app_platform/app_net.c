@@ -533,36 +533,47 @@ static void net_thread(void *a, void *b, void *c)
 			       s->client_id, req.payload, rc);
 		}
 
+		/* The reaper releases a session under net_lock, so the flag
+		 * and the socket it guards are read inside the same hold: a
+		 * session sampled as connected outside it can be torn down
+		 * before the socket is used. Polling with no timeout keeps the
+		 * hold short.
+		 */
 		for (int i = 0; i < MAX_SESSIONS; i++) {
 			struct session *s = &sessions[i];
 
+			k_mutex_lock(&net_lock, K_FOREVER);
 			if (s->connected) {
 				struct zsock_pollfd fd = {
 					.fd = s->client.transport.tcp.sock,
 					.events = ZSOCK_POLLIN };
 
 				if (zsock_poll(&fd, 1, 0) > 0) {
-					k_mutex_lock(&net_lock, K_FOREVER);
 					mqtt_input(&s->client);
-					k_mutex_unlock(&net_lock);
 				}
-				k_mutex_lock(&net_lock, K_FOREVER);
 				mqtt_live(&s->client);
-				k_mutex_unlock(&net_lock);
 			}
+			k_mutex_unlock(&net_lock);
 		}
 
-		/* Pump each open raw socket: drain ready bytes into its inbox. */
+		/* Pump each open raw socket: drain ready bytes into its inbox.
+		 * Held under net_lock for the same reason as the sessions
+		 * above: the descriptor must not be closed between the test
+		 * and the receive.
+		 */
 		for (int i = 0; i < MAX_SESSIONS; i++) {
 			struct app_sock *sk = &socks[i];
 
+			k_mutex_lock(&net_lock, K_FOREVER);
 			if (!sk->used || sk->fd < 0) {
+				k_mutex_unlock(&net_lock);
 				continue;
 			}
 			struct zsock_pollfd fd = { .fd = sk->fd,
 						   .events = ZSOCK_POLLIN };
 
 			if (zsock_poll(&fd, 1, 0) <= 0) {
+				k_mutex_unlock(&net_lock);
 				continue;
 			}
 			struct sock_msg m = { 0 };
@@ -570,18 +581,22 @@ static void net_thread(void *a, void *b, void *c)
 			socklen_t fromlen = sizeof(from);
 			int n = zsock_recvfrom(sk->fd, m.data, sizeof(m.data), 0,
 					       (struct sockaddr *)&from, &fromlen);
+			bool is_tcp = sk->is_tcp;
+			struct k_msgq *inbox = &sk->inbox;
+
+			k_mutex_unlock(&net_lock);
 
 			if (n > 0) {
 				m.len = (uint16_t)n;
 				m.src_addr = from.sin_addr;
 				m.src_port = ntohs(from.sin_port);
-				(void)k_msgq_put(&sk->inbox, &m, K_NO_WAIT);
-			} else if (n == 0 && sk->is_tcp) {
+				(void)k_msgq_put(inbox, &m, K_NO_WAIT);
+			} else if (n == 0 && is_tcp) {
 				/* Peer closed the stream: signal end with a
 				 * zero-length message so the reader sees it.
 				 */
 				m.len = 0;
-				(void)k_msgq_put(&sk->inbox, &m, K_NO_WAIT);
+				(void)k_msgq_put(inbox, &m, K_NO_WAIT);
 			}
 		}
 
