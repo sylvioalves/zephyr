@@ -122,6 +122,7 @@ K_MSGQ_DEFINE(net_pub_q, sizeof(struct pub_req), 8, 4);
 static K_SEM_DEFINE(net_ready_sem, 0, 1);
 static K_MUTEX_DEFINE(net_lock);
 static struct net_mgmt_event_callback ipv4_cb;
+static struct net_mgmt_event_callback wifi_cb;
 static struct sockaddr_storage broker_addr;
 static bool link_started;
 static bool link_ready;
@@ -176,12 +177,22 @@ static void creds_save(void) { }
 #endif
 
 /*
- * Link events. Losing the address or the association is what tells the platform
- * the shared link is gone: without it link_ready would stay true after the
- * access point disappears, svc_wifi_status would keep reporting a live link and
- * the net thread's retry (which is gated on the link being down) would never
- * run again. Clearing the flags here hands recovery back to that retry.
+ * Losing the address or the association is what tells the platform the shared
+ * link is gone: without it link_ready would stay true after the access point
+ * disappears, svc_wifi_status would keep reporting a live link and the net
+ * thread's retry (which is gated on the link being down) would never run
+ * again. Clearing the flags here hands recovery back to that retry.
  */
+static void link_lost(void)
+{
+	if (link_ready || link_started) {
+		printk("net: link lost - will retry\n");
+	}
+	link_ready = false;
+	link_failed = false;
+	broker_resolved = false;
+}
+
 static void ipv4_evt(struct net_mgmt_event_callback *cb, uint64_t ev,
 		     struct net_if *iface)
 {
@@ -195,16 +206,26 @@ static void ipv4_evt(struct net_mgmt_event_callback *cb, uint64_t ev,
 		k_sem_give(&net_ready_sem);
 		break;
 	case NET_EVENT_IPV4_ADDR_DEL:
-	case NET_EVENT_WIFI_DISCONNECT_RESULT:
-		if (link_ready || link_started) {
-			printk("net: link lost - will retry\n");
-		}
-		link_ready = false;
-		link_failed = false;
-		broker_resolved = false;
+		link_lost();
 		break;
 	default:
 		break;
+	}
+}
+
+/*
+ * Wi-Fi events carry a different layer than the IPv4 ones, so they need their
+ * own callback: OR-ing the two masks together would corrupt the layer field and
+ * the handler would match nothing at all.
+ */
+static void wifi_evt(struct net_mgmt_event_callback *cb, uint64_t ev,
+		     struct net_if *iface)
+{
+	ARG_UNUSED(cb);
+	ARG_UNUSED(iface);
+
+	if (ev == NET_EVENT_WIFI_DISCONNECT_RESULT) {
+		link_lost();
 	}
 }
 
@@ -222,9 +243,11 @@ static int wifi_up(void)
 		net_mgmt_init_event_callback(&ipv4_cb, ipv4_evt,
 					     NET_EVENT_IPV4_ADDR_ADD |
 					     NET_EVENT_IPV4_DHCP_BOUND |
-					     NET_EVENT_IPV4_ADDR_DEL |
-					     NET_EVENT_WIFI_DISCONNECT_RESULT);
+					     NET_EVENT_IPV4_ADDR_DEL);
 		net_mgmt_add_event_callback(&ipv4_cb);
+		net_mgmt_init_event_callback(&wifi_cb, wifi_evt,
+					     NET_EVENT_WIFI_DISCONNECT_RESULT);
+		net_mgmt_add_event_callback(&wifi_cb);
 		cb_added = true;
 	}
 
@@ -836,9 +859,14 @@ static int sock_open(bool tcp, const char *host, uint16_t port)
 	if (tcp) {
 		rc = zsock_connect(fd, (struct sockaddr *)&peer, sizeof(peer));
 		if (rc != 0) {
+			/* Report what actually went wrong: a flat -ECONNREFUSED
+			 * hides a routing or resource failure behind the one
+			 * error that looks like the peer's fault.
+			 */
+			rc = -errno;
 			zsock_close(fd);
 			k_mutex_unlock(&net_lock);
-			return -ECONNREFUSED;
+			return rc;
 		}
 	}
 	int flags = zsock_fcntl(fd, F_GETFL, 0);
