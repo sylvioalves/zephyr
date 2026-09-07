@@ -63,6 +63,7 @@ struct running_app {
 	struct k_mem_domain domain;
 	int                 wdt_chan;  /* -1 unless monitored */
 	bool                faulted;   /* reclaimed due to a crash or hang */
+	uint32_t            restarts;  /* relaunches after a fault, for statistics */
 	bool                cleaning;  /* reaper is releasing this slot's resources */
 	app_entry_t         entry;
 	uint32_t            caps;
@@ -183,6 +184,7 @@ int app_platform_status(int id, struct app_platform_status *out)
 		.active = a->running,
 		.monitored = a->monitored,
 		.faulted = a->faulted,
+		.restarts = a->restarts,
 		.module_bytes = a->module_bytes,
 	};
 
@@ -536,6 +538,7 @@ static void supervisor(void *p1, void *p2, void *p3)
 		app_entry_t entry = a->entry;
 		uint32_t caps = a->caps;
 		bool monitored = a->monitored;
+		uint32_t restarts = a->restarts;
 
 		/* Restart only a resilient built-in app that crashed or hung. */
 		bool restart = a->restart && a->faulted && entry != NULL;
@@ -553,8 +556,15 @@ static void supervisor(void *p1, void *p2, void *p3)
 				LOG_ERR("app '%s' not restarted: cleanup stuck", name);
 				continue;
 			}
-			if (launch(name, entry, caps, NULL, true, monitored) < 0) {
+			int nid = launch(name, entry, caps, NULL, true, monitored);
+
+			if (nid < 0) {
 				LOG_ERR("app '%s' could not be restarted", name);
+			} else {
+				/* The relaunch takes a fresh slot, so the count
+				 * has to follow the application, not the slot.
+				 */
+				apps[nid].restarts = restarts + 1U;
 			}
 		}
 	}
@@ -614,6 +624,7 @@ static int launch(const char *name, app_entry_t entry, uint32_t caps,
 		a->restart = restart;
 		a->monitored = monitored;
 		a->faulted = false;
+		a->restarts = 0;
 		a->wdt_chan = -1;
 		a->module_bytes = 0;
 #ifdef CONFIG_LLEXT

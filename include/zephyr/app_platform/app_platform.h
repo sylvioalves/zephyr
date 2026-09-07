@@ -204,6 +204,7 @@ struct app_platform_status {
 	bool        active;        /**< the group is running */
 	bool        monitored;     /**< opted in to hang detection */
 	bool        faulted;       /**< last reclaim was due to a crash or hang */
+	uint32_t    restarts;      /**< times the supervisor relaunched this app */
 	size_t      stack_size;    /**< usable stack bytes */
 	size_t      stack_used;    /**< stack high-water mark in bytes */
 	size_t      module_bytes;  /**< loadable-extension footprint (0 if built-in) */
