@@ -56,6 +56,13 @@
 			bias-pull-down;
 		};
 	};
+	mcpwm0_default: mcpwm0_default {
+		group1 {
+			pinmux = <MCPWM0_OUT0A_GPIO4>,
+				 <MCPWM0_OUT0B_GPIO5>;
+			output-enable;
+		};
+	};
 	twai_default: twai_default {
 		group1 {
 			pinmux = <TWAI0_RX_GPIO5>;
@@ -97,6 +104,14 @@
 			sig-neg-mode = <0>;
 		};
 	};
+};
+
+&mcpwm0 {
+	pinctrl-0 = <&mcpwm0_default>;
+	pinctrl-names = "default";
+	prescale = <255>;
+	prescale-timer0 = <103>;
+	status = "okay";
 };
 
 &adc0 {
