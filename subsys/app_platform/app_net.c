@@ -45,6 +45,17 @@
 /* Bounded wait for the network lock; -EBUSY rather than parking the caller. */
 #define NET_LOCK_TIMEOUT K_SECONDS(2)
 
+/*
+ * Association attempts, the pause between them, and how long to wait for an
+ * address once associated. DHCP on a busy access point can take well over
+ * twenty seconds, so the address wait is the generous one.
+ */
+#define WIFI_CONNECT_TRIES  5
+#define WIFI_RETRY_DELAY_S  3
+#define WIFI_IP_WAIT_S      45
+/* Slack on top of the net thread's budget before an application gives up. */
+#define NET_READY_MARGIN_MS 5000
+
 /* Live Wi-Fi credentials, seeded from Kconfig and overridable at runtime. */
 static char wifi_ssid[SSID_MAX] = CONFIG_APP_PLATFORM_NET_WIFI_SSID;
 static char wifi_psk[PSK_MAX] = CONFIG_APP_PLATFORM_NET_WIFI_PSK;
@@ -164,14 +175,36 @@ static void creds_save(void)
 static void creds_save(void) { }
 #endif
 
+/*
+ * Link events. Losing the address or the association is what tells the platform
+ * the shared link is gone: without it link_ready would stay true after the
+ * access point disappears, svc_wifi_status would keep reporting a live link and
+ * the net thread's retry (which is gated on the link being down) would never
+ * run again. Clearing the flags here hands recovery back to that retry.
+ */
 static void ipv4_evt(struct net_mgmt_event_callback *cb, uint64_t ev,
 		     struct net_if *iface)
 {
 	ARG_UNUSED(cb);
 	ARG_UNUSED(iface);
-	if (ev == NET_EVENT_IPV4_ADDR_ADD) {
+
+	switch (ev) {
+	case NET_EVENT_IPV4_ADDR_ADD:
+	case NET_EVENT_IPV4_DHCP_BOUND:
 		printk("net: IP acquired - shared stack ready\n");
 		k_sem_give(&net_ready_sem);
+		break;
+	case NET_EVENT_IPV4_ADDR_DEL:
+	case NET_EVENT_WIFI_DISCONNECT_RESULT:
+		if (link_ready || link_started) {
+			printk("net: link lost - will retry\n");
+		}
+		link_ready = false;
+		link_failed = false;
+		broker_resolved = false;
+		break;
+	default:
+		break;
 	}
 }
 
@@ -187,13 +220,22 @@ static int wifi_up(void)
 
 	if (!cb_added) {
 		net_mgmt_init_event_callback(&ipv4_cb, ipv4_evt,
-					     NET_EVENT_IPV4_ADDR_ADD);
+					     NET_EVENT_IPV4_ADDR_ADD |
+					     NET_EVENT_IPV4_DHCP_BOUND |
+					     NET_EVENT_IPV4_ADDR_DEL |
+					     NET_EVENT_WIFI_DISCONNECT_RESULT);
 		net_mgmt_add_event_callback(&ipv4_cb);
 		cb_added = true;
 	}
 
+	/*
+	 * Zero every call: the request carries fields this code does not set
+	 * (BSSID, SAE password, timeout), and a static struct would hand the
+	 * driver whatever a previous attempt left behind.
+	 */
 	static struct wifi_connect_req_params p;
 
+	memset(&p, 0, sizeof(p));
 	p.ssid = wifi_ssid;
 	p.ssid_length = strlen(wifi_ssid);
 	p.psk = wifi_psk;
@@ -203,6 +245,7 @@ static int wifi_up(void)
 	p.band = WIFI_FREQ_BAND_UNKNOWN;
 	p.channel = WIFI_CHANNEL_ANY;
 	p.mfp = WIFI_MFP_OPTIONAL;
+	p.timeout = SYS_FOREVER_MS;
 
 	printk("net: connecting to '%s'...\n", wifi_ssid);
 	return net_mgmt(NET_REQUEST_WIFI_CONNECT, iface, &p, sizeof(p));
@@ -343,14 +386,40 @@ static void bring_link_up(void)
 
 	bool got_ip = false;
 
-	for (int attempt = 0; attempt < 5 && !got_ip; attempt++) {
-		if (wifi_up() == 0 &&
-		    k_sem_take(&net_ready_sem, K_SECONDS(20)) == 0) {
+	/*
+	 * Retry the association, backing off between attempts. A board that
+	 * reboots while it was still associated is refused by the access point
+	 * until the old session ages out, and there wifi_up() fails immediately
+	 * rather than timing out: without a delay of its own the loop would
+	 * spend every attempt inside one second and give up while the access
+	 * point is merely busy.
+	 */
+	for (int attempt = 0; attempt < WIFI_CONNECT_TRIES && !got_ip; attempt++) {
+		int wrc = wifi_up();
+
+		/*
+		 * -EALREADY means the driver still has the previous connect in
+		 * flight; that attempt is what we are waiting on, so wait for
+		 * the address rather than starting another one.
+		 */
+		if ((wrc == 0 || wrc == -EALREADY) &&
+		    k_sem_take(&net_ready_sem,
+			       K_SECONDS(WIFI_IP_WAIT_S)) == 0) {
 			got_ip = true;
-		} else {
-			printk("net: Wi-Fi attempt %d got no IP, retrying\n",
-			       attempt + 1);
+			break;
 		}
+		printk("net: Wi-Fi attempt %d got no IP, retrying\n",
+		       attempt + 1);
+		/*
+		 * The attempt is spent: clear it so the next one is a fresh
+		 * connect rather than another -EALREADY, and give the access
+		 * point a moment to release the old session.
+		 */
+		if (iface != NULL) {
+			(void)net_mgmt(NET_REQUEST_WIFI_DISCONNECT, iface,
+				       NULL, 0);
+		}
+		k_sleep(K_SECONDS(WIFI_RETRY_DELAY_S));
 	}
 	if (!got_ip) {
 		printk("net: Wi-Fi/IP not ready after retries\n");
@@ -533,7 +602,17 @@ int z_impl_svc_net_ready(void)
 	link_started = true;
 	k_mutex_unlock(&net_lock);
 
-	for (int i = 0; i < 700 && !link_ready && !link_failed; i++) {
+	/*
+	 * Wait for the net thread's own budget to run out, not less: it makes
+	 * WIFI_CONNECT_TRIES attempts, each up to WIFI_IP_WAIT_S plus the pause
+	 * between them. Returning earlier would report a failure while the
+	 * platform was still associating.
+	 */
+	const int wait_ms = WIFI_CONNECT_TRIES *
+			    ((WIFI_IP_WAIT_S + WIFI_RETRY_DELAY_S) * 1000) +
+			    NET_READY_MARGIN_MS;
+
+	for (int i = 0; i < wait_ms / 100 && !link_ready && !link_failed; i++) {
 		k_sleep(K_MSEC(100));
 	}
 	return link_ready ? 0 : -EIO;
