@@ -1,0 +1,16 @@
+sample:
+  name: Application platform
+  description: >
+    Run applications as isolated, supervised user-mode groups that reach the
+    system only through capability-gated services.
+tests:
+  sample.subsys.app_platform:
+    tags: app_platform
+    platform_allow:
+      - esp32c5_devkitc/esp32c5/hpcore
+      - esp32c6_devkitc/esp32c6/hpcore
+    harness: console
+    harness_config:
+      type: one_line
+      regex:
+        - "done: one header, registry-driven, tier-enforced platform"

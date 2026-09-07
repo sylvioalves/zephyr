@@ -1,0 +1,14 @@
+sample:
+  name: Application install over the shell
+  description: >
+    Upload a signed application over the shell, verify it against the trusted
+    key and record it in the registry so it starts at the next boot.
+tests:
+  sample.subsys.app_install:
+    tags: app_platform
+    platform_allow:
+      - esp32c5_devkitc/esp32c5/hpcore
+      - esp32c6_devkitc/esp32c6/hpcore
+    # The sample waits for an operator to upload an image and type a shell
+    # command, so it is built rather than run.
+    build_only: true

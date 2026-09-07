@@ -1,0 +1,15 @@
+sample:
+  name: Isolated I/O application
+  description: >
+    Give a user-mode application a granted LED and button, with every other pin out of reach.
+tests:
+  sample.subsys.app_io:
+    tags: app_platform
+    platform_allow:
+      - esp32c5_devkitc/esp32c5/hpcore
+      - esp32c6_devkitc/esp32c6/hpcore
+    harness: console
+    harness_config:
+      type: one_line
+      regex:
+        - "launched isolated io app"

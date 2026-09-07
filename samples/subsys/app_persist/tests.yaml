@@ -1,0 +1,15 @@
+sample:
+  name: Persistent signed application
+  description: >
+    Install a signed application to flash, verify it at every boot and run it again after a reset.
+tests:
+  sample.subsys.app_persist:
+    tags: app_platform
+    platform_allow:
+      - esp32c5_devkitc/esp32c5/hpcore
+      - esp32c6_devkitc/esp32c6/hpcore
+    harness: console
+    harness_config:
+      type: one_line
+      regex:
+        - "still running; reboot and it returns from"
