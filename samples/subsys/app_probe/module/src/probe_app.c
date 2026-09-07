@@ -16,6 +16,7 @@
 
 #include <zephyr/llext/symbol.h>
 #include <zephyr/kernel.h>
+#include <errno.h>
 
 static void say(const char *label, int rc)
 {
@@ -116,10 +117,12 @@ void app_main(void *arg)
 	svc_rtc_now(&epoch);
 	say("rtc", epoch >= 1000000 ? 0 : -1);
 
-	/* gpio group: line 0 is granted, line 1 is not */
+	/* gpio group: line 0 is granted, line 1 is not. An ungranted line is
+	 * -EACCES: the capability is held, the line is not assigned.
+	 */
 	say("gpio_count", svc_gpio_count() >= 2 ? 0 : -1);
 	say("gpio_granted", svc_gpio_set(0, 1));
-	say("gpio_denied", svc_gpio_set(1, 1) == -1 ? 0 : -1);
+	say("gpio_denied", svc_gpio_set(1, 1) == -EACCES ? 0 : -1);
 
 	/* ipc group: send to our own mailbox and read it back */
 	const char *m = "ping";
@@ -184,7 +187,7 @@ void app_main(void *arg)
 	uint8_t b[2] = {0};
 
 	say("i2c_granted", svc_i2c_read(0x50, b, 1) != -1 ? 0 : -1);
-	say("i2c_denied", svc_i2c_read(0x51, b, 1) == -1 ? 0 : -1);
+	say("i2c_denied", svc_i2c_read(0x51, b, 1) == -EACCES ? 0 : -1);
 	say("spi_xfer", svc_spi_xfer((const uint8_t *)"\x9f", b, 1) != -1 ? 0 : -1);
 	/* uart: capability passes; no device wired returns a clean error, not a fault */
 	say("uart_path", svc_uart_write((const uint8_t *)"hi", 2) != -1 ? 0 : -1);
