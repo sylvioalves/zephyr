@@ -544,8 +544,7 @@ static void supervisor(void *p1, void *p2, void *p3)
 		bool restart = a->restart && a->faulted && entry != NULL;
 
 		if (restart && MAX_RESTARTS != 0U && restarts >= MAX_RESTARTS) {
-			LOG_ERR("app '%s' faulted %u times, giving up", name,
-				restarts);
+			LOG_ERR("app '%s' faulted %u times, giving up", name, restarts);
 			restart = false;
 		}
 

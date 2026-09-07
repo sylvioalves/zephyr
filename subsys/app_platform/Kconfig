@@ -21,6 +21,15 @@ config APP_PLATFORM_MAX_APPS
 	  Number of application groups that can run at once. Each reserves a
 	  thread stack and a memory domain.
 
+config APP_PLATFORM_MAX_RESTARTS
+	int "Times a resilient application may be relaunched after a fault"
+	default 10
+	help
+	  Budget for the supervisor's automatic restart of an application
+	  marked resilient. An application that keeps faulting is left stopped
+	  once it is exhausted, instead of respawning without end. Zero means
+	  no limit.
+
 config APP_PLATFORM_APP_STACK_SIZE
 	int "Per-application stack size"
 	default 2048
