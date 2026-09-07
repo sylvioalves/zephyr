@@ -398,6 +398,14 @@ static int session_connect(struct session *s)
  */
 static void bring_link_up(void)
 {
+	if (wifi_ssid[0] == '\0') {
+		/* No network configured: stay down until an application asks
+		 * for one through the connect service.
+		 */
+		link_failed = true;
+		return;
+	}
+
 	struct net_if *iface = net_if_get_first_wifi();
 
 	for (int i = 0; i < 50 &&

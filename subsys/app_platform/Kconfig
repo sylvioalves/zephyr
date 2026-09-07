@@ -33,14 +33,24 @@ config APP_PLATFORM_MAX_RESTARTS
 config APP_PLATFORM_APP_STACK_SIZE
 	int "Per-application stack size"
 	default 2048
+	help
+	  Stack reserved for each application thread. One is allocated per
+	  slot at build time, so this multiplies by APP_PLATFORM_MAX_APPS.
 
 config APP_PLATFORM_APP_PRIORITY
 	int "Application thread priority"
 	default 5
+	help
+	  Preemptible priority every application thread runs at. Keep it below
+	  the supervisor so a busy application cannot delay a reclaim.
 
 config APP_PLATFORM_SUPERVISOR_STACK_SIZE
 	int "Supervisor thread stack size"
 	default 2048
+	help
+	  Stack for the thread that launches applications and acts on fault
+	  and watchdog reports. Launching builds a memory domain and creates
+	  threads, so this is not a trivial frame.
 
 config APP_PLATFORM_WATCHER_STACK_SIZE
 	int "Per-application death-watcher stack size"
@@ -53,6 +63,10 @@ config APP_PLATFORM_WATCHER_STACK_SIZE
 config APP_PLATFORM_SUPERVISOR_PRIORITY
 	int "Supervisor thread priority"
 	default 2
+	help
+	  Cooperative priority of the supervisor, the reaper and the per
+	  application death watchers. Higher than any application so a
+	  reclaim always makes progress.
 
 config APP_PLATFORM_REAPER_PRIORITY
 	int "Reaper-helper thread priority"
@@ -107,11 +121,14 @@ config APP_PLATFORM_RECLAIM_HOOKS
 config APP_PLATFORM_PSRAM
 	bool "Shared external RAM (PSRAM) mapping service"
 	depends on APP_PLATFORM_SERVICES
-	depends on ESP_SPIRAM && SHARED_MULTI_HEAP
+	depends on SHARED_MULTI_HEAP
 	help
 	  Map a region of external RAM into an application's own memory domain
 	  so the application accesses it directly at full speed, with no per-
 	  access syscall. The region is freed when the application is reclaimed.
+
+	  Needs a shared-multi-heap region advertising external memory, which
+	  the board or SoC registers; without one the service answers -ENOTSUP.
 
 config APP_PLATFORM_PSRAM_MAX_BYTES
 	int "Largest external RAM region one application may map"
@@ -148,15 +165,26 @@ if APP_PLATFORM_NET
 
 config APP_PLATFORM_NET_WIFI_SSID
 	string "Wi-Fi SSID"
-	default "CHANGE_ME_SSID"
+	default ""
+	help
+	  Network the platform associates with when it brings the link up.
+	  Empty leaves the link down until an application calls the connect
+	  service with credentials of its own.
 
 config APP_PLATFORM_NET_WIFI_PSK
 	string "Wi-Fi PSK"
-	default "CHANGE_ME_PSK"
+	default ""
+	help
+	  Pre-shared key for APP_PLATFORM_NET_WIFI_SSID. Empty means an open
+	  network. Credentials belong in a private overlay, not in a
+	  configuration file that is committed.
 
 config APP_PLATFORM_NET_BROKER_HOST
 	string "MQTT broker hostname"
 	default "test.mosquitto.org"
+	help
+	  Broker an application reaches through the MQTT service. Resolved at
+	  connect time, so a name or a literal address both work.
 
 endif # APP_PLATFORM_NET
 
@@ -248,6 +276,9 @@ if APP_PLATFORM_RADIO
 config APP_PLATFORM_RADIO_PEER
 	string "802.15.4 peer IPv6 address"
 	default "2001:db8::1"
+	help
+	  Destination the radio service sends datagrams to. The default is a
+	  documentation address and is meant to be overridden.
 
 endif # APP_PLATFORM_RADIO
 
@@ -281,14 +312,24 @@ if APP_PLATFORM_REGISTRY
 config APP_PLATFORM_REGISTRY_MAX_APPS
 	int "Maximum installed applications"
 	default 8
+	help
+	  Records the on-flash registry holds. The whole table is one fixed
+	  size structure, so this sets the file size.
 
 config APP_PLATFORM_REGISTRY_NAME_MAX
 	int "Maximum application name length"
 	default 16
+	help
+	  Bytes a record reserves for the name, terminator included. A
+	  manifest carries a longer name, and installing one that does not
+	  fit is refused rather than truncated.
 
 config APP_PLATFORM_REGISTRY_MOUNT_POINT
 	string "Registry filesystem mount point"
 	default "/lfs"
+	help
+	  Where the registry file and the installed module blobs live. The
+	  platform mounts this itself when the registry is enabled.
 
 endif # APP_PLATFORM_REGISTRY
 
