@@ -27,11 +27,25 @@ add_custom_command(
 add_custom_target(fetcher_sha DEPENDS ${f_sha})
 add_dependencies(app fetcher_sha)
 
-# The application the peer serves is neither built nor signed here: the peer
-# owns that image. This device needs only the public key to check what arrives,
-# and deriving it directly is what keeps the two sides in agreement, since the
-# same module source compiled for two different boards does not yield the same
-# bytes and so could not share a signature.
+# The application the peer serves is built HERE, not on the peer, because a
+# module that calls platform services is only valid for the syscall table of
+# the build that produced it. The result is left in the build tree for the peer
+# to pick up and sign:
+#
+#   west build -b <peer board> samples/subsys/app_ble_ota/peer -- \
+#           -DOTA_MODULE=${CMAKE_BINARY_DIR}/llext/ota_app.llext
+#
+# It is deliberately not embedded in this image: the point of the sample is
+# that the application arrives over the air.
+set(o_src ${PROJECT_SOURCE_DIR}/module/src/ota_app.c)
+set(o_bin ${PROJECT_BINARY_DIR}/llext/ota_app.llext)
+
+add_llext_target(ota_ext OUTPUT ${o_bin} SOURCES ${o_src})
+llext_include_directories(ota_ext ${ZEPHYR_BINARY_DIR}/include/generated)
+add_dependencies(app ota_ext)
+
+# This device signs nothing; it needs only the public key to check what the
+# peer sends.
 set(o_pub ${ZEPHYR_BINARY_DIR}/include/generated/ota_app.pubkey.inc)
 
 add_custom_command(

@@ -4,28 +4,48 @@ cmake_minimum_required(VERSION 3.20.0)
 find_package(Zephyr REQUIRED HINTS $ENV{ZEPHYR_BASE})
 project(app_ble_ota_peer)
 
-# Same identity and same key as the device side, so the image this peer serves
-# verifies against the public key the device has compiled in.
+# The peer serves bytes; it does not build the application it hosts.
+#
+# A module that calls platform services cannot be compiled here at all: a
+# syscall's number is its index in the generated table, and that table follows
+# the whole Kconfig. This peer places sys_clock_* where the device places
+# svc_*, so a module built here would ecall numbers the device does not
+# recognise, and the loaded application would fault on its first service call.
+#
+# So the module is built once, by the device application, and its .llext is
+# passed in here:
+#
+#   west build -b <device board> samples/subsys/app_ble_ota
+#   west build -b <peer board>   samples/subsys/app_ble_ota/peer -- \
+#           -DOTA_MODULE=<device build>/llext/ota_app.llext
+#
+# The peer signs what it is given, so the manifest always describes the exact
+# bytes it serves.
 set(APP_NAME    "weather")
 set(APP_VERSION 1)
 
+if(NOT DEFINED OTA_MODULE)
+	message(FATAL_ERROR
+		"OTA_MODULE is not set: build the device application first, then "
+		"pass -DOTA_MODULE=<device build>/llext/ota_app.llext")
+endif()
+if(NOT EXISTS ${OTA_MODULE})
+	message(FATAL_ERROR "OTA_MODULE does not exist: ${OTA_MODULE}")
+endif()
+
 target_sources(app PRIVATE src/main.c)
 
-set(o_src ${PROJECT_SOURCE_DIR}/../module/src/ota_app.c)
-set(o_bin ${PROJECT_BINARY_DIR}/llext/ota_app.llext)
 set(o_inc ${ZEPHYR_BINARY_DIR}/include/generated/ota_app.inc)
 set(o_mf  ${ZEPHYR_BINARY_DIR}/include/generated/ota_app.manifest.inc)
 set(o_sig ${ZEPHYR_BINARY_DIR}/include/generated/ota_app.sig.inc)
 set(o_pub ${ZEPHYR_BINARY_DIR}/include/generated/ota_app.pubkey.inc)
 
-add_llext_target(ota_ext OUTPUT ${o_bin} SOURCES ${o_src})
-llext_include_directories(ota_ext ${ZEPHYR_BINARY_DIR}/include/generated)
-generate_inc_file_for_target(app ${o_bin} ${o_inc})
+generate_inc_file_for_target(app ${OTA_MODULE} ${o_inc})
 
 add_custom_command(
 	OUTPUT  ${o_mf} ${o_sig} ${o_pub}
 	COMMAND ${CMAKE_COMMAND}
-		-DMODULE_BIN=${o_bin}
+		-DMODULE_BIN=${OTA_MODULE}
 		-DKEY_DIR=${CMAKE_CURRENT_SOURCE_DIR}/../keys
 		-DAPP_NAME=${APP_NAME}
 		-DAPP_VERSION=${APP_VERSION}
@@ -34,7 +54,7 @@ add_custom_command(
 		-DOUT_PUB_INC=${o_pub}
 		-DPYTHON_EXECUTABLE=${PYTHON_EXECUTABLE}
 		-P ${CMAKE_CURRENT_SOURCE_DIR}/../cmake/sign_module.cmake
-	DEPENDS ${o_bin}
+	DEPENDS ${OTA_MODULE}
 )
 add_custom_target(ota_sign DEPENDS ${o_mf} ${o_sig} ${o_pub})
 add_dependencies(app ota_sign)
