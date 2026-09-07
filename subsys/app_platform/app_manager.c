@@ -36,6 +36,7 @@
 LOG_MODULE_REGISTER(app_platform, CONFIG_APP_PLATFORM_LOG_LEVEL);
 
 #define MAX_APPS    CONFIG_APP_PLATFORM_MAX_APPS
+#define MAX_RESTARTS ((uint32_t)CONFIG_APP_PLATFORM_MAX_RESTARTS)
 #define APP_STACK   CONFIG_APP_PLATFORM_APP_STACK_SIZE
 #define APP_PRIO    CONFIG_APP_PLATFORM_APP_PRIORITY
 #define WDT_TIMEOUT CONFIG_APP_PLATFORM_WDT_TIMEOUT_MS
@@ -535,8 +536,18 @@ static void supervisor(void *p1, void *p2, void *p3)
 		bool monitored = a->monitored;
 		uint32_t restarts = a->restarts;
 
-		/* Restart only a resilient built-in app that crashed or hung. */
+		/* Restart only a resilient built-in app that crashed or hung,
+		 * and only while it stays under the retry budget: an app that
+		 * faults in its entry would otherwise respawn without end and
+		 * starve the rest of the system.
+		 */
 		bool restart = a->restart && a->faulted && entry != NULL;
+
+		if (restart && MAX_RESTARTS != 0U && restarts >= MAX_RESTARTS) {
+			LOG_ERR("app '%s' faulted %u times, giving up", name,
+				restarts);
+			restart = false;
+		}
 
 		reclaim(a);
 
@@ -631,6 +642,14 @@ static int launch(const char *name, app_entry_t entry, uint32_t caps,
 			a->module_bytes = ext->alloc_size;
 			if (llext_add_domain(ext, &a->domain) != 0) {
 				LOG_ERR("could not map '%s' into its domain", name);
+				/* The slot never went active, so release the
+				 * extension here: the caller only sees the
+				 * error and drops its reference.
+				 */
+				app_loader_forget(ext);
+				(void)llext_unload(&ext);
+				a->ext = NULL;
+				a->module_bytes = 0;
 				return -ENOSPC;
 			}
 #endif
