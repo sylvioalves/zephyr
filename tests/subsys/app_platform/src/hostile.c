@@ -18,6 +18,7 @@
 #include <zephyr/arch/riscv/syscall.h>
 #include <zephyr/kernel.h>
 #include <string.h>
+#include <errno.h>
 
 /* Data owned by the canary app's domain only. */
 K_APPMEM_PARTITION_DEFINE(victim_part);
@@ -458,6 +459,95 @@ ZTEST(zhostile, test_4_10_stack_overflow)
 {
 	/* 4 KB frame on a 2 KB stack: the guard/PMP stack bound traps it. */
 	expect_reclaimed("h_stk", stack_blow, APP_CAP_LOG);
+}
+
+/* ---- 4.11 identity, and the reach of a granted capability ---- */
+
+/* Rewriting the thread's custom data must not change which application the
+ * platform thinks is calling: an app that borrows another id would inherit its
+ * capabilities. This app holds no capability at all, so svc_log has to stay
+ * refused whatever it writes there.
+ */
+/* The identity has to follow the thread, not any state the application can
+ * write. Whatever this app does to its own scratch state, the capability it was
+ * never granted stays out of reach.
+ */
+static void forge_identity(void *a)
+{
+	ARG_UNUSED(a);
+	uint8_t in[4] = {0};
+	uint8_t out[32];
+
+#ifdef CONFIG_THREAD_CUSTOM_DATA
+	for (uintptr_t id = 0; id < 8; id++) {
+		k_thread_custom_data_set((void *)(id + 1));
+	}
+#endif
+	report_rc = svc_sha256(in, sizeof(in), out);
+	report_done = 1;
+}
+
+/* A flash range that wraps past the end of the partition must be refused
+ * rather than wrapping into a valid offset.
+ */
+static void flash_wrap(void *a)
+{
+	ARG_UNUSED(a);
+	report_rc = svc_flash_erase(0xFFFF0000U, 0x10000U);
+	report_done = 1;
+}
+
+/* The capability alone grants nothing: without a window the flash services
+ * answer -EACCES, so the registry and the signed modules stay out of reach.
+ */
+static void flash_ungranted(void *a)
+{
+	ARG_UNUSED(a);
+	uint8_t buf[4];
+
+	report_rc = svc_flash_read(0, buf, sizeof(buf));
+	report_done = 1;
+}
+
+ZTEST(zhostile, test_4_11_forged_identity)
+{
+	/* A neighbour that does hold the crypto capability, so a successful
+	 * forgery would be observable: the hostile app carries none of it and
+	 * must still be refused whatever identity it writes.
+	 */
+	const struct app_def rich = {
+		.name = "rich",
+		.source = APP_BUILTIN,
+		.entry = canary_app,
+		.caps = APP_CAP_LOG | APP_CAP_CRYPTO,
+	};
+	int rid = app_platform_launch(&rich);
+
+	zassert_true(rid >= 0, "neighbour launch failed");
+	k_mem_domain_add_partition(app_platform_domain(rid), &victim_part);
+	k_msleep(20);
+
+	/* LOG only: enough to reach its own report memory, never CRYPTO. */
+	expect_refused("h_id", forge_identity, APP_CAP_LOG, -EPERM);
+}
+
+ZTEST(zhostile, test_4_11_flash_wrap)
+{
+	/* Grant every slot a small window first, so the request is refused for
+	 * wrapping past its end rather than for holding no grant at all.
+	 */
+	for (int i = 0; i < CONFIG_APP_PLATFORM_MAX_APPS; i++) {
+		app_platform_grant_flash(i, 0, 4096);
+	}
+	expect_refused("h_fw", flash_wrap, APP_CAP_FLASH, -EACCES);
+	for (int i = 0; i < CONFIG_APP_PLATFORM_MAX_APPS; i++) {
+		app_platform_grant_flash(i, 0, 0);
+	}
+}
+
+ZTEST(zhostile, test_4_11_flash_ungranted)
+{
+	expect_refused("h_fu", flash_ungranted, APP_CAP_FLASH, -EACCES);
 }
 
 ZTEST_SUITE(zhostile, NULL, hostile_setup, hostile_before, NULL, NULL);
