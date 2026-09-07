@@ -25,6 +25,7 @@ LOG_MODULE_DECLARE(app_platform, CONFIG_APP_PLATFORM_LOG_LEVEL);
 
 #define MOUNT_POINT CONFIG_APP_PLATFORM_REGISTRY_MOUNT_POINT
 #define REG_PATH    MOUNT_POINT "/registry.bin"
+#define REG_TMP_PATH    MOUNT_POINT "/registry.new"
 #define MOUNT_POINT_MAX (sizeof(MOUNT_POINT) + APP_NAME_MAX + 8)
 
 /* Build the on-flash path for one of an application's files: <mount>/<name><ext> */
@@ -67,19 +68,37 @@ struct reg_file {
 
 static struct reg_file reg;
 
+/* Write the registry to a temporary file and rename it over the live one, so
+ * an interrupted save leaves the previous registry intact rather than a
+ * truncated file.
+ */
 static int reg_save(void)
 {
 	struct fs_file_t f;
 
 	fs_file_t_init(&f);
-	int rc = fs_open(&f, REG_PATH, FS_O_CREATE | FS_O_WRITE | FS_O_TRUNC);
+	int rc = fs_open(&f, REG_TMP_PATH, FS_O_CREATE | FS_O_WRITE | FS_O_TRUNC);
 
 	if (rc != 0) {
 		return rc;
 	}
 	rc = fs_write(&f, &reg, sizeof(reg));
+	if (rc == sizeof(reg)) {
+		rc = fs_sync(&f);
+	} else if (rc >= 0) {
+		rc = -EIO;
+	}
 	fs_close(&f);
-	return (rc == sizeof(reg)) ? 0 : -EIO;
+	if (rc != 0) {
+		(void)fs_unlink(REG_TMP_PATH);
+		return rc;
+	}
+	(void)fs_unlink(REG_PATH);
+	rc = fs_rename(REG_TMP_PATH, REG_PATH);
+	if (rc != 0) {
+		(void)fs_unlink(REG_TMP_PATH);
+	}
+	return rc;
 }
 
 int app_registry_load(void)
@@ -99,9 +118,13 @@ int app_registry_load(void)
 		ssize_t n = fs_read(&f, &reg, sizeof(reg));
 
 		fs_close(&f);
-		if (n == sizeof(reg) && reg.magic == REG_MAGIC) {
+		if (n == sizeof(reg) && reg.magic == REG_MAGIC && reg.count <= APP_REG_MAX) {
 			LOG_INF("loaded %u installed app(s) from flash", reg.count);
 			return 0;
+		}
+		if (n == sizeof(reg) && reg.magic == REG_MAGIC) {
+			LOG_WRN("registry holds %u records, max %u: rebuilding", reg.count,
+				(unsigned int)APP_REG_MAX);
 		}
 	}
 
@@ -126,6 +149,16 @@ static int find(const char *name)
 int app_registry_install_versioned(const char *name, bool autostart,
 				   uint32_t version)
 {
+	/* The manifest carries a longer name than a record holds. Truncating
+	 * here would let two signed applications sharing a prefix collide on
+	 * one record and one blob, so refuse the name instead.
+	 */
+	if (strnlen(name, APP_NAME_MAX) >= APP_NAME_MAX) {
+		LOG_WRN("rejected '%s': name longer than %u characters", name,
+			(unsigned int)(APP_NAME_MAX - 1));
+		return -ENAMETOOLONG;
+	}
+
 	int idx = find(name);
 
 	if (idx >= 0 && version < reg.apps[idx].version) {

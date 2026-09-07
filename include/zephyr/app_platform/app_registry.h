@@ -22,6 +22,12 @@
  */
 
 #define APP_REG_MAX  CONFIG_APP_PLATFORM_REGISTRY_MAX_APPS
+
+/* A record holds a shorter name than a manifest carries
+ * (@ref APP_MANIFEST_NAME_MAX). Installing an application whose authenticated
+ * name does not fit is refused with -ENAMETOOLONG rather than truncated, so
+ * two names sharing a prefix can never share one record.
+ */
 #define APP_NAME_MAX CONFIG_APP_PLATFORM_REGISTRY_NAME_MAX
 
 /** A persisted record of an installed application. */
