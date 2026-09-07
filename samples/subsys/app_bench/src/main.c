@@ -133,15 +133,15 @@ static void report(const char *tag, uint32_t cyc, uint32_t n)
 	       per, (per * 1000U) / 240U);
 }
 
-static void run_kernel_direct(int id_of_crypto_app)
+/*
+ * Direct z_impl calls from the main kernel thread, which owns no application
+ * identity: only the services that carry no capability gate report a figure
+ * here. The gated ones are measured from inside an application above, where
+ * the identity is the kernel-owned thread pointer.
+ */
+static void run_kernel_direct(void)
 {
-	uint8_t in[32] = {0};
-	uint8_t out[32];
 	uint32_t t0, c;
-	int rc = 0;
-
-	/* Borrow the crypto app identity so the cap check passes. */
-	k_thread_custom_data_set((void *)(uintptr_t)(id_of_crypto_app + 1));
 
 	c = loop_empty(N_CALL);
 	report("kernel empty loop", c, N_CALL);
@@ -151,20 +151,6 @@ static void run_kernel_direct(int id_of_crypto_app)
 		z_impl_svc_heartbeat();
 	}
 	report("kernel direct heartbeat", read_cycles() - t0, N_CALL);
-
-	t0 = read_cycles();
-	for (uint32_t i = 0; i < N_CALL; i++) {
-		z_impl_svc_log("x");
-	}
-	report("kernel direct log(\"x\")", read_cycles() - t0, N_CALL);
-
-	t0 = read_cycles();
-	for (uint32_t i = 0; i < N_SHA; i++) {
-		rc |= z_impl_svc_sha256(in, sizeof(in), out);
-	}
-	report("kernel direct sha256(32B)", read_cycles() - t0, N_SHA);
-	printk("  (sha rc=%d)\n", rc);
-	k_thread_custom_data_set(NULL);
 }
 
 /* ---- 1.4: context switch ping-pong ---- */
@@ -293,7 +279,7 @@ int main(void)
 	printk("  (denied rc=%d, expect -EPERM=-1)\n", ures.denied_rc);
 
 	printk("-- kernel thread (%s), direct z_impl calls\n", __func__);
-	run_kernel_direct(id0);
+	run_kernel_direct();
 
 	printk("-- 1.4 context switch ping-pong on k_sem\n");
 	pingpong(false, 0);

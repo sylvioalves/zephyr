@@ -76,7 +76,7 @@ struct running_app {
 static struct running_app apps[MAX_APPS];
 static K_THREAD_STACK_ARRAY_DEFINE(app_stacks, MAX_APPS, APP_STACK);
 
-static void trampoline(void *entry, void *u1, void *u2);
+static void trampoline(void *entry, void *unused1, void *u2);
 
 /* Reclaim requests from the wdt callback / fatal handler -> supervisor thread. */
 static struct k_msgq reclaim_q;
@@ -116,18 +116,14 @@ static struct running_app *app_of_thread(k_tid_t t)
 }
 
 /*
- * The id of the application the current thread belongs to. A thread parked in a
- * blocking service call can resume with a transient current-thread view, so the
- * id is cached in the app thread's custom data at launch and read from there;
- * the pointer search is the fallback.
+ * The id of the application the current thread belongs to. The identity has to
+ * come from state the application cannot reach: an app runs in user mode and
+ * k_thread_custom_data_set() is an unrestricted syscall, so anything cached
+ * there could be rewritten by the app to borrow another app's capabilities.
+ * The thread pointer is owned by the kernel, so it is the identity.
  */
 int app_platform_id_current(void)
 {
-	uintptr_t cd = (uintptr_t)k_thread_custom_data_get();
-
-	if (cd != 0) {
-		return (int)(cd - 1);
-	}
 	struct running_app *a = app_of_thread(k_current_get());
 
 	return a ? (int)(a - apps) : -1;
@@ -449,8 +445,7 @@ static int restart_thread(struct running_app *a)
 	}
 
 	k_tid_t t = k_thread_create(&a->thread, app_stacks[id], APP_STACK,
-				    trampoline, (void *)a->entry,
-				    (void *)(uintptr_t)(id + 1), NULL,
+				    trampoline, (void *)a->entry, NULL, NULL,
 				    APP_PRIO, K_USER | K_INHERIT_PERMS, K_FOREVER);
 
 	k_thread_name_set(t, a->name);
@@ -570,14 +565,10 @@ static void supervisor(void *p1, void *p2, void *p3)
 	}
 }
 
-static void trampoline(void *entry, void *id_plus_1, void *u2)
+static void trampoline(void *entry, void *unused1, void *u2)
 {
+	ARG_UNUSED(unused1);
 	ARG_UNUSED(u2);
-	/* Cache this app's id (offset by one so zero means "not an app") in the
-	 * thread's custom data, so app_platform_id_current is reliable even when
-	 * the current-thread view is transiently off after a blocking call.
-	 */
-	k_thread_custom_data_set(id_plus_1);
 	((app_entry_t)entry)(NULL);
 	/* The app returned. Exit through the kernel so a user-mode thread does
 	 * not fall off its entry into an undefined return address; the death-
@@ -646,8 +637,7 @@ static int launch(const char *name, app_entry_t entry, uint32_t caps,
 		}
 
 		k_tid_t t = k_thread_create(&a->thread, app_stacks[i], APP_STACK,
-					    trampoline, (void *)entry,
-					    (void *)(uintptr_t)(i + 1), NULL,
+					    trampoline, (void *)entry, NULL, NULL,
 					    APP_PRIO, K_USER | K_INHERIT_PERMS,
 					    K_FOREVER);
 		k_thread_name_set(t, name);
