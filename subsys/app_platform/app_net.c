@@ -60,7 +60,7 @@
 static char wifi_ssid[SSID_MAX] = CONFIG_APP_PLATFORM_NET_WIFI_SSID;
 static char wifi_psk[PSK_MAX] = CONFIG_APP_PLATFORM_NET_WIFI_PSK;
 
-static inline bool app_has_cap(uint32_t mask)
+static inline bool app_has_cap(app_caps_t mask)
 {
 	return (app_platform_caps_current() & mask) == mask;
 }

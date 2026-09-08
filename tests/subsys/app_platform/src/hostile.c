@@ -106,7 +106,7 @@ static void hostile_before(void *f)
 }
 
 /* Launch a hostile app and expect it reclaimed with the canary still alive. */
-static void expect_reclaimed(const char *name, app_entry_t entry, uint32_t caps)
+static void expect_reclaimed(const char *name, app_entry_t entry, app_caps_t caps)
 {
 	const struct app_def def = {
 		.name = name, .source = APP_BUILTIN, .entry = entry, .caps = caps,
@@ -128,7 +128,7 @@ static void expect_reclaimed(const char *name, app_entry_t entry, uint32_t caps)
 }
 
 /* Launch a hostile app that must be refused by return value and survive. */
-static void expect_refused(const char *name, app_entry_t entry, uint32_t caps,
+static void expect_refused(const char *name, app_entry_t entry, app_caps_t caps,
 			   int expected_rc)
 {
 	const struct app_def def = {
@@ -563,6 +563,39 @@ static void sensor_ungranted(void *a)
 ZTEST(zhostile, test_4_12_sensor_ungranted)
 {
 	expect_refused("h_sns", sensor_ungranted, APP_CAP_LOG, -EPERM);
+}
+
+/* The grant mask is wider than 32 bits, so a capability allocated above bit 31
+ * must reach the service check intact. app_caps.h asserts the width at build
+ * time; this covers the runtime half, that a high bit rides through the launch
+ * path without displacing or standing in for a real low-bit capability.
+ */
+#define CAP_HIGH APP_CAP_BIT(32)
+
+static void sensor_probe(void *a)
+{
+	ARG_UNUSED(a);
+	report_rc = svc_sensor_count();
+	report_done = 1;
+}
+
+ZTEST(zhostile, test_4_13_capability_above_bit31)
+{
+	const struct app_def granted = {
+		.name = "h_hi", .source = APP_BUILTIN, .entry = sensor_probe,
+		.caps = APP_CAP_LOG | APP_CAP_SENSOR | CAP_HIGH,
+	};
+	int id = app_platform_launch(&granted);
+
+	zassert_true(id >= 0, "launch failed");
+	k_mem_domain_add_partition(app_platform_domain(id), &report_part);
+	zassert_true(wait_slot_free("h_hi", 2000), "h_hi never exited");
+	zassert_equal(report_done, 1, "h_hi trapped");
+	zassert_true(report_rc >= 0, "a high bit displaced APP_CAP_SENSOR: rc %d",
+		     report_rc);
+
+	/* A high bit must not stand in for a capability the app was not granted. */
+	expect_refused("h_hio", sensor_probe, APP_CAP_LOG | CAP_HIGH, -EPERM);
 }
 
 ZTEST_SUITE(zhostile, NULL, hostile_setup, hostile_before, NULL, NULL);

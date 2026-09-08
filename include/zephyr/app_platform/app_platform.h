@@ -10,6 +10,8 @@
 #include <zephyr/kernel.h>
 #include <zephyr/llext/llext.h>
 
+#include <zephyr/app_platform/app_caps.h>
+
 /**
  * @brief Application platform
  * @defgroup app_platform Application platform
@@ -47,7 +49,7 @@ struct app_def {
 	const char     *name;    /**< unique application name */
 	enum app_source source;  /**< builtin or loadable */
 	app_entry_t     entry;   /**< entry point (APP_BUILTIN) */
-	uint32_t        caps;    /**< per-app grant mask (application-defined) */
+	app_caps_t      caps;    /**< per-app grant mask (application-defined) */
 	bool            monitored; /**< opt in to hang detection (see heartbeat) */
 };
 
@@ -80,7 +82,7 @@ int app_platform_launch(const struct app_def *def);
  * @retval >=0 the application's group id, or negative errno on failure.
  */
 int app_platform_launch_llext(const char *name, struct llext *ext,
-			      app_entry_t entry, uint32_t caps);
+			      app_entry_t entry, app_caps_t caps);
 
 /**
  * @brief Feed the calling application's liveness watchdog.
@@ -160,7 +162,7 @@ int app_platform_set_restart(int id, bool restart);
  *
  * @return The capability mask, or zero when the caller is not an application.
  */
-uint32_t app_platform_caps_current(void);
+app_caps_t app_platform_caps_current(void);
 
 /**
  * @brief The group id of the currently running application.

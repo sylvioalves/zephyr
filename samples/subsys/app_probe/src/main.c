@@ -46,7 +46,7 @@ int main(void)
 		return 0;
 	}
 
-	uint32_t caps = APP_CAP_LOG | APP_CAP_TIME | APP_CAP_RANDOM |
+	app_caps_t caps = APP_CAP_LOG | APP_CAP_TIME | APP_CAP_RANDOM |
 			APP_CAP_CRYPTO | APP_CAP_SENSOR | APP_CAP_KV |
 			APP_CAP_FLASH | APP_CAP_GPIO | APP_CAP_IPC |
 			APP_CAP_INSPECT | APP_CAP_PWM | APP_CAP_ADC |

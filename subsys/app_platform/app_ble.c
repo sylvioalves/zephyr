@@ -40,7 +40,7 @@
  */
 #define BLE_LOCK_MARGIN_MS 2000U
 
-static inline bool app_has_cap(uint32_t mask)
+static inline bool app_has_cap(app_caps_t mask)
 {
 	return (app_platform_caps_current() & mask) == mask;
 }

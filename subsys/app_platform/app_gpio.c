@@ -54,7 +54,7 @@ void app_platform_clear_gpio_grants(int id)
 }
 static bool gpio_ready;
 
-static inline bool app_has_cap(uint32_t mask)
+static inline bool app_has_cap(app_caps_t mask)
 {
 	return (app_platform_caps_current() & mask) == mask;
 }

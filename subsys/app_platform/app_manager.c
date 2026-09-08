@@ -69,7 +69,7 @@ struct running_app {
 	uint32_t            restarts;  /* relaunches after a fault, for statistics */
 	bool                cleaning;  /* reaper is releasing this slot's resources */
 	app_entry_t         entry;
-	uint32_t            caps;
+	app_caps_t          caps;
 	size_t              module_bytes; /* loadable-extension footprint, 0 if built-in */
 #ifdef CONFIG_LLEXT
 	struct llext       *ext;       /* retained so a stopped app can restart */
@@ -133,7 +133,7 @@ int app_platform_id_current(void)
 	return a ? (int)(a - apps) : -1;
 }
 
-uint32_t app_platform_caps_current(void)
+app_caps_t app_platform_caps_current(void)
 {
 	int id = app_platform_id_current();
 
@@ -531,7 +531,7 @@ int app_platform_remove(int id)
 }
 
 
-static int launch(const char *name, app_entry_t entry, uint32_t caps,
+static int launch(const char *name, app_entry_t entry, app_caps_t caps,
 		  struct llext *ext, bool restart, bool monitored);
 
 static void supervisor(void *p1, void *p2, void *p3)
@@ -560,7 +560,7 @@ static void supervisor(void *p1, void *p2, void *p3)
 		name[sizeof(name) - 1] = '\0';
 
 		app_entry_t entry = a->entry;
-		uint32_t caps = a->caps;
+		app_caps_t caps = a->caps;
 		bool monitored = a->monitored;
 		uint32_t restarts = a->restarts;
 
@@ -637,7 +637,7 @@ int app_platform_init(void)
 }
 
 /* Common launch: find a free slot, set up the domain, start a user-mode thread. */
-static int launch(const char *name, app_entry_t entry, uint32_t caps,
+static int launch(const char *name, app_entry_t entry, app_caps_t caps,
 		  struct llext *ext, bool restart, bool monitored)
 {
 	for (int i = 0; i < MAX_APPS; i++) {
@@ -717,7 +717,7 @@ int app_platform_launch(const struct app_def *def)
 
 #ifdef CONFIG_LLEXT
 int app_platform_launch_llext(const char *name, struct llext *ext,
-			      app_entry_t entry, uint32_t caps)
+			      app_entry_t entry, app_caps_t caps)
 {
 #ifdef CONFIG_APP_PLATFORM_LOADER
 	/* Refuse any extension that did not pass the verifying loader, so a

@@ -26,7 +26,7 @@ K_APP_DMEM(res_part) uint8_t ubuf2[64];
 
 struct cap_case {
 	const char *name;
-	uint32_t bit;
+	app_caps_t bit;
 	const char *call;
 	int (*fn)(void);
 };
@@ -129,7 +129,7 @@ static bool wait_free(int id)
 	return false;
 }
 
-static int run_case(int idx, uint32_t caps)
+static int run_case(int idx, app_caps_t caps)
 {
 	const struct app_def def = {
 		.name = "probe", .source = APP_BUILTIN, .entry = probe_app, .caps = caps,

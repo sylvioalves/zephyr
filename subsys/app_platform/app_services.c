@@ -128,7 +128,7 @@ static int mailbox_put(int dest, const void *buf, size_t len)
 }
 
 /* True when the calling application holds every bit in @mask. */
-static inline bool app_has_cap(uint32_t mask)
+static inline bool app_has_cap(app_caps_t mask)
 {
 	return (app_platform_caps_current() & mask) == mask;
 }

@@ -41,7 +41,7 @@ static const uint8_t print_hash[32] = {
 };
 
 static int launch(const char *name, const uint8_t *bytes, size_t len,
-		   const uint8_t *hash, uint32_t caps)
+		   const uint8_t *hash, app_caps_t caps)
 {
 	struct llext *ext = NULL;
 	void *entry = NULL;
