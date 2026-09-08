@@ -139,6 +139,80 @@ config APP_PLATFORM_COUNTER
 	  surface: alarms stay with the platform, because a counter callback
 	  cannot cross into user mode.
 
+config APP_PLATFORM_DAC
+	bool "Analog output service"
+	depends on APP_PLATFORM_SERVICES
+	depends on DAC
+	help
+	  Drive a granted analog output channel by index. The channel is set up
+	  on first use, because the platform does not know in advance which
+	  application will be granted which channel.
+
+config APP_PLATFORM_DAC_RESOLUTION
+	int "Analog output resolution in bits"
+	depends on APP_PLATFORM_DAC
+	default 8
+	help
+	  Resolution the platform configures a channel with. It bounds the raw
+	  code an application may write.
+
+config APP_PLATFORM_EEPROM
+	bool "EEPROM window service"
+	depends on APP_PLATFORM_SERVICES
+	depends on EEPROM
+	help
+	  Confine an application to a byte window of the shared EEPROM. Offsets
+	  are relative to the window, so an application cannot name a byte
+	  outside it, including another application's.
+
+config APP_PLATFORM_EEPROM_XFER_MAX
+	int "Maximum bytes per EEPROM read or write"
+	depends on APP_PLATFORM_EEPROM
+	default 64
+	help
+	  Bound on a single transfer. The bytes are copied through a supervisor
+	  buffer of this size, so it is also the stack cost of the call.
+
+config APP_PLATFORM_RTC
+	bool "Real-time clock service"
+	depends on APP_PLATFORM_SERVICES
+	depends on RTC
+	help
+	  Read the wall clock, and set it under a separate capability because
+	  setting it changes state every other application observes.
+
+config APP_PLATFORM_W1
+	bool "1-Wire service"
+	depends on APP_PLATFORM_SERVICES
+	depends on W1
+	help
+	  Reset the 1-Wire bus and move single bytes over it. The bus is shared,
+	  so this is a capability rather than a per-device grant.
+
+config APP_PLATFORM_POWER
+	bool "Battery state service"
+	depends on APP_PLATFORM_SERVICES
+	depends on CHARGER && FUEL_GAUGE
+	help
+	  Report whether external power is present and how much charge is left.
+	  Read-only: changing the charge policy stays with the system.
+
+config APP_PLATFORM_REGULATOR
+	bool "Regulator service"
+	depends on APP_PLATFORM_SERVICES
+	depends on REGULATOR
+	help
+	  Enable or disable a granted regulator instance by index.
+
+config APP_PLATFORM_STEPPER
+	bool "Stepper motor service"
+	depends on APP_PLATFORM_SERVICES
+	depends on STEPPER
+	help
+	  Move a granted stepper instance and read its position. Completion is
+	  reported by a driver callback, which cannot cross into user mode, so
+	  an application polls the position instead of being notified.
+
 config APP_PLATFORM_PSRAM
 	bool "Shared external RAM (PSRAM) mapping service"
 	depends on APP_PLATFORM_SERVICES

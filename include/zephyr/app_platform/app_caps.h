@@ -60,9 +60,17 @@ typedef uint64_t app_caps_t;
 #define APP_CAP_COUNTER APP_CAP_BIT(25)  /**< hardware pulse counter */
 #define APP_CAP_MOTOR   APP_CAP_BIT(26)  /**< motor-control PWM (MCPWM) channels */
 #define APP_CAP_COUNTER_DEV APP_CAP_BIT(27) /**< granted hardware counter instances */
+#define APP_CAP_DAC     APP_CAP_BIT(28)  /**< analog output on granted channels */
+#define APP_CAP_EEPROM  APP_CAP_BIT(29)  /**< the application's EEPROM window */
+#define APP_CAP_RTC     APP_CAP_BIT(30)  /**< read the real-time clock */
+#define APP_CAP_RTC_SET APP_CAP_BIT(31)  /**< set the real-time clock (device-wide) */
+#define APP_CAP_W1      APP_CAP_BIT(32)  /**< 1-Wire bus transactions */
+#define APP_CAP_POWER   APP_CAP_BIT(33)  /**< read charger and fuel-gauge state */
+#define APP_CAP_REGULATOR APP_CAP_BIT(34) /**< granted regulator instances */
+#define APP_CAP_STEPPER APP_CAP_BIT(35)  /**< granted stepper motor instances */
 
 /** Highest capability bit currently allocated. */
-#define APP_CAP_LAST    APP_CAP_COUNTER_DEV
+#define APP_CAP_LAST    APP_CAP_STEPPER
 
 /**
  * @brief Grant every defined capability (for a fully trusted application).

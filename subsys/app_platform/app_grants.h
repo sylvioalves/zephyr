@@ -75,4 +75,40 @@ static inline void app_platform_clear_counter_grants(int id)
 }
 #endif
 
+#ifdef CONFIG_APP_PLATFORM_DAC
+void app_platform_clear_dac_grants(int id);
+#else
+static inline void app_platform_clear_dac_grants(int id)
+{
+	ARG_UNUSED(id);
+}
+#endif
+
+#ifdef CONFIG_APP_PLATFORM_EEPROM
+void app_platform_clear_eeprom_grants(int id);
+#else
+static inline void app_platform_clear_eeprom_grants(int id)
+{
+	ARG_UNUSED(id);
+}
+#endif
+
+#ifdef CONFIG_APP_PLATFORM_REGULATOR
+void app_platform_clear_regulator_grants(int id);
+#else
+static inline void app_platform_clear_regulator_grants(int id)
+{
+	ARG_UNUSED(id);
+}
+#endif
+
+#ifdef CONFIG_APP_PLATFORM_STEPPER
+void app_platform_clear_stepper_grants(int id);
+#else
+static inline void app_platform_clear_stepper_grants(int id)
+{
+	ARG_UNUSED(id);
+}
+#endif
+
 #endif /* ZEPHYR_SUBSYS_APP_PLATFORM_APP_GRANTS_H_ */

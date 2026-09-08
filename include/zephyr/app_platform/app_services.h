@@ -776,6 +776,241 @@ __syscall int svc_counter_frequency(int idx, uint32_t *hz);
 void app_platform_grant_counter(int id, uint32_t idx_mask);
 
 /**
+ * @brief Number of analog output channels. Needs @ref APP_CAP_DAC.
+ *
+ * @retval >=0 The number of channels.
+ * @retval -EPERM The application does not hold @ref APP_CAP_DAC.
+ */
+__syscall int svc_dac_count(void);
+
+/**
+ * @brief Drive a granted analog output channel. Needs @ref APP_CAP_DAC and a
+ *        per-channel grant (@ref app_platform_grant_dac).
+ *
+ * @param ch    Channel index.
+ * @param value Raw code, bounded by the configured resolution.
+ * @retval 0 on success.
+ * @retval -EPERM without @ref APP_CAP_DAC.
+ * @retval -EACCES with the capability but without a grant for this channel.
+ * @retval -EINVAL @p ch is out of range.
+ * @retval -ENODEV The channel is not ready.
+ */
+__syscall int svc_dac_write(int ch, uint32_t value);
+
+/** @brief Grant an application a set of analog output channels. */
+void app_platform_grant_dac(int id, uint32_t ch_mask);
+
+/**
+ * @brief Size of the application's own EEPROM window. Needs @ref
+ *        APP_CAP_EEPROM.
+ *
+ * @retval >=0 The window size in bytes, zero when none was granted.
+ * @retval -EPERM The application does not hold @ref APP_CAP_EEPROM.
+ */
+__syscall int svc_eeprom_size(void);
+
+/**
+ * @brief Read from the application's EEPROM window. Needs @ref APP_CAP_EEPROM
+ *        and a window (@ref app_platform_grant_eeprom).
+ *
+ * @p off is relative to the window, so an application cannot name a byte
+ * outside it, including another application's.
+ *
+ * @param off Offset within the window.
+ * @param buf Receives the bytes.
+ * @param len Number of bytes (bounded by the platform).
+ * @retval >=0 The number of bytes read.
+ * @retval -EPERM without @ref APP_CAP_EEPROM.
+ * @retval -EACCES no window was granted.
+ * @retval -EINVAL the range leaves the window, or @p len exceeds the limit.
+ * @retval -ENODEV The device is not ready.
+ */
+__syscall int svc_eeprom_read(uint32_t off, void *buf, size_t len);
+
+/**
+ * @brief Write to the application's EEPROM window. Needs @ref APP_CAP_EEPROM
+ *        and a window.
+ *
+ * @param off Offset within the window.
+ * @param buf Bytes to write.
+ * @param len Number of bytes (bounded by the platform).
+ * @retval >=0 The number of bytes written.
+ * @retval -EPERM without @ref APP_CAP_EEPROM.
+ * @retval -EACCES no window was granted.
+ * @retval -EINVAL the range leaves the window, or @p len exceeds the limit.
+ * @retval -ENODEV The device is not ready.
+ */
+__syscall int svc_eeprom_write(uint32_t off, const void *buf, size_t len);
+
+/** @brief Grant an application a byte window of the EEPROM. */
+void app_platform_grant_eeprom(int id, size_t base, size_t len);
+
+/** A user-mode-safe wall-clock time. */
+struct svc_rtc_time {
+	uint16_t year;    /**< full year, e.g. 2026 */
+	uint8_t  month;   /**< month [1, 12] */
+	uint8_t  day;     /**< day of the month [1, 31] */
+	uint8_t  hour;    /**< hour [0, 23] */
+	uint8_t  minute;  /**< minute [0, 59] */
+	uint8_t  second;  /**< second [0, 59] */
+};
+
+/**
+ * @brief Read the real-time clock device. Needs @ref APP_CAP_RTC.
+ *
+ * Distinct from @ref svc_rtc_now, which reads the platform's software wall
+ * clock: this reaches the board's RTC hardware.
+ *
+ * @param out Receives the time.
+ * @retval 0 on success.
+ * @retval -EPERM The application does not hold @ref APP_CAP_RTC.
+ * @retval -ENODEV The clock is not ready.
+ */
+__syscall int svc_rtcdev_get(struct svc_rtc_time *out);
+
+/**
+ * @brief Set the real-time clock device. Needs @ref APP_CAP_RTC_SET.
+ *
+ * Separated from reading because the clock is device-wide: setting it changes
+ * what every other application sees.
+ *
+ * @param in The time to set.
+ * @retval 0 on success.
+ * @retval -EPERM The application does not hold @ref APP_CAP_RTC_SET.
+ * @retval -EINVAL A field is out of range.
+ * @retval -ENODEV The clock is not ready.
+ */
+__syscall int svc_rtcdev_set(const struct svc_rtc_time *in);
+
+/**
+ * @brief Reset the 1-Wire bus and report whether a device answered. Needs
+ *        @ref APP_CAP_W1.
+ *
+ * @retval >=0 Non-zero when at least one device responded.
+ * @retval -EPERM The application does not hold @ref APP_CAP_W1.
+ * @retval -ENODEV The bus is not ready.
+ */
+__syscall int svc_w1_reset(void);
+
+/**
+ * @brief Read one byte from the 1-Wire bus. Needs @ref APP_CAP_W1.
+ *
+ * @retval >=0 The byte read.
+ * @retval -EPERM The application does not hold @ref APP_CAP_W1.
+ * @retval -ENODEV The bus is not ready.
+ */
+__syscall int svc_w1_read_byte(void);
+
+/**
+ * @brief Write one byte to the 1-Wire bus. Needs @ref APP_CAP_W1.
+ *
+ * @param byte The byte to write.
+ * @retval 0 on success.
+ * @retval -EPERM The application does not hold @ref APP_CAP_W1.
+ * @retval -ENODEV The bus is not ready.
+ */
+__syscall int svc_w1_write_byte(uint8_t byte);
+
+/**
+ * @brief Whether external power is present. Needs @ref APP_CAP_POWER.
+ *
+ * @retval >=0 Non-zero when the charger reports itself online.
+ * @retval -EPERM The application does not hold @ref APP_CAP_POWER.
+ * @retval -ENODEV The charger is not ready.
+ */
+__syscall int svc_charger_online(void);
+
+/**
+ * @brief Battery charge in percent. Needs @ref APP_CAP_POWER.
+ *
+ * @retval >=0 The relative state of charge, 0 to 100.
+ * @retval -EPERM The application does not hold @ref APP_CAP_POWER.
+ * @retval -ENODEV The fuel gauge is not ready.
+ */
+__syscall int svc_battery_percent(void);
+
+/**
+ * @brief Number of regulator instances. Needs @ref APP_CAP_REGULATOR.
+ *
+ * @retval >=0 The number of instances.
+ * @retval -EPERM The application does not hold @ref APP_CAP_REGULATOR.
+ */
+__syscall int svc_regulator_count(void);
+
+/**
+ * @brief Enable or disable a granted regulator. Needs @ref APP_CAP_REGULATOR
+ *        and a per-instance grant (@ref app_platform_grant_regulator).
+ *
+ * @param idx Regulator index.
+ * @param on  Non-zero to enable, zero to disable.
+ * @retval 0 on success.
+ * @retval -EPERM without @ref APP_CAP_REGULATOR.
+ * @retval -EACCES with the capability but without a grant for this instance.
+ * @retval -EINVAL @p idx is out of range.
+ * @retval -ENODEV The instance is not ready.
+ */
+__syscall int svc_regulator_enable(int idx, int on);
+
+/** @brief Grant an application a set of regulator instances. */
+void app_platform_grant_regulator(int id, uint32_t idx_mask);
+
+/**
+ * @brief Number of stepper motor instances. Needs @ref APP_CAP_STEPPER.
+ *
+ * @retval >=0 The number of instances.
+ * @retval -EPERM The application does not hold @ref APP_CAP_STEPPER.
+ */
+__syscall int svc_stepper_count(void);
+
+/**
+ * @brief Stop a granted stepper's movement. Needs @ref APP_CAP_STEPPER and a
+ *        per-instance grant (@ref app_platform_grant_stepper).
+ *
+ * @param idx Stepper index.
+ * @retval 0 on success.
+ * @retval -EPERM without @ref APP_CAP_STEPPER.
+ * @retval -EACCES with the capability but without a grant for this instance.
+ * @retval -EINVAL @p idx is out of range.
+ * @retval -ENODEV The instance is not ready.
+ */
+__syscall int svc_stepper_stop(int idx);
+
+/**
+ * @brief Move a granted stepper by a relative number of micro-steps. Needs
+ *        @ref APP_CAP_STEPPER and a per-instance grant.
+ *
+ * The move is not awaited: completion is reported through a driver callback,
+ * which cannot cross into user mode, so an application polls
+ * @ref svc_stepper_position instead.
+ *
+ * @param idx         Stepper index.
+ * @param micro_steps Signed micro-step count.
+ * @retval 0 on success.
+ * @retval -EPERM without @ref APP_CAP_STEPPER.
+ * @retval -EACCES with the capability but without a grant for this instance.
+ * @retval -EINVAL @p idx is out of range.
+ * @retval -ENODEV The instance is not ready.
+ */
+__syscall int svc_stepper_move_by(int idx, int32_t micro_steps);
+
+/**
+ * @brief Read a granted stepper's current position. Needs @ref APP_CAP_STEPPER
+ *        and a per-instance grant.
+ *
+ * @param idx Stepper index.
+ * @param pos Receives the position in micro-steps.
+ * @retval 0 on success.
+ * @retval -EPERM without @ref APP_CAP_STEPPER.
+ * @retval -EACCES with the capability but without a grant for this instance.
+ * @retval -EINVAL @p idx is out of range.
+ * @retval -ENODEV The instance is not ready.
+ */
+__syscall int svc_stepper_position(int idx, int32_t *pos);
+
+/** @brief Grant an application a set of stepper instances. */
+void app_platform_grant_stepper(int id, uint32_t idx_mask);
+
+/**
  * @brief Set a PWM channel duty cycle in per-mille. Needs @ref APP_CAP_PWM and a
  *        per-channel grant (@ref app_platform_grant_pwm).
  *

@@ -1,0 +1,11 @@
+common:
+  tags: app_platform
+  harness: ztest
+  # The device services are exercised against emulated instances, so the suite
+  # runs anywhere that offers user mode rather than only on the boards that
+  # happen to carry this hardware.
+  platform_allow:
+    - qemu_x86
+tests:
+  app_platform.devices:
+    timeout: 60
