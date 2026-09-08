@@ -187,6 +187,56 @@ __syscall int svc_flash_erase(uint32_t off, size_t len);
  */
 void app_platform_grant_flash(int id, uint32_t base, uint32_t len);
 
+/** Metadata for one announced sensor service. */
+struct svc_sensor_info {
+	char name[16];   /**< service name, for example "temperature" */
+	char unit[10];   /**< unit of the value, for example "m.degC" */
+	bool present;    /**< a device on this board backs the kind    */
+};
+
+/**
+ * @brief Number of sensor kinds the platform announces.
+ *        Needs @ref APP_CAP_SENSOR.
+ *
+ * @retval >=0 The catalog size.
+ * @retval -EPERM The application does not hold @ref APP_CAP_SENSOR.
+ */
+__syscall int svc_sensor_count(void);
+
+/**
+ * @brief Describe one announced sensor. Needs @ref APP_CAP_SENSOR.
+ *
+ * An announced sensor is not necessarily present: the platform knows the kind
+ * but this board may carry no device for it. Read the catalog first and act on
+ * @c present rather than assuming.
+ *
+ * @param idx Index below @ref svc_sensor_count.
+ * @param out Receives the metadata.
+ *
+ * @retval 0 Success.
+ * @retval -EPERM The application does not hold @ref APP_CAP_SENSOR.
+ * @retval -EINVAL @p idx is out of range.
+ */
+__syscall int svc_sensor_info(int idx, struct svc_sensor_info *out);
+
+/**
+ * @brief Read a sensor by catalog index. Needs @ref APP_CAP_SENSOR.
+ *
+ * The value is in milli-units of the kind's unit, so a temperature comes back
+ * in millidegrees Celsius. Concurrent readers are serialized on the device but
+ * do not block one another for long.
+ *
+ * @param idx Index below @ref svc_sensor_count.
+ * @param milli_value Receives the reading.
+ *
+ * @retval 0 Success.
+ * @retval -EPERM The application does not hold @ref APP_CAP_SENSOR.
+ * @retval -EINVAL @p idx is out of range.
+ * @retval -ENODEV The kind is announced but no device backs it here.
+ * @retval -EBUSY The device stayed busy with another reader.
+ */
+__syscall int svc_sensor_read(int idx, int32_t *milli_value);
+
 /**
  * @brief Read the SoC unique device id. Needs @ref APP_CAP_TIME.
  *

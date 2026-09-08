@@ -78,6 +78,26 @@ void app_main(void *arg)
 	/* sensor group */
 	say("die_temp", svc_die_temp_milli() > 0 ? 0 : -1);
 
+	/* Typed sensor catalog: count, describe, read the present one. */
+	int scount = svc_sensor_count();
+
+	say("sensor_count", scount > 0 ? 0 : -1);
+
+	struct svc_sensor_info sinfo;
+	int sirc = svc_sensor_info(0, &sinfo);
+
+	say("sensor_info", sirc == 0 ? 0 : sirc);
+	say("sensor_info_range", svc_sensor_info(9999, &sinfo) == -EINVAL ? 0 : -1);
+
+	int32_t sval = 0;
+	int srrc = svc_sensor_read(0, &sval);
+
+	say("sensor_read", srrc == 0 ? 0 : srrc);
+	if (srrc == 0) {
+		say("sensor_plausible",
+		    (sval > -40000 && sval < 125000) ? 0 : -1);
+	}
+
 	/* kv group: round-trip a value through the lock-serialized store */
 	say("kv_set", svc_kv_set("count", 7));
 	uint32_t got = 0;

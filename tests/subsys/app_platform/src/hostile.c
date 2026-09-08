@@ -550,4 +550,19 @@ ZTEST(zhostile, test_4_11_flash_ungranted)
 	expect_refused("h_fu", flash_ungranted, APP_CAP_FLASH, -EACCES);
 }
 
+/* The sensor catalog is capability-gated: an application that was not granted
+ * APP_CAP_SENSOR may not even learn how many sensors the board announces.
+ */
+static void sensor_ungranted(void *a)
+{
+	ARG_UNUSED(a);
+	report_rc = svc_sensor_count();
+	report_done = 1;
+}
+
+ZTEST(zhostile, test_4_12_sensor_ungranted)
+{
+	expect_refused("h_sns", sensor_ungranted, APP_CAP_LOG, -EPERM);
+}
+
 ZTEST_SUITE(zhostile, NULL, hostile_setup, hostile_before, NULL, NULL);

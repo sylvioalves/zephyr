@@ -118,6 +118,17 @@ config APP_PLATFORM_RECLAIM_HOOKS
 	  resources when an application is reclaimed (for example the network
 	  and PSRAM services each register one).
 
+config APP_PLATFORM_SENSOR
+	bool "Typed sensor catalog service"
+	depends on APP_PLATFORM_SERVICES
+	depends on SENSOR
+	help
+	  Announce a catalog of typed sensor kinds and let an application read
+	  one by index, in milli-units, without reaching the device, the bus or
+	  the driver. A kind the board has no device for stays announced and
+	  reads answer -ENODEV, so an application written against the catalog
+	  keeps working on a board that gains the hardware later.
+
 config APP_PLATFORM_PSRAM
 	bool "Shared external RAM (PSRAM) mapping service"
 	depends on APP_PLATFORM_SERVICES

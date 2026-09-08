@@ -19,6 +19,7 @@ zephyr_library_sources_ifdef(CONFIG_APP_PLATFORM_RADIO    app_radio.c)
 zephyr_library_sources_ifdef(CONFIG_APP_PLATFORM_CAN      app_can.c)
 zephyr_library_sources_ifdef(CONFIG_APP_PLATFORM_DMA      app_dma.c)
 zephyr_library_sources_ifdef(CONFIG_APP_PLATFORM_PSRAM    app_psram.c)
+zephyr_library_sources_ifdef(CONFIG_APP_PLATFORM_SENSOR   app_sensor.c)
 
 if(CONFIG_APP_PLATFORM_SERVICES)
   zephyr_syscall_header(${ZEPHYR_BASE}/include/zephyr/app_platform/app_services.h)
