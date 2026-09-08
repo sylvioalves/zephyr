@@ -696,13 +696,13 @@ static int launch(const char *name, app_entry_t entry, app_caps_t caps,
 		 */
 		if (!a->domain_ready) {
 			k_mem_domain_init(&a->domain, 0, NULL);
+#ifdef Z_LIBC_PARTITION_EXISTS
+			k_mem_domain_add_partition(&a->domain, &z_libc_partition);
+#endif
 			a->domain_ready = true;
 		}
 
 		if (IS_ENABLED(CONFIG_LLEXT) && ext != NULL) {
-#ifdef Z_LIBC_PARTITION_EXISTS
-			k_mem_domain_add_partition(&a->domain, &z_libc_partition);
-#endif
 #ifdef CONFIG_LLEXT
 			a->module_bytes = ext->alloc_size;
 			if (llext_add_domain(ext, &a->domain) != 0) {
