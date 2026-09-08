@@ -766,6 +766,45 @@ __syscall int svc_motor_set(uint32_t channel, uint32_t duty_pct);
  */
 __syscall int svc_i2c_read(uint16_t addr, uint8_t *buf, size_t len);
 
+/**
+ * @brief Write to an I2C device. Needs @ref APP_CAP_I2C and a per-address
+ *        grant (@ref app_platform_grant_i2c).
+ *
+ * @param addr 7-bit device address.
+ * @param buf  Bytes to send.
+ * @param len  Number of bytes (bounded by the platform).
+ *
+ * @retval 0 Success.
+ * @retval -EPERM The application does not hold @ref APP_CAP_I2C.
+ * @retval -EACCES The capability is held but this address was not granted.
+ * @retval -EINVAL @p len is over the platform's transfer bound.
+ * @retval -ENODEV The board exposes no application I2C bus.
+ * @retval -EIO The device did not acknowledge.
+ */
+__syscall int svc_i2c_write(uint16_t addr, const uint8_t *buf, size_t len);
+
+/**
+ * @brief Write then read back in one transaction, without releasing the bus.
+ *
+ * The usual way to address a register: send the register number, then read its
+ * value with a repeated start so another application cannot interleave.
+ *
+ * @param addr   7-bit device address.
+ * @param tx     Bytes to send first.
+ * @param tx_len Number of bytes to send.
+ * @param rx     Receives the reply.
+ * @param rx_len Number of bytes to read.
+ *
+ * @retval 0 Success.
+ * @retval -EPERM The application does not hold @ref APP_CAP_I2C.
+ * @retval -EACCES The capability is held but this address was not granted.
+ * @retval -EINVAL Either length is over the platform's transfer bound.
+ * @retval -ENODEV The board exposes no application I2C bus.
+ * @retval -EIO The device did not acknowledge.
+ */
+__syscall int svc_i2c_write_read(uint16_t addr, const uint8_t *tx, size_t tx_len,
+				 uint8_t *rx, size_t rx_len);
+
 /** @brief Grant an application access to one I2C address. */
 void app_platform_grant_i2c(int id, uint16_t addr);
 

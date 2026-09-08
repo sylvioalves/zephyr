@@ -188,6 +188,18 @@ void app_main(void *arg)
 
 	say("i2c_granted", svc_i2c_read(0x50, b, 1) != -1 ? 0 : -1);
 	say("i2c_denied", svc_i2c_read(0x51, b, 1) == -EACCES ? 0 : -1);
+	/* Writing reaches the granted address and is refused elsewhere. A bus
+	 * with nothing attached answers -EIO, which still proves the path.
+	 */
+	const uint8_t reg = 0x00;
+	int wr = svc_i2c_write(0x50, &reg, 1);
+
+	say("i2c_write", (wr == 0 || wr == -EIO) ? 0 : wr);
+	say("i2c_write_denied",
+	    svc_i2c_write(0x51, &reg, 1) == -EACCES ? 0 : -1);
+	int wrrd = svc_i2c_write_read(0x50, &reg, 1, b, 1);
+
+	say("i2c_write_read", (wrrd == 0 || wrrd == -EIO) ? 0 : wrrd);
 	say("spi_xfer", svc_spi_xfer((const uint8_t *)"\x9f", b, 1) != -1 ? 0 : -1);
 	/* uart: capability passes; no device wired returns a clean error, not a fault */
 	say("uart_path", svc_uart_write((const uint8_t *)"hi", 2) != -1 ? 0 : -1);

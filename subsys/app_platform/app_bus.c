@@ -183,12 +183,83 @@ int z_impl_svc_uart_read(uint8_t *buf, size_t len)
 }
 
 #ifdef CONFIG_USERSPACE
+int z_impl_svc_i2c_write(uint16_t addr, const uint8_t *buf, size_t len)
+{
+	if (!app_has_cap(APP_CAP_I2C)) {
+		return -EPERM;
+	}
+
+	int id = app_platform_id_current();
+
+	if (id < 0 || id >= MAX_APPS || len > BUS_XFER_MAX) {
+		return -EINVAL;
+	}
+	if (i2c_grant[id] == 0U || i2c_grant[id] != addr) {
+		return -EACCES;
+	}
+#if DT_HAS_ALIAS(app_i2c)
+	if (!device_is_ready(i2c_dev)) {
+		return -ENODEV;
+	}
+	return i2c_write(i2c_dev, buf, len, addr);
+#else
+	ARG_UNUSED(buf);
+	return -ENODEV;
+#endif
+}
+
+int z_impl_svc_i2c_write_read(uint16_t addr, const uint8_t *tx, size_t tx_len,
+			      uint8_t *rx, size_t rx_len)
+{
+	if (!app_has_cap(APP_CAP_I2C)) {
+		return -EPERM;
+	}
+
+	int id = app_platform_id_current();
+
+	if (id < 0 || id >= MAX_APPS || tx_len > BUS_XFER_MAX ||
+	    rx_len > BUS_XFER_MAX) {
+		return -EINVAL;
+	}
+	if (i2c_grant[id] == 0U || i2c_grant[id] != addr) {
+		return -EACCES;
+	}
+#if DT_HAS_ALIAS(app_i2c)
+	if (!device_is_ready(i2c_dev)) {
+		return -ENODEV;
+	}
+	return i2c_write_read(i2c_dev, addr, tx, tx_len, rx, rx_len);
+#else
+	ARG_UNUSED(tx);
+	ARG_UNUSED(rx);
+	return -ENODEV;
+#endif
+}
+
 static inline int z_vrfy_svc_i2c_read(uint16_t addr, uint8_t *buf, size_t len)
 {
 	K_OOPS(K_SYSCALL_MEMORY_WRITE(buf, len));
 	return z_impl_svc_i2c_read(addr, buf, len);
 }
 #include <zephyr/syscalls/svc_i2c_read_mrsh.c>
+
+static inline int z_vrfy_svc_i2c_write(uint16_t addr, const uint8_t *buf,
+				       size_t len)
+{
+	K_OOPS(K_SYSCALL_MEMORY_READ(buf, len));
+	return z_impl_svc_i2c_write(addr, buf, len);
+}
+#include <zephyr/syscalls/svc_i2c_write_mrsh.c>
+
+static inline int z_vrfy_svc_i2c_write_read(uint16_t addr, const uint8_t *tx,
+					    size_t tx_len, uint8_t *rx,
+					    size_t rx_len)
+{
+	K_OOPS(K_SYSCALL_MEMORY_READ(tx, tx_len));
+	K_OOPS(K_SYSCALL_MEMORY_WRITE(rx, rx_len));
+	return z_impl_svc_i2c_write_read(addr, tx, tx_len, rx, rx_len);
+}
+#include <zephyr/syscalls/svc_i2c_write_read_mrsh.c>
 
 static inline int z_vrfy_svc_spi_xfer(const uint8_t *tx, uint8_t *rx, size_t len)
 {
