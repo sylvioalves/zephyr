@@ -1,0 +1,15 @@
+sample:
+  name: Isolated CAN application
+  description: >
+    Send and receive CAN frames from a user-mode application through a
+    capability-gated service, with the controller in loopback.
+tests:
+  sample.subsys.app_can:
+    tags: app_platform
+    platform_allow:
+      - esp32c5_devkitc/esp32c5/hpcore
+    harness: console
+    harness_config:
+      type: one_line
+      regex:
+        - "launched isolated can app"
