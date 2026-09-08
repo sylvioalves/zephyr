@@ -68,6 +68,7 @@ struct running_app {
 	bool                faulted;   /* reclaimed due to a crash or hang */
 	uint32_t            restarts;  /* relaunches after a fault, for statistics */
 	bool                cleaning;  /* reaper is releasing this slot's resources */
+	bool                domain_ready; /* memory domain initialized once per slot */
 	app_entry_t         entry;
 	app_caps_t          caps;
 	size_t              module_bytes; /* loadable-extension footprint, 0 if built-in */
@@ -327,6 +328,18 @@ static void clear_grants(int id)
 	if (IS_ENABLED(CONFIG_APP_PLATFORM_COUNTER)) {
 		app_platform_clear_counter_grants(id);
 	}
+	if (IS_ENABLED(CONFIG_APP_PLATFORM_DAC)) {
+		app_platform_clear_dac_grants(id);
+	}
+	if (IS_ENABLED(CONFIG_APP_PLATFORM_EEPROM)) {
+		app_platform_clear_eeprom_grants(id);
+	}
+	if (IS_ENABLED(CONFIG_APP_PLATFORM_REGULATOR)) {
+		app_platform_clear_regulator_grants(id);
+	}
+	if (IS_ENABLED(CONFIG_APP_PLATFORM_STEPPER)) {
+		app_platform_clear_stepper_grants(id);
+	}
 }
 
 static void run_cleanup(int id, bool full, struct llext *ext)
@@ -341,6 +354,18 @@ static void run_cleanup(int id, bool full, struct llext *ext)
 	if (full) {
 #ifdef CONFIG_LLEXT
 		if (ext != NULL) {
+			/* Take the module's memory back out of the slot's domain
+			 * before the extension goes away. The domain outlives the
+			 * application so that it is initialized once, so a
+			 * partition left behind would be inherited by whichever
+			 * application takes the slot next.
+			 */
+			for (int i = 0; i < LLEXT_MEM_PARTITIONS; i++) {
+				if (ext->mem_size[i] != 0) {
+					(void)k_mem_domain_remove_partition(
+						&apps[id].domain, &ext->mem_parts[i]);
+				}
+			}
 			app_loader_forget(ext);
 			llext_unload(&ext);
 		}
@@ -662,7 +687,14 @@ static int launch(const char *name, app_entry_t entry, app_caps_t caps,
 #ifdef CONFIG_LLEXT
 		a->ext = ext;
 #endif
-		k_mem_domain_init(&a->domain, 0, NULL);
+		/* A slot's memory domain is initialized once and reused, because
+		 * re-initializing a live domain is a fatal error on some
+		 * architectures rather than a fresh start.
+		 */
+		if (!a->domain_ready) {
+			k_mem_domain_init(&a->domain, 0, NULL);
+			a->domain_ready = true;
+		}
 
 		if (IS_ENABLED(CONFIG_LLEXT) && ext != NULL) {
 #ifdef Z_LIBC_PARTITION_EXISTS
