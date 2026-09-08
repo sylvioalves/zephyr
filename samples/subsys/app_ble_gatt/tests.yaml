@@ -1,0 +1,15 @@
+sample:
+  name: Isolated GATT application
+  description: >
+    Read and write a BLE peer's characteristics from a user-mode application
+    by UUID, scoped to the services granted to it.
+tests:
+  sample.subsys.app_ble_gatt:
+    tags: app_platform
+    platform_allow:
+      - esp32c5_devkitc/esp32c5/hpcore
+    harness: console
+    harness_config:
+      type: one_line
+      regex:
+        - "launched isolated gatt app"
