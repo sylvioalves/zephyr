@@ -558,6 +558,57 @@ __syscall int svc_gpio_find(const char *name);
 void app_platform_grant_gpio(int id, uint32_t line_mask);
 
 /**
+ * @brief Kinds of event delivered through @ref svc_event_wait.
+ */
+enum app_event_kind {
+	APP_EVENT_NONE = 0,   /**< no event (timeout) */
+	APP_EVENT_BUTTON,     /**< the board button was pressed */
+	APP_EVENT_GPIO,       /**< a granted input line changed */
+};
+
+/**
+ * @brief One input event delivered to an application.
+ */
+struct app_event {
+	uint8_t  kind;   /**< one of @ref app_event_kind */
+	uint8_t  line;   /**< GPIO line index, for @ref APP_EVENT_GPIO */
+	uint8_t  value;  /**< line level, for @ref APP_EVENT_GPIO */
+	uint32_t seq;    /**< per-application counter, gaps mean dropped events */
+};
+
+/**
+ * @brief Wait for the next input event. Needs @ref APP_CAP_INPUT.
+ *
+ * Each application has its own queue, so one application waiting does not
+ * consume another's events, and a single wait covers every source the
+ * application is subscribed to. When the queue overflows the oldest events are
+ * dropped and @c seq skips, so a reader can tell it fell behind.
+ *
+ * @param[out] evt       Receives the event.
+ * @param timeout_ms     Milliseconds to wait, negative to wait for ever.
+ * @retval 0 on success.
+ * @retval -EPERM without @ref APP_CAP_INPUT.
+ * @retval -EAGAIN if no event arrived before the timeout.
+ */
+__syscall int svc_event_wait(struct app_event *evt, int32_t timeout_ms);
+
+/**
+ * @brief Subscribe to level changes on a granted GPIO line. Needs
+ *        @ref APP_CAP_GPIO and a per-line grant.
+ *
+ * The line is configured as an input and its edges are reported through
+ * @ref svc_event_wait as @ref APP_EVENT_GPIO. An ungranted line is refused, so
+ * an application cannot watch a line it may not drive.
+ *
+ * @param line Line index in [0, @ref svc_gpio_count).
+ * @param on   Non-zero to subscribe, zero to stop.
+ * @retval 0 on success.
+ * @retval -EPERM without @ref APP_CAP_GPIO.
+ * @retval -EACCES with the capability but without a grant for this line.
+ */
+__syscall int svc_gpio_watch(int line, int on);
+
+/**
  * @brief Send a message to another application's mailbox. Needs @ref APP_CAP_IPC.
  *
  * Per-app-keyed: the bytes are copied into the destination application's own

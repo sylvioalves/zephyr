@@ -17,6 +17,8 @@
 #include <zephyr/app_platform/app_services.h>
 #include <zephyr/app_platform/app_platform.h>
 
+#include "app_events.h"
+
 #include <zephyr/kernel.h>
 #include <zephyr/init.h>
 #include <zephyr/device.h>
@@ -179,6 +181,16 @@ static void button_pressed(const struct device *dev, struct gpio_callback *cb,
 	ARG_UNUSED(dev); ARG_UNUSED(cb); ARG_UNUSED(pins);
 	atomic_inc(&press_count);
 	k_sem_give(&press_sem);
+
+	/* Also deliver to every per-application queue, so an application can
+	 * wait on the button together with its other sources. svc_button_wait
+	 * keeps working for applications that use only the button.
+	 */
+	if (IS_ENABLED(CONFIG_APP_PLATFORM_EVENTS)) {
+		struct app_event evt = { .kind = APP_EVENT_BUTTON };
+
+		app_events_broadcast(&evt, NULL);
+	}
 }
 
 static int button_init(void)

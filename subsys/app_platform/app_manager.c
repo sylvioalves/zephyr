@@ -313,6 +313,9 @@ static void clear_grants(int id)
 	if (IS_ENABLED(CONFIG_APP_PLATFORM_GPIO)) {
 		app_platform_clear_gpio_grants(id);
 	}
+	if (IS_ENABLED(CONFIG_APP_PLATFORM_EVENTS)) {
+		app_events_clear(id);
+	}
 	if (IS_ENABLED(CONFIG_APP_PLATFORM_IO)) {
 		app_platform_clear_led_grants(id);
 	}

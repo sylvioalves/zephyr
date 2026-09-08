@@ -15,6 +15,8 @@
 #include <zephyr/app_platform/app_services.h>
 #include <zephyr/app_platform/app_platform.h>
 
+#include "app_events.h"
+
 #include <zephyr/kernel.h>
 #include <zephyr/internal/syscall_handler.h>
 #include <zephyr/drivers/gpio.h>
@@ -81,6 +83,39 @@ static void gpio_ready_init(void)
 #endif
 }
 
+#if DT_NODE_EXISTS(LEDS_NODE) && defined(CONFIG_APP_PLATFORM_EVENTS)
+/* Bit N set means application N is watching this line. A line is configured as
+ * an input and its interrupt enabled only while at least one application is
+ * watching, so an unwatched line stays an output as before.
+ */
+static uint32_t line_watchers[LINE_COUNT];
+static struct gpio_callback line_cb[LINE_COUNT];
+
+static void line_changed(const struct device *dev, struct gpio_callback *cb,
+			 uint32_t pins)
+{
+	ARG_UNUSED(dev);
+
+	int line = (int)(cb - line_cb);
+
+	if (line < 0 || line >= (int)LINE_COUNT) {
+		return;
+	}
+
+	struct app_event evt = {
+		.kind = APP_EVENT_GPIO,
+		.line = (uint8_t)line,
+		.value = (uint8_t)(gpio_pin_get_dt(&lines[line]) > 0 ? 1 : 0),
+	};
+
+	for (int id = 0; id < MAX_APPS; id++) {
+		if ((line_watchers[line] & BIT(id)) != 0U) {
+			app_events_post(id, &evt);
+		}
+	}
+}
+#endif
+
 int z_impl_svc_gpio_count(void)
 {
 	if (!app_has_cap(APP_CAP_GPIO)) {
@@ -129,7 +164,68 @@ int z_impl_svc_gpio_set(int line, int on)
 #endif
 }
 
+int z_impl_svc_gpio_watch(int line, int on)
+{
+	if (!app_has_cap(APP_CAP_GPIO)) {
+		return -EPERM;
+	}
+
+	int id = app_platform_id_current();
+
+	if (id < 0 || id >= MAX_APPS || line < 0 || line >= (int)LINE_COUNT) {
+		return -EINVAL;
+	}
+	if ((line_grant[id] & BIT(line)) == 0U) {
+		return -EACCES;
+	}
+#if DT_NODE_EXISTS(LEDS_NODE) && defined(CONFIG_APP_PLATFORM_EVENTS)
+	if (!gpio_is_ready_dt(&lines[line])) {
+		return -ENODEV;
+	}
+
+	bool was_watched = (line_watchers[line] != 0U);
+
+	if (on != 0) {
+		line_watchers[line] |= BIT(id);
+	} else {
+		line_watchers[line] &= ~BIT(id);
+	}
+
+	bool watched = (line_watchers[line] != 0U);
+
+	if (watched == was_watched) {
+		return 0;
+	}
+	if (watched) {
+		int rc = gpio_pin_configure_dt(&lines[line], GPIO_INPUT);
+
+		if (rc != 0) {
+			line_watchers[line] &= ~BIT(id);
+			return rc;
+		}
+		gpio_init_callback(&line_cb[line], line_changed,
+				   BIT(lines[line].pin));
+		(void)gpio_add_callback(lines[line].port, &line_cb[line]);
+		return gpio_pin_interrupt_configure_dt(&lines[line],
+						       GPIO_INT_EDGE_BOTH);
+	}
+
+	(void)gpio_pin_interrupt_configure_dt(&lines[line], GPIO_INT_DISABLE);
+	(void)gpio_remove_callback(lines[line].port, &line_cb[line]);
+	return gpio_pin_configure_dt(&lines[line], GPIO_OUTPUT_INACTIVE);
+#else
+	ARG_UNUSED(on);
+	return -ENOTSUP;
+#endif
+}
+
 #ifdef CONFIG_USERSPACE
+static inline int z_vrfy_svc_gpio_watch(int line, int on)
+{
+	return z_impl_svc_gpio_watch(line, on);
+}
+#include <zephyr/syscalls/svc_gpio_watch_mrsh.c>
+
 static inline int z_vrfy_svc_gpio_count(void)
 {
 	return z_impl_svc_gpio_count();

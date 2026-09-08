@@ -120,4 +120,13 @@ static inline void app_platform_clear_fs_handles(int id)
 }
 #endif
 
+#ifdef CONFIG_APP_PLATFORM_EVENTS
+void app_events_clear(int id);
+#else
+static inline void app_events_clear(int id)
+{
+	ARG_UNUSED(id);
+}
+#endif
+
 #endif /* ZEPHYR_SUBSYS_APP_PLATFORM_APP_GRANTS_H_ */

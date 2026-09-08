@@ -371,6 +371,25 @@ config APP_PLATFORM_IO
 	  crash and restart. The LED and button services are no-ops when their
 	  devicetree alias is absent.
 
+config APP_PLATFORM_EVENTS
+	bool "Per-application event queue"
+	depends on APP_PLATFORM_IO
+	help
+	  Deliver input events to an application through a queue of its own
+	  rather than a single shared semaphore, so one application waiting
+	  does not consume another's events and one application can wait on
+	  several sources at once. Adds svc_event_wait(), on which the
+	  app_events dispatcher builds registered callbacks.
+
+config APP_PLATFORM_EVENT_QUEUE_LEN
+	int "Events buffered per application"
+	default 8
+	range 1 64
+	depends on APP_PLATFORM_EVENTS
+	help
+	  How many events one application may fall behind before the oldest
+	  are dropped.
+
 config APP_PLATFORM_MOTION
 	bool "Shared pulse-counter and motor-control PWM services"
 	depends on APP_PLATFORM_SERVICES
