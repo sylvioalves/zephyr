@@ -74,7 +74,7 @@ struct kv_entry {
 static struct kv_entry kv_store[KV_SLOTS];
 static K_MUTEX_DEFINE(kv_lock);
 
-#if defined(CONFIG_SENSOR) && DT_HAS_ALIAS(die_temp0)
+#if defined(CONFIG_SENSOR) && DT_NODE_HAS_STATUS(DT_ALIAS(die_temp0), okay)
 static const struct device *const svc_die_temp = DEVICE_DT_GET(DT_ALIAS(die_temp0));
 #endif
 
@@ -209,7 +209,7 @@ int z_impl_svc_die_temp_milli(void)
 	if (!app_has_cap(APP_CAP_SENSOR)) {
 		return -EPERM;
 	}
-#if defined(CONFIG_SENSOR) && DT_HAS_ALIAS(die_temp0)
+#if defined(CONFIG_SENSOR) && DT_NODE_HAS_STATUS(DT_ALIAS(die_temp0), okay)
 	if (!device_is_ready(svc_die_temp) ||
 	    sensor_sample_fetch(svc_die_temp) != 0) {
 		return -EIO;
