@@ -1,0 +1,15 @@
+sample:
+  name: Isolated event dispatch
+  description: >
+    Deliver input events to a user-mode application as registered callbacks
+    dispatched from one loop.
+tests:
+  sample.subsys.app_dispatch:
+    tags: app_platform
+    platform_allow:
+      - esp32c5_devkitc/esp32c5/hpcore
+    harness: console
+    harness_config:
+      type: one_line
+      regex:
+        - "launched isolated dispatch app"
