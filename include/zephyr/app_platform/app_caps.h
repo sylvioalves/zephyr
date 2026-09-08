@@ -59,9 +59,10 @@ typedef uint64_t app_caps_t;
 #define APP_CAP_INPUT   APP_CAP_BIT(24)  /**< receive button/input events */
 #define APP_CAP_COUNTER APP_CAP_BIT(25)  /**< hardware pulse counter */
 #define APP_CAP_MOTOR   APP_CAP_BIT(26)  /**< motor-control PWM (MCPWM) channels */
+#define APP_CAP_COUNTER_DEV APP_CAP_BIT(27) /**< granted hardware counter instances */
 
 /** Highest capability bit currently allocated. */
-#define APP_CAP_LAST    APP_CAP_MOTOR
+#define APP_CAP_LAST    APP_CAP_COUNTER_DEV
 
 /**
  * @brief Grant every defined capability (for a fully trusted application).

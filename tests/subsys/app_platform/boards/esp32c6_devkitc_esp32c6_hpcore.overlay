@@ -13,3 +13,22 @@
 &storage_partition {
 	reg = <0x1e0000 DT_SIZE_K(1792)>;
 };
+
+/* Two counter instances for the hardware counter service: the suite grants one
+ * and withholds the other, so the per-instance grant is testable.
+ */
+&timer0 {
+	status = "okay";
+
+	counter {
+		status = "okay";
+	};
+};
+
+&timer1 {
+	status = "okay";
+
+	counter {
+		status = "okay";
+	};
+};

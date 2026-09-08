@@ -66,4 +66,13 @@ static inline void app_platform_clear_flash_grants(int id)
 }
 #endif
 
+#ifdef CONFIG_APP_PLATFORM_COUNTER
+void app_platform_clear_counter_grants(int id);
+#else
+static inline void app_platform_clear_counter_grants(int id)
+{
+	ARG_UNUSED(id);
+}
+#endif
+
 #endif /* ZEPHYR_SUBSYS_APP_PLATFORM_APP_GRANTS_H_ */

@@ -324,6 +324,9 @@ static void clear_grants(int id)
 	if (IS_ENABLED(CONFIG_APP_PLATFORM_SERVICES)) {
 		app_platform_clear_flash_grants(id);
 	}
+	if (IS_ENABLED(CONFIG_APP_PLATFORM_COUNTER)) {
+		app_platform_clear_counter_grants(id);
+	}
 }
 
 static void run_cleanup(int id, bool full, struct llext *ext)

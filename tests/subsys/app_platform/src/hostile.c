@@ -755,4 +755,106 @@ ZTEST(zhostile, test_4_14_control_stops_another_app)
 	zassert_equal(app_platform_remove(tid), 0);
 }
 
+/* ---- 4.16 the hardware counter service ---- */
+
+static void counter_ungranted(void *a)
+{
+	ARG_UNUSED(a);
+	report_rc = svc_counter_count();
+	report_done = 1;
+}
+
+/* Holding the capability is not holding an instance: instance 1 is deliberately
+ * never granted, so it must answer -EACCES rather than counting.
+ */
+static void counter_instance_ungranted(void *a)
+{
+	ARG_UNUSED(a);
+
+	uint32_t ticks = 0;
+
+	report_rc = svc_counter_read(1, &ticks);
+	report_done = 1;
+}
+
+static void counter_out_of_range(void *a)
+{
+	ARG_UNUSED(a);
+
+	uint32_t ticks = 0;
+
+	report_rc = svc_counter_read(99, &ticks);
+	report_done = 1;
+}
+
+/* A granted counter must actually advance, and its frequency must be sane,
+ * otherwise "it returned 0" would pass against a dead peripheral.
+ */
+static void counter_runs(void *a)
+{
+	ARG_UNUSED(a);
+
+	uint32_t hz = 0;
+	uint32_t t1 = 0;
+	uint32_t t2 = 0;
+	int rc = svc_counter_frequency(0, &hz);
+
+	if (rc != 0) {
+		report_rc = rc;
+		report_done = 1;
+		return;
+	}
+	if (hz == 0U) {
+		report_rc = -ERANGE;
+		report_done = 1;
+		return;
+	}
+
+	rc = svc_counter_start(0);
+	if (rc != 0) {
+		report_rc = rc;
+		report_done = 1;
+		return;
+	}
+
+	rc = svc_counter_read(0, &t1);
+	if (rc == 0) {
+		k_msleep(20);
+		rc = svc_counter_read(0, &t2);
+	}
+	if (rc == 0 && t2 == t1) {
+		rc = -ESTALE;   /* counted nothing over 20 ms */
+	}
+	report_rc = rc;
+	report_done = 1;
+}
+
+ZTEST(zhostile, test_4_16_counter_ungranted)
+{
+	expect_refused("h_cnu", counter_ungranted, APP_CAP_LOG, -EPERM);
+}
+
+ZTEST(zhostile, test_4_16_counter_instance_ungranted)
+{
+	int id = slot_of("canary");
+
+	ARG_UNUSED(id);
+	expect_refused("h_cni", counter_instance_ungranted,
+		       APP_CAP_LOG | APP_CAP_COUNTER_DEV, -EACCES);
+	expect_refused("h_cnr", counter_out_of_range,
+		       APP_CAP_LOG | APP_CAP_COUNTER_DEV, -EINVAL);
+}
+
+ZTEST(zhostile, test_4_16_counter_runs)
+{
+	/* Grant instance 0 to every slot and leave instance 1 ungranted. */
+	for (int i = 0; i < CONFIG_APP_PLATFORM_MAX_APPS; i++) {
+		app_platform_grant_counter(i, BIT(0));
+	}
+	expect_refused("h_cnt", counter_runs, APP_CAP_LOG | APP_CAP_COUNTER_DEV, 0);
+	for (int i = 0; i < CONFIG_APP_PLATFORM_MAX_APPS; i++) {
+		app_platform_grant_counter(i, 0U);
+	}
+}
+
 ZTEST_SUITE(zhostile, NULL, hostile_setup, hostile_before, NULL, NULL);

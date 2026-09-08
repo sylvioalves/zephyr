@@ -704,6 +704,78 @@ __syscall int svc_app_stop(int id);
 __syscall int svc_app_start(int id);
 
 /**
+ * @brief Number of hardware counter instances the board announces. Needs
+ *        @ref APP_CAP_COUNTER_DEV.
+ *
+ * Counting is not gated per instance, so an application can size its own table
+ * before asking for one it was not granted.
+ *
+ * @retval >=0 The number of instances.
+ * @retval -EPERM The application does not hold @ref APP_CAP_COUNTER_DEV.
+ */
+__syscall int svc_counter_count(void);
+
+/**
+ * @brief Start a granted hardware counter. Needs @ref APP_CAP_COUNTER_DEV and a
+ *        per-instance grant (@ref app_platform_grant_counter).
+ *
+ * @param idx Counter index.
+ * @retval 0 on success.
+ * @retval -EPERM without @ref APP_CAP_COUNTER_DEV.
+ * @retval -EACCES with the capability but without a grant for this instance.
+ * @retval -EINVAL @p idx is out of range.
+ * @retval -ENODEV The instance is not ready.
+ */
+__syscall int svc_counter_start(int idx);
+
+/**
+ * @brief Stop a granted hardware counter. Needs @ref APP_CAP_COUNTER_DEV and a
+ *        per-instance grant.
+ *
+ * @param idx Counter index.
+ * @retval 0 on success.
+ * @retval -EPERM without @ref APP_CAP_COUNTER_DEV.
+ * @retval -EACCES with the capability but without a grant for this instance.
+ * @retval -EINVAL @p idx is out of range.
+ * @retval -ENODEV The instance is not ready.
+ */
+__syscall int svc_counter_stop(int idx);
+
+/**
+ * @brief Read the current tick value of a granted counter. Needs @ref
+ *        APP_CAP_COUNTER_DEV and a per-instance grant.
+ *
+ * @param idx   Counter index.
+ * @param ticks Receives the tick value.
+ * @retval 0 on success.
+ * @retval -EPERM without @ref APP_CAP_COUNTER_DEV.
+ * @retval -EACCES with the capability but without a grant for this instance.
+ * @retval -EINVAL @p idx is out of range.
+ * @retval -ENODEV The instance is not ready.
+ */
+__syscall int svc_counter_read(int idx, uint32_t *ticks);
+
+/**
+ * @brief Read the tick frequency of a granted counter. Needs @ref
+ *        APP_CAP_COUNTER_DEV and a per-instance grant.
+ *
+ * Ticks are meaningless without it, so an application converts an interval to
+ * time with this rather than assuming a rate.
+ *
+ * @param idx Counter index.
+ * @param hz  Receives the frequency in hertz.
+ * @retval 0 on success.
+ * @retval -EPERM without @ref APP_CAP_COUNTER_DEV.
+ * @retval -EACCES with the capability but without a grant for this instance.
+ * @retval -EINVAL @p idx is out of range.
+ * @retval -ENODEV The instance is not ready.
+ */
+__syscall int svc_counter_frequency(int idx, uint32_t *hz);
+
+/** @brief Grant an application a set of hardware counter instances. */
+void app_platform_grant_counter(int id, uint32_t idx_mask);
+
+/**
  * @brief Set a PWM channel duty cycle in per-mille. Needs @ref APP_CAP_PWM and a
  *        per-channel grant (@ref app_platform_grant_pwm).
  *

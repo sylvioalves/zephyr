@@ -129,6 +129,16 @@ config APP_PLATFORM_SENSOR
 	  reads answer -ENODEV, so an application written against the catalog
 	  keeps working on a board that gains the hardware later.
 
+config APP_PLATFORM_COUNTER
+	bool "Hardware counter service"
+	depends on APP_PLATFORM_SERVICES
+	depends on COUNTER
+	help
+	  Hand an application a granted hardware counter instance by index so it
+	  can time an interval against real hardware. Reading is the whole
+	  surface: alarms stay with the platform, because a counter callback
+	  cannot cross into user mode.
+
 config APP_PLATFORM_PSRAM
 	bool "Shared external RAM (PSRAM) mapping service"
 	depends on APP_PLATFORM_SERVICES
