@@ -14,6 +14,7 @@
 #include <zephyr/app_platform/app_platform.h>
 #include <zephyr/app_platform/app_services.h>
 #include <zephyr/app_platform/app_caps.h>
+#include <zephyr/fs/fs.h>
 #include <zephyr/app_memory/app_memdomain.h>
 #include <zephyr/arch/riscv/syscall.h>
 #include <zephyr/kernel.h>
@@ -855,6 +856,58 @@ ZTEST(zhostile, test_4_16_counter_runs)
 	for (int i = 0; i < CONFIG_APP_PLATFORM_MAX_APPS; i++) {
 		app_platform_grant_counter(i, 0U);
 	}
+}
+
+/* ---- 4.15 the per-application file sandbox ---- */
+
+static void fs_ungranted(void *a)
+{
+	ARG_UNUSED(a);
+	report_rc = svc_file_open("x.txt", 1);
+	report_done = 1;
+}
+
+static void fs_escape_dotdot(void *a)
+{
+	ARG_UNUSED(a);
+	report_rc = svc_file_open("../0/secret.txt", 1);
+	report_done = 1;
+}
+
+static void fs_roundtrip(void *a)
+{
+	ARG_UNUSED(a);
+
+	int h = svc_file_open("note.txt", 1);
+
+	if (h < 0) {
+		report_rc = h;
+		report_done = 1;
+		return;
+	}
+
+	char buf[8] = {0};
+	int rc = svc_file_write(h, "abcd", 4);
+
+	if (rc == 4) {
+		rc = svc_file_seek(h, 0, FS_SEEK_SET);
+		if (rc == 0) {
+			rc = svc_file_read(h, buf, sizeof(buf));
+			rc = (rc == 4 && memcmp(buf, "abcd", 4) == 0) ? 0 :
+			     (rc < 0 ? rc : -EIO);
+		}
+	} else if (rc >= 0) {
+		rc = -EIO;
+	}
+	(void)svc_file_close(h);
+	report_rc = rc;
+	report_done = 1;
+}
+
+ZTEST(zhostile, test_4_15_fs_gate_and_confinement)
+{
+	expect_refused("h_fnp", fs_ungranted, APP_CAP_LOG, -EPERM);
+	expect_refused("h_fdd", fs_escape_dotdot, APP_CAP_LOG | APP_CAP_FS, -EACCES);
 }
 
 ZTEST_SUITE(zhostile, NULL, hostile_setup, hostile_before, NULL, NULL);

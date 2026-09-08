@@ -340,6 +340,9 @@ static void clear_grants(int id)
 	if (IS_ENABLED(CONFIG_APP_PLATFORM_STEPPER)) {
 		app_platform_clear_stepper_grants(id);
 	}
+	if (IS_ENABLED(CONFIG_APP_PLATFORM_FS)) {
+		app_platform_clear_fs_handles(id);
+	}
 }
 
 static void run_cleanup(int id, bool full, struct llext *ext)

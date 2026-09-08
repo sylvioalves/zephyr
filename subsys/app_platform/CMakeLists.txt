@@ -21,6 +21,7 @@ zephyr_library_sources_ifdef(CONFIG_APP_PLATFORM_DMA      app_dma.c)
 zephyr_library_sources_ifdef(CONFIG_APP_PLATFORM_PSRAM    app_psram.c)
 zephyr_library_sources_ifdef(CONFIG_APP_PLATFORM_SENSOR   app_sensor.c)
 zephyr_library_sources_ifdef(CONFIG_APP_PLATFORM_COUNTER  app_counter.c)
+zephyr_library_sources_ifdef(CONFIG_APP_PLATFORM_FS       app_fs.c)
 # One file serves several services, so it is added once when any of them is on
 # rather than once per service, which would list the source twice.
 if(CONFIG_APP_PLATFORM_DAC OR CONFIG_APP_PLATFORM_EEPROM)

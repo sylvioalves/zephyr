@@ -1011,6 +1011,81 @@ __syscall int svc_stepper_position(int idx, int32_t *pos);
 void app_platform_grant_stepper(int id, uint32_t idx_mask);
 
 /**
+ * @brief Open a file under the application's private root. Needs @ref
+ *        APP_CAP_FS.
+ *
+ * @p path is relative to the application's own root, so two applications that
+ * open the same name get two different files. A path that is absolute or holds
+ * a ".." component is refused: an application cannot name a file outside its
+ * root, including another application's.
+ *
+ * @param path   File path, relative to the application's root.
+ * @param create Create the file when it does not exist.
+ * @retval >=0 An open handle, valid only for the application that opened it.
+ * @retval -EPERM The application does not hold @ref APP_CAP_FS.
+ * @retval -EACCES The path tries to leave the application's root.
+ * @retval -EINVAL The path is empty.
+ * @retval -ENAMETOOLONG The resolved path does not fit.
+ * @retval -EMFILE No free handle is left.
+ * @retval -ENODEV The filesystem is not mounted.
+ */
+__syscall int svc_file_open(const char *path, int create);
+
+/**
+ * @brief Write to an open file. Needs @ref APP_CAP_FS.
+ *
+ * @param handle Handle from @ref svc_file_open.
+ * @param data   Bytes to write.
+ * @param len    Number of bytes (bounded by the platform).
+ * @retval >=0 The number of bytes written.
+ * @retval -EPERM The application does not hold @ref APP_CAP_FS.
+ * @retval -EACCES The handle belongs to another application.
+ * @retval -EBADF The handle is not open.
+ * @retval -EINVAL @p len exceeds the platform's transfer limit.
+ */
+__syscall int svc_file_write(int handle, const void *data, size_t len);
+
+/**
+ * @brief Read from an open file. Needs @ref APP_CAP_FS.
+ *
+ * @param handle Handle from @ref svc_file_open.
+ * @param buf    Receives the bytes read.
+ * @param len    Maximum number of bytes (bounded by the platform).
+ * @retval >=0 The number of bytes read.
+ * @retval -EPERM The application does not hold @ref APP_CAP_FS.
+ * @retval -EACCES The handle belongs to another application.
+ * @retval -EBADF The handle is not open.
+ * @retval -EINVAL @p len exceeds the platform's transfer limit.
+ */
+__syscall int svc_file_read(int handle, void *buf, size_t len);
+
+/**
+ * @brief Move the read/write position of an open file. Needs @ref APP_CAP_FS.
+ *
+ * @param handle Handle from @ref svc_file_open.
+ * @param off    Offset in bytes.
+ * @param whence One of the filesystem's FS_SEEK_* values.
+ * @retval 0 on success.
+ * @retval -EPERM The application does not hold @ref APP_CAP_FS.
+ * @retval -EACCES The handle belongs to another application.
+ * @retval -EBADF The handle is not open.
+ */
+__syscall int svc_file_seek(int handle, int32_t off, int whence);
+
+/**
+ * @brief Close an open file. Needs @ref APP_CAP_FS.
+ *
+ * Files an application leaves open are closed for it when it is reclaimed.
+ *
+ * @param handle Handle from @ref svc_file_open.
+ * @retval 0 on success.
+ * @retval -EPERM The application does not hold @ref APP_CAP_FS.
+ * @retval -EACCES The handle belongs to another application.
+ * @retval -EBADF The handle is not open.
+ */
+__syscall int svc_file_close(int handle);
+
+/**
  * @brief Set a PWM channel duty cycle in per-mille. Needs @ref APP_CAP_PWM and a
  *        per-channel grant (@ref app_platform_grant_pwm).
  *

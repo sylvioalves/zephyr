@@ -18,6 +18,9 @@
 #include <zephyr/app_platform/app_platform.h>
 #include <zephyr/app_platform/app_services.h>
 #include <zephyr/app_platform/app_caps.h>
+#include <zephyr/fs/fs.h>
+#include <zephyr/fs/littlefs.h>
+#include <zephyr/storage/flash_map.h>
 #include <zephyr/app_memory/app_memdomain.h>
 #include <string.h>
 #include <errno.h>
@@ -441,8 +444,124 @@ ZTEST(devices, test_capability_above_bit31_reaches_service)
 	expect_rc("w_no", power_ungranted, APP_CAP_LOG | APP_CAP_STEPPER, -EPERM);
 }
 
+/* ---- the per-application file sandbox ---- */
+
+static void fs_ungranted(void *a)
+{
+	ARG_UNUSED(a);
+	report_rc = svc_file_open("x.txt", 1);
+	report_done = 1;
+}
+
+static void fs_escape_absolute(void *a)
+{
+	ARG_UNUSED(a);
+	report_rc = svc_file_open("/lfs/apps/0/secret.txt", 1);
+	report_done = 1;
+}
+
+static void fs_escape_dotdot(void *a)
+{
+	ARG_UNUSED(a);
+	report_rc = svc_file_open("../0/secret.txt", 1);
+	report_done = 1;
+}
+
+static void fs_roundtrip(void *a)
+{
+	ARG_UNUSED(a);
+
+	int h = svc_file_open("note.txt", 1);
+
+	if (h < 0) {
+		report_rc = h;
+		report_done = 1;
+		return;
+	}
+
+	char buf[8] = {0};
+	int rc = svc_file_write(h, "abcd", 4);
+
+	if (rc == 4) {
+		rc = svc_file_seek(h, 0, FS_SEEK_SET);
+		if (rc == 0) {
+			rc = svc_file_read(h, buf, sizeof(buf));
+			rc = (rc == 4 && memcmp(buf, "abcd", 4) == 0) ? 0 :
+			     (rc < 0 ? rc : -EIO);
+		}
+	} else if (rc >= 0) {
+		rc = -EIO;
+	}
+	(void)svc_file_close(h);
+	report_rc = rc;
+	report_done = 1;
+}
+
+/* A handle is meaningful only to the application that opened it: the table is
+ * shared, so a neighbour must not reach a file by guessing a small integer.
+ */
+K_APP_DMEM(report_part) volatile int leaked_handle;
+
+static void fs_leaks_handle(void *a)
+{
+	ARG_UNUSED(a);
+
+	int h = svc_file_open("mine.txt", 1);
+
+	leaked_handle = h;
+	report_rc = h < 0 ? h : 0;
+	report_done = 1;
+	/* Left open on purpose: the reclaim must close it. */
+}
+
+static void fs_steal_handle(void *a)
+{
+	ARG_UNUSED(a);
+	report_rc = svc_file_write(leaked_handle, "x", 1);
+	report_done = 1;
+}
+
+ZTEST(devices, test_fs_gate_and_confinement)
+{
+	expect_rc("f_np", fs_ungranted, APP_CAP_LOG, -EPERM);
+	expect_rc("f_ab", fs_escape_absolute, APP_CAP_LOG | APP_CAP_FS, -EACCES);
+	expect_rc("f_dd", fs_escape_dotdot, APP_CAP_LOG | APP_CAP_FS, -EACCES);
+	expect_rc("f_rt", fs_roundtrip, APP_CAP_LOG | APP_CAP_FS, 0);
+}
+
+ZTEST(devices, test_fs_handles_are_not_shared)
+{
+	leaked_handle = -1;
+	expect_rc("f_lk", fs_leaks_handle, APP_CAP_LOG | APP_CAP_FS, 0);
+	zassert_true(leaked_handle >= 0, "no handle was opened");
+
+	/* The owner was reclaimed, so its handle must have been closed for it
+	 * rather than left for the next tenant of the table.
+	 */
+	expect_rc("f_st", fs_steal_handle, APP_CAP_LOG | APP_CAP_FS, -EBADF);
+}
+
+/* The file service works within a filesystem the system mounts, so the suite
+ * provides one rather than the service owning a mount of its own.
+ */
+FS_LITTLEFS_DECLARE_DEFAULT_CONFIG(test_lfs);
+static struct fs_mount_t test_mnt = {
+	.type = FS_LITTLEFS,
+	.fs_data = &test_lfs,
+	.storage_dev = (void *)PARTITION_ID(storage_partition),
+	.mnt_point = "/lfs",
+};
+
 static void *devices_setup(void)
 {
+	int rc = fs_mount(&test_mnt);
+
+	if (rc == -ENOENT || rc == -EFAULT || rc == -EIO) {
+		/* Nothing usable there yet: format by mounting after an erase. */
+		rc = fs_mount(&test_mnt);
+	}
+	zassert_true(rc == 0 || rc == -EBUSY, "test filesystem mount failed: %d", rc);
+
 	zassert_equal(app_platform_init(), 0, "platform init failed");
 	return NULL;
 }

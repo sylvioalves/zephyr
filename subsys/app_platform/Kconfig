@@ -213,6 +213,59 @@ config APP_PLATFORM_STEPPER
 	  reported by a driver callback, which cannot cross into user mode, so
 	  an application polls the position instead of being notified.
 
+config APP_PLATFORM_FS
+	bool "Per-application sandboxed file service"
+	depends on APP_PLATFORM_SERVICES
+	depends on FILE_SYSTEM
+	help
+	  Give each application a private subtree of one shared filesystem and
+	  confine it there. An application names a file relative to its own root
+	  and cannot reach another application's files: a path that is absolute
+	  or holds a ".." component is refused, and an open handle is usable
+	  only by the application that opened it.
+
+if APP_PLATFORM_FS
+
+config APP_PLATFORM_FS_MOUNT_POINT
+	string "File service mount point"
+	default APP_PLATFORM_REGISTRY_MOUNT_POINT if APP_PLATFORM_REGISTRY
+	default "/lfs"
+	help
+	  Where the per-application roots live. With the registry enabled this
+	  must name the mount the registry already owns: two filesystems over
+	  one storage area corrupt each other.
+
+config APP_PLATFORM_FS_OPEN_FILES
+	int "Open files shared by all applications"
+	default 4
+	help
+	  Size of the platform's open-file table. Every handle records its owner,
+	  so this bounds the total number of files open at once, not the number
+	  one application may hold.
+
+config APP_PLATFORM_FS_PATH_MAX
+	int "Maximum resolved file path length"
+	default 64
+	help
+	  Bound on the absolute path built from an application's root and the
+	  relative name it supplied. A longer path is refused.
+
+config APP_PLATFORM_FS_INIT_PRIORITY
+	int "File service init priority"
+	default 99
+	help
+	  Application-level priority at which the per-application directories are
+	  created. It must run after whatever mounts the filesystem.
+
+config APP_PLATFORM_FS_XFER_MAX
+	int "Maximum bytes per file read or write"
+	default 256
+	help
+	  Bound on a single transfer. The bytes are copied through a supervisor
+	  buffer of this size, so it is also the stack cost of a file call.
+
+endif # APP_PLATFORM_FS
+
 config APP_PLATFORM_PSRAM
 	bool "Shared external RAM (PSRAM) mapping service"
 	depends on APP_PLATFORM_SERVICES

@@ -68,9 +68,10 @@ typedef uint64_t app_caps_t;
 #define APP_CAP_POWER   APP_CAP_BIT(33)  /**< read charger and fuel-gauge state */
 #define APP_CAP_REGULATOR APP_CAP_BIT(34) /**< granted regulator instances */
 #define APP_CAP_STEPPER APP_CAP_BIT(35)  /**< granted stepper motor instances */
+#define APP_CAP_FS      APP_CAP_BIT(36)  /**< files under the app's private root */
 
 /** Highest capability bit currently allocated. */
-#define APP_CAP_LAST    APP_CAP_STEPPER
+#define APP_CAP_LAST    APP_CAP_FS
 
 /**
  * @brief Grant every defined capability (for a fully trusted application).

@@ -111,4 +111,13 @@ static inline void app_platform_clear_stepper_grants(int id)
 }
 #endif
 
+#ifdef CONFIG_APP_PLATFORM_FS
+void app_platform_clear_fs_handles(int id);
+#else
+static inline void app_platform_clear_fs_handles(int id)
+{
+	ARG_UNUSED(id);
+}
+#endif
+
 #endif /* ZEPHYR_SUBSYS_APP_PLATFORM_APP_GRANTS_H_ */
