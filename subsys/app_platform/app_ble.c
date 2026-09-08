@@ -32,6 +32,7 @@
 #include <errno.h>
 
 #define BLE_NAME_MAX 24
+#define MAX_APPS CONFIG_APP_PLATFORM_MAX_APPS
 
 /*
  * Bounded wait for the BLE request lock: a caller waits at most one in-flight
@@ -62,6 +63,8 @@ enum ble_op {
 	BLE_OP_SCAN,
 	BLE_OP_HR_READ,
 	BLE_OP_OTA_FETCH,
+	BLE_OP_GATT_READ,
+	BLE_OP_GATT_WRITE,
 };
 
 struct ble_req {
@@ -354,6 +357,321 @@ static int ble_do_hr_read(uint32_t timeout_ms)
 static int ble_do_ota_fetch(const char *name, uint32_t timeout_ms);
 #endif
 
+#ifdef CONFIG_APP_PLATFORM_BLE_GATT
+/*
+ * The generic GATT client. An application names a service and a characteristic
+ * by UUID; the platform connects, discovers both and performs one read or
+ * write. Handles never leave the platform, so an application cannot address an
+ * attribute it did not name, and a UUID is only accepted when it was granted
+ * to that application, which keeps a granted peer from being used as a way to
+ * reach every service it happens to expose.
+ */
+#define GATT_MAX_SVC CONFIG_APP_PLATFORM_BLE_GATT_MAX_SERVICES
+
+struct gatt_grant {
+	uint8_t uuid[16];
+	uint8_t len;
+};
+
+static struct gatt_grant gatt_grants[MAX_APPS][GATT_MAX_SVC];
+
+void app_platform_grant_ble_gatt(int id, const uint8_t *uuid, size_t uuid_len)
+{
+	if (id < 0 || id >= MAX_APPS || uuid == NULL ||
+	    (uuid_len != 2U && uuid_len != 16U)) {
+		return;
+	}
+
+	for (int i = 0; i < GATT_MAX_SVC; i++) {
+		if (gatt_grants[id][i].len == 0U) {
+			memcpy(gatt_grants[id][i].uuid, uuid, uuid_len);
+			gatt_grants[id][i].len = (uint8_t)uuid_len;
+			return;
+		}
+	}
+}
+
+static bool gatt_is_granted(int id, const uint8_t *uuid, size_t uuid_len)
+{
+	if (id < 0 || id >= MAX_APPS) {
+		return false;
+	}
+
+	for (int i = 0; i < GATT_MAX_SVC; i++) {
+		if (gatt_grants[id][i].len == (uint8_t)uuid_len &&
+		    memcmp(gatt_grants[id][i].uuid, uuid, uuid_len) == 0) {
+			return true;
+		}
+	}
+	return false;
+}
+
+/* Request parameters and result, owned by the caller holding ble_lock. */
+static uint8_t gatt_svc_uuid_buf[16];
+static uint8_t gatt_chr_uuid_buf[16];
+static size_t gatt_svc_uuid_len;
+static size_t gatt_chr_uuid_len;
+static uint8_t gatt_value[APP_BLE_GATT_MAX];
+static size_t gatt_value_len;
+
+static struct bt_conn *gatt_conn;
+static char gatt_want[BLE_NAME_MAX];
+static bool gatt_connect_wanted;
+static uint16_t gatt_chr_handle;
+static K_SEM_DEFINE(gatt_ready, 0, 1);
+static K_SEM_DEFINE(gatt_step, 0, 1);
+static int gatt_step_rc;
+
+static union {
+	struct bt_uuid_16  u16;
+	struct bt_uuid_128 u128;
+} gatt_svc_u, gatt_chr_u;
+
+static struct bt_gatt_discover_params gatt_disc;
+static struct bt_gatt_read_params gatt_read;
+static struct bt_gatt_write_params gatt_write;
+
+/* Build a bt_uuid from the application's bytes. */
+static struct bt_uuid *gatt_make_uuid(void *storage, const uint8_t *bytes,
+				      size_t len)
+{
+	if (len == 2U) {
+		struct bt_uuid_16 *u = storage;
+
+		u->uuid.type = BT_UUID_TYPE_16;
+		u->val = sys_get_le16(bytes);
+		return &u->uuid;
+	}
+
+	struct bt_uuid_128 *u = storage;
+
+	u->uuid.type = BT_UUID_TYPE_128;
+	memcpy(u->val, bytes, 16);
+	return &u->uuid;
+}
+
+static uint8_t gatt_discover_cb(struct bt_conn *conn,
+				const struct bt_gatt_attr *attr,
+				struct bt_gatt_discover_params *params)
+{
+	if (attr == NULL) {
+		/* Discovery ended without the characteristic: release the
+		 * waiter so the request fails as -ENOENT instead of timing out.
+		 */
+		k_sem_give(&gatt_ready);
+		return BT_GATT_ITER_STOP;
+	}
+
+	if (params->type == BT_GATT_DISCOVER_PRIMARY) {
+		gatt_disc.uuid = gatt_make_uuid(&gatt_chr_u, gatt_chr_uuid_buf,
+						gatt_chr_uuid_len);
+		gatt_disc.start_handle = attr->handle + 1;
+		gatt_disc.type = BT_GATT_DISCOVER_CHARACTERISTIC;
+		bt_gatt_discover(conn, &gatt_disc);
+	} else {
+		gatt_chr_handle = bt_gatt_attr_value_handle(attr);
+		k_sem_give(&gatt_ready);
+	}
+	return BT_GATT_ITER_STOP;
+}
+
+static void gatt_start_discovery(struct bt_conn *conn)
+{
+	gatt_disc.uuid = gatt_make_uuid(&gatt_svc_u, gatt_svc_uuid_buf,
+					gatt_svc_uuid_len);
+	gatt_disc.func = gatt_discover_cb;
+	gatt_disc.start_handle = BT_ATT_FIRST_ATTRIBUTE_HANDLE;
+	gatt_disc.end_handle = BT_ATT_LAST_ATTRIBUTE_HANDLE;
+	gatt_disc.type = BT_GATT_DISCOVER_PRIMARY;
+	bt_gatt_discover(conn, &gatt_disc);
+}
+
+static uint8_t gatt_read_cb(struct bt_conn *conn, uint8_t err,
+			    struct bt_gatt_read_params *params,
+			    const void *data, uint16_t len)
+{
+	ARG_UNUSED(conn);
+	ARG_UNUSED(params);
+
+	if (err != 0U) {
+		gatt_step_rc = -EIO;
+		k_sem_give(&gatt_step);
+		return BT_GATT_ITER_STOP;
+	}
+	if (data == NULL) {
+		gatt_step_rc = 0;
+		k_sem_give(&gatt_step);
+		return BT_GATT_ITER_STOP;
+	}
+
+	size_t n = MIN((size_t)len, sizeof(gatt_value) - gatt_value_len);
+
+	memcpy(&gatt_value[gatt_value_len], data, n);
+	gatt_value_len += n;
+	return BT_GATT_ITER_CONTINUE;
+}
+
+static void gatt_write_cb(struct bt_conn *conn, uint8_t err,
+			  struct bt_gatt_write_params *params)
+{
+	ARG_UNUSED(conn);
+	ARG_UNUSED(params);
+	gatt_step_rc = (err == 0U) ? 0 : -EIO;
+	k_sem_give(&gatt_step);
+}
+
+static void gatt_connected(struct bt_conn *conn, uint8_t err)
+{
+	if (!gatt_connect_wanted || conn != gatt_conn) {
+		return;
+	}
+	if (err != 0U) {
+		k_sem_give(&gatt_ready);
+		return;
+	}
+	gatt_chr_handle = 0;
+	gatt_start_discovery(conn);
+}
+
+static void gatt_disconnected(struct bt_conn *conn, uint8_t reason)
+{
+	ARG_UNUSED(reason);
+	if (conn == gatt_conn) {
+		bt_conn_unref(gatt_conn);
+		gatt_conn = NULL;
+	}
+}
+
+BT_CONN_CB_DEFINE(app_gatt_conn_cb) = {
+	.connected = gatt_connected,
+	.disconnected = gatt_disconnected,
+};
+
+static bool gatt_name_cb(struct bt_data *data, void *user)
+{
+	bool *found = user;
+
+	if (data->type == BT_DATA_NAME_COMPLETE ||
+	    data->type == BT_DATA_NAME_SHORTENED) {
+		size_t len = MIN(data->data_len, (size_t)BLE_NAME_MAX - 1);
+
+		if (strlen(gatt_want) == len &&
+		    strncmp((const char *)data->data, gatt_want, len) == 0) {
+			*found = true;
+			return false;
+		}
+	}
+	return true;
+}
+
+static void gatt_scan_cb(const bt_addr_le_t *addr, int8_t rssi, uint8_t type,
+			 struct net_buf_simple *ad)
+{
+	ARG_UNUSED(rssi);
+	ARG_UNUSED(type);
+
+	if (!gatt_connect_wanted || gatt_conn != NULL) {
+		return;
+	}
+
+	bool found = false;
+
+	bt_data_parse(ad, gatt_name_cb, &found);
+	if (!found) {
+		return;
+	}
+	bt_le_scan_stop();
+	(void)bt_conn_le_create(addr, BT_CONN_LE_CREATE_CONN,
+				BT_LE_CONN_PARAM_DEFAULT, &gatt_conn);
+}
+
+/*
+ * Connect to the named peer, discover the requested characteristic and perform
+ * one exchange. Runs on the BLE worker thread.
+ */
+static int ble_do_gatt(bool is_write, const char *name, uint32_t timeout_ms)
+{
+	int rc = ble_ensure_enabled();
+
+	if (rc != 0) {
+		return rc;
+	}
+
+	strncpy(gatt_want, name, sizeof(gatt_want) - 1);
+	gatt_want[sizeof(gatt_want) - 1] = '\0';
+	gatt_chr_handle = 0;
+
+	/*
+	 * Reuse a link that is already up to the same peer. Each service call
+	 * is otherwise its own connection, and a peripheral does not resume
+	 * advertising the instant the previous one drops, so reconnecting per
+	 * call would lose the peer between two calls of the same application.
+	 */
+	if (gatt_conn == NULL) {
+		gatt_connect_wanted = true;
+		k_sem_reset(&gatt_ready);
+
+		struct bt_le_scan_param sp = {
+			.type = BT_LE_SCAN_TYPE_ACTIVE,
+			.options = BT_LE_SCAN_OPT_NONE,
+			.interval = BT_GAP_SCAN_FAST_INTERVAL,
+			.window = BT_GAP_SCAN_FAST_WINDOW,
+		};
+
+		rc = bt_le_scan_start(&sp, gatt_scan_cb);
+		if (rc != 0) {
+			goto out;
+		}
+		if (k_sem_take(&gatt_ready, K_MSEC(timeout_ms)) != 0) {
+			rc = -ETIMEDOUT;
+			goto out;
+		}
+	} else {
+		/* Already connected: discover this request's characteristic. */
+		k_sem_reset(&gatt_ready);
+		gatt_start_discovery(gatt_conn);
+		if (k_sem_take(&gatt_ready, K_MSEC(timeout_ms)) != 0) {
+			rc = -ETIMEDOUT;
+			goto out;
+		}
+	}
+	if (gatt_chr_handle == 0U) {
+		rc = -ENOENT;
+		goto out;
+	}
+
+	k_sem_reset(&gatt_step);
+	if (is_write) {
+		gatt_write.handle = gatt_chr_handle;
+		gatt_write.offset = 0;
+		gatt_write.data = gatt_value;
+		gatt_write.length = (uint16_t)gatt_value_len;
+		gatt_write.func = gatt_write_cb;
+		rc = bt_gatt_write(gatt_conn, &gatt_write);
+	} else {
+		gatt_value_len = 0;
+		gatt_read.func = gatt_read_cb;
+		gatt_read.handle_count = 1;
+		gatt_read.single.handle = gatt_chr_handle;
+		gatt_read.single.offset = 0;
+		rc = bt_gatt_read(gatt_conn, &gatt_read);
+	}
+	if (rc != 0) {
+		goto out;
+	}
+	if (k_sem_take(&gatt_step, K_MSEC(timeout_ms)) != 0) {
+		rc = -ETIMEDOUT;
+		goto out;
+	}
+	rc = (gatt_step_rc != 0) ? gatt_step_rc : (int)gatt_value_len;
+out:
+	gatt_connect_wanted = false;
+	bt_le_scan_stop();
+	return rc;
+}
+
+#endif /* CONFIG_APP_PLATFORM_BLE_GATT */
+
 static void ble_thread(void *a, void *b, void *c)
 {
 	ARG_UNUSED(a); ARG_UNUSED(b); ARG_UNUSED(c);
@@ -372,6 +690,13 @@ static void ble_thread(void *a, void *b, void *c)
 #ifdef CONFIG_APP_PLATFORM_BLE_OTA
 		case BLE_OP_OTA_FETCH:
 			ble_result = ble_do_ota_fetch(req.name, req.timeout_ms);
+			break;
+#endif
+#ifdef CONFIG_APP_PLATFORM_BLE_GATT
+		case BLE_OP_GATT_READ:
+		case BLE_OP_GATT_WRITE:
+			ble_result = ble_do_gatt(req.op == BLE_OP_GATT_WRITE,
+						 req.name, req.timeout_ms);
 			break;
 #endif
 		default:
@@ -824,6 +1149,91 @@ int z_impl_svc_ble_ota_fetch(const char *name, uint32_t timeout_ms,
 }
 #endif /* CONFIG_APP_PLATFORM_BLE_OTA */
 
+#ifdef CONFIG_APP_PLATFORM_BLE_GATT
+/*
+ * Shared entry for both directions. The capability and the service grant are
+ * checked before anything is copied or the worker is woken, so an ungranted
+ * caller never reaches the controller.
+ */
+static int gatt_request(bool is_write, const char *name,
+			const uint8_t *svc_uuid, size_t svc_uuid_len,
+			const uint8_t *chr_uuid, size_t chr_uuid_len,
+			uint8_t *buf, size_t len, uint32_t timeout_ms)
+{
+	if (!app_has_cap(APP_CAP_BLE)) {
+		return -EPERM;
+	}
+	if ((svc_uuid_len != 2U && svc_uuid_len != 16U) ||
+	    (chr_uuid_len != 2U && chr_uuid_len != 16U) ||
+	    len > APP_BLE_GATT_MAX) {
+		return -EINVAL;
+	}
+	if (!gatt_is_granted(app_platform_id_current(), svc_uuid, svc_uuid_len)) {
+		return -EACCES;
+	}
+
+	struct ble_req req = {
+		.op = is_write ? BLE_OP_GATT_WRITE : BLE_OP_GATT_READ,
+		.timeout_ms = timeout_ms,
+	};
+
+	strncpy(req.name, name, sizeof(req.name) - 1);
+	req.name[sizeof(req.name) - 1] = '\0';
+
+	if (k_mutex_lock(&ble_lock,
+			 K_MSEC(timeout_ms + BLE_LOCK_MARGIN_MS)) != 0) {
+		return -EBUSY;
+	}
+
+	memcpy(gatt_svc_uuid_buf, svc_uuid, svc_uuid_len);
+	memcpy(gatt_chr_uuid_buf, chr_uuid, chr_uuid_len);
+	gatt_svc_uuid_len = svc_uuid_len;
+	gatt_chr_uuid_len = chr_uuid_len;
+	if (is_write) {
+		memcpy(gatt_value, buf, len);
+		gatt_value_len = len;
+	}
+
+	(void)k_msgq_put(&ble_req_q, &req, K_NO_WAIT);
+	if (k_sem_take(&ble_done, K_MSEC(timeout_ms + BLE_LOCK_MARGIN_MS)) != 0) {
+		k_mutex_unlock(&ble_lock);
+		return -ETIMEDOUT;
+	}
+
+	int rc = ble_result;
+
+	if (!is_write && rc > 0) {
+		size_t n = MIN((size_t)rc, len);
+
+		memcpy(buf, gatt_value, n);
+		rc = (int)n;
+	}
+	k_mutex_unlock(&ble_lock);
+	return rc;
+}
+
+int z_impl_svc_ble_gatt_read(const char *name,
+			     const uint8_t *svc_uuid, size_t svc_uuid_len,
+			     const uint8_t *chr_uuid, size_t chr_uuid_len,
+			     uint8_t *buf, size_t cap, uint32_t timeout_ms)
+{
+	return gatt_request(false, name, svc_uuid, svc_uuid_len, chr_uuid,
+			    chr_uuid_len, buf, cap, timeout_ms);
+}
+
+int z_impl_svc_ble_gatt_write(const char *name,
+			      const uint8_t *svc_uuid, size_t svc_uuid_len,
+			      const uint8_t *chr_uuid, size_t chr_uuid_len,
+			      const uint8_t *buf, size_t len,
+			      uint32_t timeout_ms)
+{
+	int rc = gatt_request(true, name, svc_uuid, svc_uuid_len, chr_uuid,
+			      chr_uuid_len, (uint8_t *)buf, len, timeout_ms);
+
+	return (rc > 0) ? 0 : rc;
+}
+#endif /* CONFIG_APP_PLATFORM_BLE_GATT */
+
 #ifdef CONFIG_USERSPACE
 static inline int z_vrfy_svc_ble_scan(const char *name, uint32_t timeout_ms)
 {
@@ -860,4 +1270,76 @@ static inline int z_vrfy_svc_ble_ota_fetch(const char *name,
 }
 #include <zephyr/syscalls/svc_ble_ota_fetch_mrsh.c>
 #endif
+#ifdef CONFIG_APP_PLATFORM_BLE_GATT
+/*
+ * Both UUIDs and the value are copied into platform memory before use: the
+ * lengths are validated first so a caller cannot describe a buffer larger than
+ * it owns, and the copies mean a second thread in the same application cannot
+ * change the bytes after they were checked.
+ */
+static inline int z_vrfy_svc_ble_gatt_read(const char *name,
+					   const uint8_t *svc_uuid,
+					   size_t svc_uuid_len,
+					   const uint8_t *chr_uuid,
+					   size_t chr_uuid_len,
+					   uint8_t *buf, size_t cap,
+					   uint32_t timeout_ms)
+{
+	char nbuf[BLE_NAME_MAX];
+	uint8_t svc[16];
+	uint8_t chr[16];
+
+	if ((svc_uuid_len != 2U && svc_uuid_len != 16U) ||
+	    (chr_uuid_len != 2U && chr_uuid_len != 16U) ||
+	    cap > APP_BLE_GATT_MAX) {
+		return -EINVAL;
+	}
+	if (k_usermode_string_copy(nbuf, (char *)name, sizeof(nbuf)) != 0) {
+		return -EFAULT;
+	}
+	K_OOPS(K_SYSCALL_MEMORY_READ(svc_uuid, svc_uuid_len));
+	K_OOPS(K_SYSCALL_MEMORY_READ(chr_uuid, chr_uuid_len));
+	K_OOPS(K_SYSCALL_MEMORY_WRITE(buf, cap));
+	memcpy(svc, svc_uuid, svc_uuid_len);
+	memcpy(chr, chr_uuid, chr_uuid_len);
+
+	return z_impl_svc_ble_gatt_read(nbuf, svc, svc_uuid_len, chr,
+					chr_uuid_len, buf, cap, timeout_ms);
+}
+#include <zephyr/syscalls/svc_ble_gatt_read_mrsh.c>
+
+static inline int z_vrfy_svc_ble_gatt_write(const char *name,
+					    const uint8_t *svc_uuid,
+					    size_t svc_uuid_len,
+					    const uint8_t *chr_uuid,
+					    size_t chr_uuid_len,
+					    const uint8_t *buf, size_t len,
+					    uint32_t timeout_ms)
+{
+	char nbuf[BLE_NAME_MAX];
+	uint8_t svc[16];
+	uint8_t chr[16];
+	uint8_t vbuf[APP_BLE_GATT_MAX];
+
+	if ((svc_uuid_len != 2U && svc_uuid_len != 16U) ||
+	    (chr_uuid_len != 2U && chr_uuid_len != 16U) ||
+	    len > APP_BLE_GATT_MAX) {
+		return -EINVAL;
+	}
+	if (k_usermode_string_copy(nbuf, (char *)name, sizeof(nbuf)) != 0) {
+		return -EFAULT;
+	}
+	K_OOPS(K_SYSCALL_MEMORY_READ(svc_uuid, svc_uuid_len));
+	K_OOPS(K_SYSCALL_MEMORY_READ(chr_uuid, chr_uuid_len));
+	K_OOPS(K_SYSCALL_MEMORY_READ(buf, len));
+	memcpy(svc, svc_uuid, svc_uuid_len);
+	memcpy(chr, chr_uuid, chr_uuid_len);
+	memcpy(vbuf, buf, len);
+
+	return z_impl_svc_ble_gatt_write(nbuf, svc, svc_uuid_len, chr,
+					 chr_uuid_len, vbuf, len, timeout_ms);
+}
+#include <zephyr/syscalls/svc_ble_gatt_write_mrsh.c>
+#endif
+
 #endif

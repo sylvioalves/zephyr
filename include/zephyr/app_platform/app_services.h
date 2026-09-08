@@ -1364,6 +1364,89 @@ __syscall int svc_ble_ota_fetch(const char *name, uint32_t timeout_ms,
 				uint32_t *out_len);
 
 /**
+ * @brief Maximum payload one generic GATT read or write may carry.
+ */
+#define APP_BLE_GATT_MAX 64
+
+/**
+ * @brief Read a characteristic from a BLE peer by UUID. Needs
+ *        @ref APP_CAP_BLE and a service grant
+ *        (@ref app_platform_grant_ble_gatt).
+ *
+ * The platform connects to @p name, discovers @p svc_uuid and @p chr_uuid and
+ * reads the value. An application names UUIDs and never sees a connection or
+ * an attribute handle, so it cannot reach a characteristic outside the service
+ * it was granted. UUIDs are given as 16-bit values, or as 128-bit values in
+ * little-endian byte order when @p svc_uuid_len is 16.
+ *
+ * @param name         Peer's advertised name.
+ * @param svc_uuid     Service UUID bytes.
+ * @param svc_uuid_len 2 or 16.
+ * @param chr_uuid     Characteristic UUID bytes.
+ * @param chr_uuid_len 2 or 16.
+ * @param buf          Receives the value.
+ * @param cap          Buffer size, at most @ref APP_BLE_GATT_MAX.
+ * @param timeout_ms   How long to wait.
+ *
+ * @retval >=0 the number of bytes read.
+ * @retval -EPERM without @ref APP_CAP_BLE.
+ * @retval -EACCES if @p svc_uuid was not granted to this application.
+ * @retval -EINVAL for a malformed UUID length or an oversized buffer.
+ * @retval -ENOENT if the peer does not expose the service or characteristic.
+ * @retval -EBUSY if another BLE request is in flight.
+ * @retval -ETIMEDOUT if the peer did not answer in time.
+ */
+__syscall int svc_ble_gatt_read(const char *name,
+				const uint8_t *svc_uuid, size_t svc_uuid_len,
+				const uint8_t *chr_uuid, size_t chr_uuid_len,
+				uint8_t *buf, size_t cap, uint32_t timeout_ms);
+
+/**
+ * @brief Write a characteristic on a BLE peer by UUID. Needs
+ *        @ref APP_CAP_BLE and a service grant
+ *        (@ref app_platform_grant_ble_gatt).
+ *
+ * Scoped exactly as @ref svc_ble_gatt_read: the granted service UUID bounds
+ * what the application may write.
+ *
+ * @param name         Peer's advertised name.
+ * @param svc_uuid     Service UUID bytes.
+ * @param svc_uuid_len 2 or 16.
+ * @param chr_uuid     Characteristic UUID bytes.
+ * @param chr_uuid_len 2 or 16.
+ * @param buf          Value to write.
+ * @param len          Value length, at most @ref APP_BLE_GATT_MAX.
+ * @param timeout_ms   How long to wait.
+ *
+ * @retval 0 on success.
+ * @retval -EPERM without @ref APP_CAP_BLE.
+ * @retval -EACCES if @p svc_uuid was not granted to this application.
+ * @retval -EINVAL for a malformed UUID length or an oversized value.
+ * @retval -ENOENT if the peer does not expose the service or characteristic.
+ * @retval -EBUSY if another BLE request is in flight.
+ * @retval -ETIMEDOUT if the peer did not answer in time.
+ */
+__syscall int svc_ble_gatt_write(const char *name,
+				 const uint8_t *svc_uuid, size_t svc_uuid_len,
+				 const uint8_t *chr_uuid, size_t chr_uuid_len,
+				 const uint8_t *buf, size_t len,
+				 uint32_t timeout_ms);
+
+/**
+ * @brief Allow an application to reach one GATT service UUID.
+ *
+ * Holding @ref APP_CAP_BLE lets an application scan and use the profiles the
+ * platform implements; reaching a service through the generic GATT client
+ * additionally requires that service's UUID to be granted here. Call once per
+ * service, up to CONFIG_APP_PLATFORM_BLE_GATT_MAX_SERVICES.
+ *
+ * @param id       Application id from @ref app_platform_launch.
+ * @param uuid     Service UUID bytes.
+ * @param uuid_len 2 or 16.
+ */
+void app_platform_grant_ble_gatt(int id, const uint8_t *uuid, size_t uuid_len);
+
+/**
  * @brief Send a datagram to the 802.15.4 peer. Needs @ref APP_CAP_RADIO.
  *
  * The platform owns the radio and the socket; the application hands off a copied

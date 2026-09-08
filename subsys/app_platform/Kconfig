@@ -401,6 +401,25 @@ config APP_PLATFORM_BLE
 	  for a peer by name, or to connect to a heart-rate peer and read one
 	  measurement, without linking any of the BLE stack.
 
+config APP_PLATFORM_BLE_GATT
+	bool "Generic GATT client"
+	depends on APP_PLATFORM_BLE
+	help
+	  Add svc_ble_gatt_read and svc_ble_gatt_write, which let an
+	  application name a service and characteristic by UUID instead of
+	  being limited to the profiles the platform implements. The platform
+	  still owns the connection and the handles: an application passes
+	  UUIDs, never a handle, and reaches only the service UUIDs granted to
+	  it with app_platform_grant_ble_gatt().
+
+config APP_PLATFORM_BLE_GATT_MAX_SERVICES
+	int "Granted service UUIDs per application"
+	default 4
+	range 1 16
+	depends on APP_PLATFORM_BLE_GATT
+	help
+	  How many distinct service UUIDs one application may be granted.
+
 config APP_PLATFORM_BLE_OTA
 	bool "Fetch applications over BLE"
 	depends on APP_PLATFORM_BLE
