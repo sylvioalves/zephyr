@@ -451,6 +451,20 @@ config APP_PLATFORM_BLE_GATT_MAX_SERVICES
 	help
 	  How many distinct service UUIDs one application may be granted.
 
+config APP_PLATFORM_BLE_SERVE
+	bool "GATT server for applications"
+	depends on APP_PLATFORM_BLE
+	depends on APP_PLATFORM_BLE_GATT
+	depends on APP_PLATFORM_EVENTS
+	depends on BT_PERIPHERAL
+	depends on BT_GATT_DYNAMIC_DB
+	help
+	  Let an application serve a GATT service of its own: the platform
+	  registers the service, advertises, owns the values and the
+	  connection, and reports a peer's write as an input event. The
+	  application declares characteristics by UUID and never sees a
+	  connection or an attribute handle.
+
 config APP_PLATFORM_BLE_OTA
 	bool "Fetch applications over BLE"
 	depends on APP_PLATFORM_BLE

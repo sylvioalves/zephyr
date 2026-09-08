@@ -391,7 +391,7 @@ void app_platform_grant_ble_gatt(int id, const uint8_t *uuid, size_t uuid_len)
 	}
 }
 
-static bool gatt_is_granted(int id, const uint8_t *uuid, size_t uuid_len)
+bool app_platform_ble_gatt_granted(int id, const uint8_t *uuid, size_t uuid_len)
 {
 	if (id < 0 || id >= MAX_APPS) {
 		return false;
@@ -1168,7 +1168,7 @@ static int gatt_request(bool is_write, const char *name,
 	    len > APP_BLE_GATT_MAX) {
 		return -EINVAL;
 	}
-	if (!gatt_is_granted(app_platform_id_current(), svc_uuid, svc_uuid_len)) {
+	if (!app_platform_ble_gatt_granted(app_platform_id_current(), svc_uuid, svc_uuid_len)) {
 		return -EACCES;
 	}
 

@@ -564,6 +564,7 @@ enum app_event_kind {
 	APP_EVENT_NONE = 0,   /**< no event (timeout) */
 	APP_EVENT_BUTTON,     /**< the board button was pressed */
 	APP_EVENT_GPIO,       /**< a granted input line changed */
+	APP_EVENT_GATT_WRITE, /**< a peer wrote a served characteristic */
 };
 
 /**
@@ -571,7 +572,7 @@ enum app_event_kind {
  */
 struct app_event {
 	uint8_t  kind;   /**< one of @ref app_event_kind */
-	uint8_t  line;   /**< GPIO line index, for @ref APP_EVENT_GPIO */
+	uint8_t  line;   /**< GPIO line index, or served characteristic index */
 	uint8_t  value;  /**< line level, or pressed state for a key */
 	uint16_t code;   /**< key code, for @ref APP_EVENT_BUTTON */
 	uint32_t seq;    /**< per-application counter, gaps mean dropped events */
@@ -1497,6 +1498,86 @@ __syscall int svc_ble_gatt_write(const char *name,
  * @param uuid_len 2 or 16.
  */
 void app_platform_grant_ble_gatt(int id, const uint8_t *uuid, size_t uuid_len);
+
+/**
+ * @brief Maximum characteristics one application may serve.
+ */
+#define APP_BLE_SERVE_MAX_CHRC 4
+
+/** @brief A characteristic the application asks the platform to serve. */
+struct app_ble_chrc {
+	uint8_t uuid[16];  /**< characteristic UUID bytes, little-endian */
+	uint8_t uuid_len;  /**< 2 or 16 */
+	uint8_t readable;  /**< non-zero to allow reads */
+	uint8_t writable;  /**< non-zero to allow writes */
+};
+
+/**
+ * @brief Serve a GATT service and start advertising. Needs @ref APP_CAP_BLE
+ *        and a grant for @p svc_uuid (@ref app_platform_grant_ble_gatt).
+ *
+ * The platform registers the service, owns the value buffers and the
+ * connection, and advertises under @p name so a phone or another central can
+ * connect. The application never sees a connection or an attribute handle: it
+ * publishes values with @ref svc_ble_serve_set, and a peer's write arrives as
+ * an @ref APP_EVENT_GATT_WRITE event carrying the characteristic index, which
+ * the application reads with @ref svc_event_wait like any other input.
+ *
+ * @param name     Advertised name.
+ * @param svc_uuid Service UUID bytes, little-endian.
+ * @param uuid_len 2 or 16.
+ * @param chrc     Characteristics to serve, in index order.
+ * @param n_chrc   How many, at most @ref APP_BLE_SERVE_MAX_CHRC.
+ *
+ * @retval 0 on success.
+ * @retval -EPERM without @ref APP_CAP_BLE.
+ * @retval -EACCES if @p svc_uuid was not granted to this application.
+ * @retval -EINVAL for a malformed UUID length or too many characteristics.
+ * @retval -EBUSY if another application is already serving.
+ */
+__syscall int svc_ble_serve_start(const char *name, const uint8_t *svc_uuid,
+				  size_t uuid_len,
+				  const struct app_ble_chrc *chrc,
+				  size_t n_chrc);
+
+/**
+ * @brief Publish a served characteristic's value. Needs @ref APP_CAP_BLE.
+ *
+ * The platform answers a peer's read from this value, so the application sets
+ * it and does not take part in the exchange.
+ *
+ * @param idx Characteristic index, as passed to @ref svc_ble_serve_start.
+ * @param buf Value bytes.
+ * @param len Length, at most @ref APP_BLE_GATT_MAX.
+ *
+ * @retval 0 on success.
+ * @retval -EPERM without @ref APP_CAP_BLE.
+ * @retval -EINVAL for an unknown index or an oversized value.
+ * @retval -EACCES if this application is not the one serving.
+ */
+__syscall int svc_ble_serve_set(int idx, const uint8_t *buf, size_t len);
+
+/**
+ * @brief Read back a served characteristic, including what a peer wrote.
+ *        Needs @ref APP_CAP_BLE.
+ *
+ * @param idx Characteristic index.
+ * @param buf Receives the value.
+ * @param cap Buffer size.
+ *
+ * @retval >=0 the number of bytes copied.
+ * @retval -EPERM without @ref APP_CAP_BLE.
+ * @retval -EINVAL for an unknown index.
+ * @retval -EACCES if this application is not the one serving.
+ */
+__syscall int svc_ble_serve_get(int idx, uint8_t *buf, size_t cap);
+
+/**
+ * @brief Stop serving and stop advertising. Needs @ref APP_CAP_BLE.
+ *
+ * @retval 0 on success, -EPERM without the capability.
+ */
+__syscall int svc_ble_serve_stop(void);
 
 /**
  * @brief Send a datagram to the 802.15.4 peer. Needs @ref APP_CAP_RADIO.

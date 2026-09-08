@@ -33,4 +33,9 @@ static inline void app_events_broadcast(const struct app_event *evt,
 }
 #endif
 
+#ifdef CONFIG_APP_PLATFORM_BLE_GATT
+/* Grant table lives in app_ble.c; the server side checks it too. */
+bool app_platform_ble_gatt_granted(int id, const uint8_t *uuid, size_t uuid_len);
+#endif
+
 #endif /* ZEPHYR_SUBSYS_APP_PLATFORM_APP_EVENTS_H_ */
