@@ -572,7 +572,8 @@ enum app_event_kind {
 struct app_event {
 	uint8_t  kind;   /**< one of @ref app_event_kind */
 	uint8_t  line;   /**< GPIO line index, for @ref APP_EVENT_GPIO */
-	uint8_t  value;  /**< line level, for @ref APP_EVENT_GPIO */
+	uint8_t  value;  /**< line level, or pressed state for a key */
+	uint16_t code;   /**< key code, for @ref APP_EVENT_BUTTON */
 	uint32_t seq;    /**< per-application counter, gaps mean dropped events */
 };
 

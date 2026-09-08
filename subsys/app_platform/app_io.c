@@ -19,6 +19,10 @@
 
 #include "app_events.h"
 
+#ifdef CONFIG_APP_PLATFORM_INPUT_KEYS
+#include <zephyr/input/input.h>
+#endif
+
 #include <zephyr/kernel.h>
 #include <zephyr/init.h>
 #include <zephyr/device.h>
@@ -169,7 +173,40 @@ int z_impl_svc_led_find(const char *name)
 
 /* ---- button / input events ---- */
 
-#if DT_HAS_ALIAS(sw0)
+#ifdef CONFIG_APP_PLATFORM_INPUT_KEYS
+/*
+ * Key events come from the input subsystem, so the driver debounces and reports
+ * which key moved: an application sees one event per press rather than every
+ * raw edge. Every application holding APP_CAP_INPUT receives every key, and the
+ * code travels with the event so an application can tell them apart. Posting to
+ * an application queue never blocks, so this is safe in the reporting context.
+ */
+static K_SEM_DEFINE(press_sem, 0, 16);
+static atomic_t press_count;
+
+static void key_event(struct input_event *evt, void *user)
+{
+	ARG_UNUSED(user);
+
+	/* Presses only: a release is the same key reported back at zero. */
+	if (evt->type != INPUT_EV_KEY || evt->value == 0) {
+		return;
+	}
+
+	atomic_inc(&press_count);
+	k_sem_give(&press_sem);
+
+	struct app_event out = {
+		.kind = APP_EVENT_BUTTON,
+		.value = 1,
+		.code = (uint16_t)evt->code,
+	};
+
+	app_events_broadcast(&out, NULL);
+}
+INPUT_CALLBACK_DEFINE(NULL, key_event, NULL);
+
+#elif DT_HAS_ALIAS(sw0)
 static const struct gpio_dt_spec button = GPIO_DT_SPEC_GET(DT_ALIAS(sw0), gpios);
 static struct gpio_callback button_cb;
 static K_SEM_DEFINE(press_sem, 0, 16);
@@ -206,6 +243,11 @@ static int button_init(void)
 }
 SYS_INIT(button_init, APPLICATION, 90);
 
+#else  /* no key source */
+#define APP_IO_NO_BUTTON 1
+#endif
+
+#ifndef APP_IO_NO_BUTTON
 int z_impl_svc_button_wait(int32_t timeout_ms)
 {
 	if (!app_has_cap(APP_CAP_INPUT)) {
@@ -219,7 +261,7 @@ int z_impl_svc_button_wait(int32_t timeout_ms)
 	}
 	return (int)atomic_get(&press_count);
 }
-#else  /* no sw0 alias */
+#else
 int z_impl_svc_button_wait(int32_t timeout_ms)
 {
 	if (!app_has_cap(APP_CAP_INPUT)) {
@@ -228,7 +270,7 @@ int z_impl_svc_button_wait(int32_t timeout_ms)
 	ARG_UNUSED(timeout_ms);
 	return -ENODEV;
 }
-#endif /* DT_HAS_ALIAS(sw0) */
+#endif /* APP_IO_NO_BUTTON */
 
 /* ---- per-app checkpoint store ---- */
 

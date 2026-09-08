@@ -50,8 +50,9 @@ static void on_button(const struct app_event *evt, void *user)
 	char line[56];
 
 	h->button++;
-	(void)snprintk(line, sizeof(line), "dispatch: button #%d (seq %u)",
-		       h->button, evt->seq);
+	(void)snprintk(line, sizeof(line),
+		       "dispatch: key 0x%x #%d (seq %u)", evt->code, h->button,
+		       evt->seq);
 	svc_log(line);
 }
 

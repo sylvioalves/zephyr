@@ -381,6 +381,18 @@ config APP_PLATFORM_EVENTS
 	  several sources at once. Adds svc_event_wait(), on which the
 	  app_events dispatcher builds registered callbacks.
 
+config APP_PLATFORM_INPUT_KEYS
+	bool "Take key events from the input subsystem"
+	depends on APP_PLATFORM_EVENTS
+	depends on INPUT
+	default y if INPUT_GPIO_KEYS
+	help
+	  Source key events from the input subsystem rather than from a GPIO
+	  interrupt on the sw0 alias. The driver debounces and reports a key
+	  code, so applications see one event per press and can tell keys
+	  apart. Without this the button is read directly and every raw edge is
+	  reported.
+
 config APP_PLATFORM_EVENT_QUEUE_LEN
 	int "Events buffered per application"
 	default 8
