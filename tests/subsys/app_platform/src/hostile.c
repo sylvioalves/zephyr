@@ -31,6 +31,28 @@ K_APP_DMEM(report_part) volatile int report_rc;
 K_APP_DMEM(report_part) volatile int report_done;
 K_APP_DMEM(report_part) volatile int report_n;
 
+/* A slot's memory domain outlives the app that ran in it, so a later test
+ * reusing the slot finds the report partition already there. Add it only when
+ * it is missing, to keep the domain valid without logging a false overlap.
+ */
+static void add_report_part(int id)
+{
+	struct k_mem_domain *dom = app_platform_domain(id);
+
+	if (dom == NULL) {
+		return;
+	}
+
+	for (int i = 0; i < dom->num_partitions; i++) {
+		if (dom->partitions[i].start == report_part.start &&
+		    dom->partitions[i].size == report_part.size) {
+			return;
+		}
+	}
+
+	k_mem_domain_add_partition(dom, &report_part);
+}
+
 static uint32_t kernel_var = 0xbeef;
 extern const struct z_object *_k_syscall_table;
 
@@ -116,7 +138,7 @@ static void expect_reclaimed(const char *name, app_entry_t entry, app_caps_t cap
 	int id = app_platform_launch(&def);
 
 	zassert_true(id >= 0, "launch failed");
-	k_mem_domain_add_partition(app_platform_domain(id), &report_part);
+	add_report_part(id);
 	zassert_true(wait_slot_free(name, 2000), "%s was not reclaimed", name);
 	zassert_equal(report_done, 0, "%s completed instead of trapping", name);
 
@@ -138,7 +160,7 @@ static void expect_refused(const char *name, app_entry_t entry, app_caps_t caps,
 	int id = app_platform_launch(&def);
 
 	zassert_true(id >= 0, "launch failed");
-	k_mem_domain_add_partition(app_platform_domain(id), &report_part);
+	add_report_part(id);
 	zassert_true(wait_slot_free(name, 2000), "%s never exited", name);
 	zassert_equal(report_done, 1, "%s trapped instead of being refused", name);
 	zassert_equal(report_rc, expected_rc, "%s rc %d != %d", name, report_rc,
@@ -300,7 +322,7 @@ ZTEST(zhostile, test_4_4_wfi)
 	int id = app_platform_launch(&def);
 
 	zassert_true(id >= 0);
-	k_mem_domain_add_partition(app_platform_domain(id), &report_part);
+	add_report_part(id);
 	zassert_true(wait_slot_free("h_wfi", 2000), "wfi app never finished");
 	printk("  wfi from U-mode: %s\n", report_done ? "executed (TW=0), app continued"
 						     : "trapped, app reclaimed");
@@ -589,7 +611,7 @@ ZTEST(zhostile, test_4_13_capability_above_bit31)
 	int id = app_platform_launch(&granted);
 
 	zassert_true(id >= 0, "launch failed");
-	k_mem_domain_add_partition(app_platform_domain(id), &report_part);
+	add_report_part(id);
 	zassert_true(wait_slot_free("h_hi", 2000), "h_hi never exited");
 	zassert_equal(report_done, 1, "h_hi trapped");
 	zassert_true(report_rc >= 0, "a high bit displaced APP_CAP_SENSOR: rc %d",
@@ -687,7 +709,7 @@ ZTEST(zhostile, test_4_14_control_self_refused)
 	int id = app_platform_launch(&def);
 
 	zassert_true(id >= 0, "launch failed");
-	k_mem_domain_add_partition(app_platform_domain(id), &report_part);
+	add_report_part(id);
 	self_id = id;
 	zassert_true(wait_slot_free("h_cself", 2000), "h_cself never exited");
 	zassert_equal(report_done, 1, "h_cself was stopped instead of refused");
@@ -720,7 +742,7 @@ ZTEST(zhostile, test_4_14_control_stops_another_app)
 	int id = app_platform_launch(&ctl);
 
 	zassert_true(id >= 0, "controller launch failed");
-	k_mem_domain_add_partition(app_platform_domain(id), &report_part);
+	add_report_part(id);
 	target_id = tid;
 	zassert_true(wait_slot_free("h_ctl", 2000), "controller never exited");
 	zassert_equal(report_done, 1, "controller trapped");
@@ -744,7 +766,7 @@ ZTEST(zhostile, test_4_14_control_stops_another_app)
 	int rid = app_platform_launch(&re);
 
 	zassert_true(rid >= 0, "restarter launch failed");
-	k_mem_domain_add_partition(app_platform_domain(rid), &report_part);
+	add_report_part(rid);
 	zassert_true(wait_slot_free("h_rst", 2000), "restarter never exited");
 	zassert_equal(report_done, 1, "restarter trapped");
 	zassert_equal(report_rc, 0, "svc_app_start rc %d", report_rc);
@@ -952,7 +974,7 @@ ZTEST(zhostile, test_4_16_deep_service_calls_do_not_kill_the_system)
 	int id = app_platform_launch(&def);
 
 	zassert_true(id >= 0, "launch failed");
-	k_mem_domain_add_partition(app_platform_domain(id), &report_part);
+	add_report_part(id);
 	zassert_true(wait_slot_free("h_deep", 8000), "h_deep never finished");
 
 	/* Whether it completed or was reclaimed is not the point: the system
