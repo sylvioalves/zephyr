@@ -1,0 +1,15 @@
+sample:
+  name: Isolated GATT server application
+  description: >
+    Serve a GATT service from a user-mode application, so a central can read
+    values it publishes and write to it.
+tests:
+  sample.subsys.app_ble_peripheral:
+    tags: app_platform
+    platform_allow:
+      - esp32c5_devkitc/esp32c5/hpcore
+    harness: console
+    harness_config:
+      type: one_line
+      regex:
+        - "launched isolated peripheral app"
