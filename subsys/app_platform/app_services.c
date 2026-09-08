@@ -730,6 +730,41 @@ int z_impl_svc_app_info(int id, struct svc_app_info *out)
 	return 0;
 }
 
+/* Stopping the caller would abort its thread inside this call, which never
+ * returns, so the application would disappear instead of seeing an error.
+ * Refuse it and let an application exit by returning from its entry point.
+ */
+int z_impl_svc_app_stop(int id)
+{
+	if (!app_has_cap(APP_CAP_CONTROL)) {
+		return -EPERM;
+	}
+	if (id == app_platform_id_current()) {
+		return -EINVAL;
+	}
+	return app_platform_stop(id);
+}
+
+int z_impl_svc_app_start(int id)
+{
+	if (!app_has_cap(APP_CAP_CONTROL)) {
+		return -EPERM;
+	}
+	if (id == app_platform_id_current()) {
+		return -EINVAL;
+	}
+#ifdef CONFIG_LLEXT
+	/* app_platform_start() reports success as the group id it started, so
+	 * normalise it: the service contract is 0 on success.
+	 */
+	int rc = app_platform_start(id);
+
+	return rc < 0 ? rc : 0;
+#else
+	return -ENOTSUP;
+#endif
+}
+
 #ifdef CONFIG_USERSPACE
 static inline void z_vrfy_svc_log(const char *msg)
 {
@@ -937,4 +972,16 @@ static inline int z_vrfy_svc_app_info(int id, struct svc_app_info *out)
 	return z_impl_svc_app_info(id, out);
 }
 #include <zephyr/syscalls/svc_app_info_mrsh.c>
+
+static inline int z_vrfy_svc_app_stop(int id)
+{
+	return z_impl_svc_app_stop(id);
+}
+#include <zephyr/syscalls/svc_app_stop_mrsh.c>
+
+static inline int z_vrfy_svc_app_start(int id)
+{
+	return z_impl_svc_app_start(id);
+}
+#include <zephyr/syscalls/svc_app_start_mrsh.c>
 #endif

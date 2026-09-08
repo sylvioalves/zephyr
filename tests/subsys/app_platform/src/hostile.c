@@ -598,4 +598,161 @@ ZTEST(zhostile, test_4_13_capability_above_bit31)
 	expect_refused("h_hio", sensor_probe, APP_CAP_LOG | CAP_HIGH, -EPERM);
 }
 
+/* ---- 4.14 controlling other applications ---- */
+
+/* A target for the control tests: it only has to stay alive and be stoppable,
+ * and it is separate from the canary so stopping it cannot disturb the other
+ * suites' liveness assertions.
+ */
+static void control_target(void *a)
+{
+	ARG_UNUSED(a);
+	for (;;) {
+		svc_heartbeat();
+		k_msleep(10);
+	}
+}
+
+/* An application must not stop itself: the abort would tear the caller down
+ * inside its own system call, so the platform refuses rather than returning.
+ * The id is handed in through the report partition because an application has
+ * no system call that tells it its own group id.
+ */
+K_APP_DMEM(report_part) int self_id;
+
+static void stop_self(void *a)
+{
+	ARG_UNUSED(a);
+	/* The thread starts inside the launch call, so wait for the test to
+	 * publish the id rather than racing it.
+	 */
+	while (self_id < 0) {
+		k_msleep(5);
+	}
+	report_rc = svc_app_stop(self_id);
+	report_done = 1;
+}
+
+static void stop_ungranted(void *a)
+{
+	ARG_UNUSED(a);
+	report_rc = svc_app_stop(canary_id);
+	report_done = 1;
+}
+
+static void start_ungranted(void *a)
+{
+	ARG_UNUSED(a);
+	report_rc = svc_app_start(canary_id);
+	report_done = 1;
+}
+
+K_APP_DMEM(report_part) int target_id;
+
+static void start_target(void *a)
+{
+	ARG_UNUSED(a);
+	while (target_id < 0) {
+		k_msleep(5);
+	}
+	report_rc = svc_app_start(target_id);
+	report_done = 1;
+}
+
+static void stop_target(void *a)
+{
+	ARG_UNUSED(a);
+	while (target_id < 0) {
+		k_msleep(5);
+	}
+	report_rc = svc_app_stop(target_id);
+	report_done = 1;
+}
+
+ZTEST(zhostile, test_4_14_control_ungranted)
+{
+	expect_refused("h_cs", stop_ungranted, APP_CAP_LOG, -EPERM);
+	expect_refused("h_cr", start_ungranted, APP_CAP_LOG, -EPERM);
+}
+
+ZTEST(zhostile, test_4_14_control_self_refused)
+{
+	const struct app_def def = {
+		.name = "h_cself", .source = APP_BUILTIN, .entry = stop_self,
+		.caps = APP_CAP_LOG | APP_CAP_CONTROL,
+	};
+	self_id = -1;
+
+	int id = app_platform_launch(&def);
+
+	zassert_true(id >= 0, "launch failed");
+	k_mem_domain_add_partition(app_platform_domain(id), &report_part);
+	self_id = id;
+	zassert_true(wait_slot_free("h_cself", 2000), "h_cself never exited");
+	zassert_equal(report_done, 1, "h_cself was stopped instead of refused");
+	zassert_equal(report_rc, -EINVAL, "self stop rc %d != -EINVAL", report_rc);
+}
+
+ZTEST(zhostile, test_4_14_control_stops_another_app)
+{
+	const struct app_def tgt = {
+		.name = "ctltgt", .source = APP_BUILTIN, .entry = control_target,
+		.caps = APP_CAP_LOG,
+	};
+
+	target_id = -1;
+
+	int tid = app_platform_launch(&tgt);
+
+	zassert_true(tid >= 0, "target launch failed");
+	k_msleep(30);
+
+	struct app_platform_status st;
+
+	zassert_equal(app_platform_status(tid, &st), 0);
+	zassert_true(st.active, "target is not running before the stop");
+
+	const struct app_def ctl = {
+		.name = "h_ctl", .source = APP_BUILTIN, .entry = stop_target,
+		.caps = APP_CAP_LOG | APP_CAP_CONTROL,
+	};
+	int id = app_platform_launch(&ctl);
+
+	zassert_true(id >= 0, "controller launch failed");
+	k_mem_domain_add_partition(app_platform_domain(id), &report_part);
+	target_id = tid;
+	zassert_true(wait_slot_free("h_ctl", 2000), "controller never exited");
+	zassert_equal(report_done, 1, "controller trapped");
+	zassert_equal(report_rc, 0, "svc_app_stop rc %d", report_rc);
+
+	/* A stop keeps the slot and the module so the group can run again, so
+	 * the proof it really stopped is that the slot went inactive, not that
+	 * it was freed.
+	 */
+	zassert_equal(app_platform_status(tid, &st), 0);
+	zassert_false(st.active, "target still active after svc_app_stop");
+
+	/* And a controller can start it again, with the same slot. */
+	const struct app_def re = {
+		.name = "h_rst", .source = APP_BUILTIN, .entry = start_target,
+		.caps = APP_CAP_LOG | APP_CAP_CONTROL,
+	};
+
+	report_rc = 0;
+	report_done = 0;
+	int rid = app_platform_launch(&re);
+
+	zassert_true(rid >= 0, "restarter launch failed");
+	k_mem_domain_add_partition(app_platform_domain(rid), &report_part);
+	zassert_true(wait_slot_free("h_rst", 2000), "restarter never exited");
+	zassert_equal(report_done, 1, "restarter trapped");
+	zassert_equal(report_rc, 0, "svc_app_start rc %d", report_rc);
+
+	k_msleep(30);
+	zassert_equal(app_platform_status(tid, &st), 0);
+	zassert_true(st.active, "target did not come back after svc_app_start");
+
+	zassert_equal(app_platform_remove(tid), 0);
+}
+
 ZTEST_SUITE(zhostile, NULL, hostile_setup, hostile_before, NULL, NULL);

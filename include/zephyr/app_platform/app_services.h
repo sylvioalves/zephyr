@@ -672,6 +672,38 @@ __syscall int svc_app_count(void);
 __syscall int svc_app_info(int id, struct svc_app_info *out);
 
 /**
+ * @brief Stop a running application group. Needs @ref APP_CAP_CONTROL.
+ *
+ * The group keeps its slot and its loaded module, so @ref svc_app_start can run
+ * it again. An application may not stop itself: aborting the caller inside its
+ * own system call would tear the thread down mid-call, so the request is
+ * refused instead.
+ *
+ * @param id Group id.
+ * @retval 0 on success.
+ * @retval -EPERM The application does not hold @ref APP_CAP_CONTROL.
+ * @retval -EINVAL @p id is the caller, or is not a running group.
+ */
+__syscall int svc_app_stop(int id);
+
+/**
+ * @brief Start a stopped application group. Needs @ref APP_CAP_CONTROL.
+ *
+ * Re-creates the group's user-mode thread in its existing memory domain, with
+ * the capabilities it was loaded with. A controlling application therefore
+ * cannot widen another group's grants, only run or halt it.
+ *
+ * @param id Group id.
+ * @retval 0 on success.
+ * @retval -EPERM The application does not hold @ref APP_CAP_CONTROL.
+ * @retval -EINVAL @p id is the caller, or is not a loaded group.
+ * @retval -EALREADY The group is already running.
+ * @retval -ENOTSUP The group cannot be started again.
+ * @retval -EBUSY A previous stop of this group is still being cleaned up.
+ */
+__syscall int svc_app_start(int id);
+
+/**
  * @brief Set a PWM channel duty cycle in per-mille. Needs @ref APP_CAP_PWM and a
  *        per-channel grant (@ref app_platform_grant_pwm).
  *

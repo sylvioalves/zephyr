@@ -44,6 +44,11 @@ static int c_i2c(void)     { return svc_i2c_read(0x50, ubuf, 1); }
 static int c_spi(void)     { return svc_spi_xfer(ubuf, ubuf2, 1); }
 static int c_uart(void)    { return svc_uart_write(ubuf, 1); }
 static int c_ipc(void)     { return svc_ipc_register("n"); }
+/* An out-of-range id is rejected after the capability check, so the probe shows
+ * the gate without ever stopping one of the other applications.
+ */
+static int c_control(void)  { return svc_app_stop(-1); }
+
 static int c_inspect(void) { return svc_app_count(); }
 static int c_can(void)     { return svc_can_send(1, ubuf, 1); }
 static int c_dma(void)     { return svc_dma_copy(ubuf, ubuf2, 16); }
@@ -100,6 +105,7 @@ static const struct cap_case cases[] = {
 #endif
 	{"IPC", APP_CAP_IPC, "svc_ipc_register", c_ipc},
 	{"INSPECT", APP_CAP_INSPECT, "svc_app_count", c_inspect},
+	{"CONTROL", APP_CAP_CONTROL, "svc_app_stop", c_control},
 	{"CAN", APP_CAP_CAN, "svc_can_send", c_can},
 	{"DMA", APP_CAP_DMA, "svc_dma_copy", c_dma},
 	{"PSRAM", APP_CAP_PSRAM, "svc_psram_map", c_psram},
@@ -182,6 +188,6 @@ int main(void)
 		       granted, v);
 	}
 	printk("*** app_matrix done: %d mismatches; caps not compiled: "
-	       "NET SOCKET BLE RADIO CONTROL(unused) ***\n", bad);
+	       "NET SOCKET BLE RADIO ***\n", bad);
 	return 0;
 }
