@@ -257,6 +257,10 @@ config APP_PLATFORM_FS_INIT_PRIORITY
 	  Application-level priority at which the per-application directories are
 	  created. It must run after whatever mounts the filesystem.
 
+# A file call runs on the privileged stack, not the application's own, so a
+# deep filesystem chain is bounded by CONFIG_PRIVILEGED_STACK_SIZE. The default
+# 1024 is not enough to reach a flash driver through littlefs.
+
 config APP_PLATFORM_FS_XFER_MAX
 	int "Maximum bytes per file read or write"
 	default 256

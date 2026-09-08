@@ -908,6 +908,7 @@ ZTEST(zhostile, test_4_15_fs_gate_and_confinement)
 {
 	expect_refused("h_fnp", fs_ungranted, APP_CAP_LOG, -EPERM);
 	expect_refused("h_fdd", fs_escape_dotdot, APP_CAP_LOG | APP_CAP_FS, -EACCES);
+	expect_refused("h_frt", fs_roundtrip, APP_CAP_LOG | APP_CAP_FS, 0);
 }
 
 ZTEST_SUITE(zhostile, NULL, hostile_setup, hostile_before, NULL, NULL);
