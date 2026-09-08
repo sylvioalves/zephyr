@@ -10,25 +10,31 @@
 / {
 	leds {
 		compatible = "gpio-leds";
+
 		led_a: led_0 {
 			gpios = <&gpio0 2 GPIO_ACTIVE_HIGH>;
 			label = "led 0";
 		};
+
 		led_b: led_1 {
 			gpios = <&gpio0 3 GPIO_ACTIVE_HIGH>;
 			label = "led 1";
 		};
 	};
+
 	app_pwm: app_pwm {
 		compatible = "pwm-leds";
+
 		app_pwm_ch0: app_pwm_ch0 {
 			pwms = <&ledc0 0 PWM_HZ(1000) PWM_POLARITY_NORMAL>;
 			label = "pwm ch0";
 		};
 	};
+
 	zephyr,user {
 		io-channels = <&adc0 2>;
 	};
+
 	aliases {
 		led0 = &led_a;
 		led1 = &led_b;
@@ -37,6 +43,7 @@
 		app-spi = &spi2;
 		pcnt-stim = &app_pwm_ch0;
 	};
+
 	chosen {
 		app-uart = &uart0;
 	};
@@ -49,6 +56,7 @@
 			output-enable;
 		};
 	};
+
 	pcnt_default: pcnt_default {
 		group1 {
 			pinmux = <PCNT0_CH0SIG_GPIO3>;
@@ -56,6 +64,7 @@
 			bias-pull-down;
 		};
 	};
+
 	mcpwm0_default: mcpwm0_default {
 		group1 {
 			pinmux = <MCPWM0_OUT0A_GPIO4>,
@@ -63,11 +72,13 @@
 			output-enable;
 		};
 	};
+
 	twai_default: twai_default {
 		group1 {
 			pinmux = <TWAI0_RX_GPIO5>;
 			output-enable;
 		};
+
 		group2 {
 			pinmux = <TWAI0_TX_GPIO5>;
 			input-enable;
@@ -81,6 +92,7 @@
 	status = "okay";
 	#address-cells = <1>;
 	#size-cells = <0>;
+
 	channel0@0 {
 		reg = <0x0>;
 		timer = <0>;
@@ -93,12 +105,14 @@
 	pinctrl-names = "default";
 	#address-cells = <1>;
 	#size-cells = <0>;
+
 	unit0@0 {
 		reg = <0>;
 		#address-cells = <1>;
 		#size-cells = <0>;
 		filter = <0>;
-		channel0@0 {
+
+		channelA@0 {
 			reg = <0>;
 			sig-pos-mode = <1>;
 			sig-neg-mode = <0>;
@@ -118,6 +132,7 @@
 	#address-cells = <1>;
 	#size-cells = <0>;
 	status = "okay";
+
 	channel@2 {
 		reg = <2>;
 		zephyr,gain = "ADC_GAIN_1_4";
@@ -131,6 +146,7 @@
 	status = "okay";
 	pinctrl-0 = <&twai_default>;
 	pinctrl-names = "default";
+
 	can-transceiver {
 		max-bitrate = <1000000>;
 	};

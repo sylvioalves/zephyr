@@ -70,7 +70,7 @@
 		#size-cells = <0>;
 		filter = <0>;
 
-		channel0@0 {
+		channelA@0 {
 			reg = <0>;
 			sig-pos-mode = <1>;
 			sig-neg-mode = <0>;
