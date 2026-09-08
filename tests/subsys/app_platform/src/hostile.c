@@ -911,4 +911,62 @@ ZTEST(zhostile, test_4_15_fs_gate_and_confinement)
 	expect_refused("h_frt", fs_roundtrip, APP_CAP_LOG | APP_CAP_FS, 0);
 }
 
+/* An application must not be able to take the system down through the depth of
+ * a service call. The privileged stack is a system resource the application
+ * never sees, so exhausting it has to be contained like any other fault: the
+ * application is reclaimed, the system and its neighbours keep running.
+ */
+static void priv_stack_pressure(void *a)
+{
+	ARG_UNUSED(a);
+
+	/* Deep filesystem calls in a loop, each descending through littlefs
+	 * into the flash driver on the privileged stack.
+	 */
+	for (int i = 0; i < 64; i++) {
+		char name[16];
+
+		name[0] = 'p';
+		name[1] = (char)('0' + (i % 10));
+		name[2] = '.';
+		name[3] = 't';
+		name[4] = '\0';
+
+		int h = svc_file_open(name, 1);
+
+		if (h >= 0) {
+			(void)svc_file_write(h, "0123456789abcdef", 16);
+			(void)svc_file_close(h);
+		}
+	}
+	report_rc = 0;
+	report_done = 1;
+}
+
+ZTEST(zhostile, test_4_16_deep_service_calls_do_not_kill_the_system)
+{
+	const struct app_def def = {
+		.name = "h_deep", .source = APP_BUILTIN, .entry = priv_stack_pressure,
+		.caps = APP_CAP_LOG | APP_CAP_FS,
+	};
+	int id = app_platform_launch(&def);
+
+	zassert_true(id >= 0, "launch failed");
+	k_mem_domain_add_partition(app_platform_domain(id), &report_part);
+	zassert_true(wait_slot_free("h_deep", 8000), "h_deep never finished");
+
+	/* Whether it completed or was reclaimed is not the point: the system
+	 * must still be here, and the canary must still be running.
+	 */
+	struct app_platform_status st;
+
+	zassert_equal(app_platform_status(canary_id, &st), 0);
+	zassert_true(st.active, "canary died: the system did not survive");
+
+	uint32_t before = victim_data;
+
+	k_msleep(30);
+	zassert_true(victim_data != before, "canary stopped running");
+}
+
 ZTEST_SUITE(zhostile, NULL, hostile_setup, hostile_before, NULL, NULL);
