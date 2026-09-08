@@ -16,6 +16,7 @@
 #include <zephyr/app_platform/app_platform.h>
 
 #include <zephyr/kernel.h>
+#include <zephyr/init.h>
 #include <zephyr/device.h>
 #include <zephyr/drivers/pwm.h>
 #include <zephyr/drivers/sensor.h>

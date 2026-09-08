@@ -18,6 +18,7 @@
 #include <zephyr/app_platform/app_platform.h>
 
 #include <zephyr/kernel.h>
+#include <zephyr/init.h>
 #include <zephyr/device.h>
 #include <zephyr/drivers/gpio.h>
 #include <zephyr/internal/syscall_handler.h>
