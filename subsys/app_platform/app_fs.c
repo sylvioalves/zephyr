@@ -43,7 +43,6 @@ LOG_MODULE_DECLARE(app_platform, CONFIG_APP_PLATFORM_LOG_LEVEL);
 static struct fs_file_t files[OPEN_FILES];
 static int file_owner[OPEN_FILES];
 static bool file_used[OPEN_FILES];
-static bool fs_ready;
 static K_MUTEX_DEFINE(fs_lock);
 
 static inline bool app_has_cap(app_caps_t mask)

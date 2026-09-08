@@ -186,7 +186,7 @@ int z_impl_svc_battery_percent(void)
 	int rc = fuel_gauge_get_prop(gauge_dev,
 				     FUEL_GAUGE_RELATIVE_STATE_OF_CHARGE_PCT, &val);
 
-	return rc != 0 ? rc : (int)val.relative_state_of_charge;
+	return rc != 0 ? rc : (int)val.relative_state_of_charge_pct;
 }
 #endif /* CONFIG_APP_PLATFORM_POWER */
 
