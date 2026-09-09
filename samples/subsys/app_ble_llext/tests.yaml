@@ -1,0 +1,15 @@
+sample:
+  name: GATT server in a loadable application
+  description: >
+    Serve a GATT service from a loadable user-mode application, so a phone
+    can discover it, read a value it publishes and write to it.
+tests:
+  sample.subsys.app_ble_llext:
+    tags: app_platform
+    platform_allow:
+      - esp32c5_devkitc/esp32c5/hpcore
+    harness: console
+    harness_config:
+      type: one_line
+      regex:
+        - "launched loadable peripheral app"
