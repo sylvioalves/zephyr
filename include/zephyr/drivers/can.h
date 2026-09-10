@@ -953,29 +953,61 @@ static inline uint32_t z_impl_can_get_bitrate_max(const struct device *dev)
 /**
  * @brief Get the minimum supported timing parameter values.
  *
+ * @deprecated Use can_get_timing_min_out() instead. The returned pointer refers
+ *             to the driver API structure, which is not accessible from user
+ *             mode, so this function cannot be used correctly from a user mode
+ *             thread.
+ *
  * @param dev Pointer to the device structure for the driver instance.
  *
  * @return Pointer to the minimum supported timing parameter values.
  */
-__syscall const struct can_timing *can_get_timing_min(const struct device *dev);
-
-static inline const struct can_timing *z_impl_can_get_timing_min(const struct device *dev)
+__deprecated static inline const struct can_timing *can_get_timing_min(const struct device *dev)
 {
 	return &DEVICE_API_GET(can, dev)->timing_min;
 }
 
 /**
+ * @brief Get the minimum supported timing parameter values.
+ *
+ * @param dev      Pointer to the device structure for the driver instance.
+ * @param[out] res Minimum supported timing parameter values.
+ */
+__syscall void can_get_timing_min_out(const struct device *dev, struct can_timing *res);
+
+static inline void z_impl_can_get_timing_min_out(const struct device *dev, struct can_timing *res)
+{
+	*res = DEVICE_API_GET(can, dev)->timing_min;
+}
+
+/**
  * @brief Get the maximum supported timing parameter values.
+ *
+ * @deprecated Use can_get_timing_max_out() instead. The returned pointer refers
+ *             to the driver API structure, which is not accessible from user
+ *             mode, so this function cannot be used correctly from a user mode
+ *             thread.
  *
  * @param dev Pointer to the device structure for the driver instance.
  *
  * @return Pointer to the maximum supported timing parameter values.
  */
-__syscall const struct can_timing *can_get_timing_max(const struct device *dev);
-
-static inline const struct can_timing *z_impl_can_get_timing_max(const struct device *dev)
+__deprecated static inline const struct can_timing *can_get_timing_max(const struct device *dev)
 {
 	return &DEVICE_API_GET(can, dev)->timing_max;
+}
+
+/**
+ * @brief Get the maximum supported timing parameter values.
+ *
+ * @param dev      Pointer to the device structure for the driver instance.
+ * @param[out] res Maximum supported timing parameter values.
+ */
+__syscall void can_get_timing_max_out(const struct device *dev, struct can_timing *res);
+
+static inline void z_impl_can_get_timing_max_out(const struct device *dev, struct can_timing *res)
+{
+	*res = DEVICE_API_GET(can, dev)->timing_max;
 }
 
 /**
@@ -1012,6 +1044,11 @@ __syscall int can_calc_timing(const struct device *dev, struct can_timing *res,
  *
  * Same as @a can_get_timing_min() but for the minimum values for the data phase.
  *
+ * @deprecated Use can_get_timing_data_min_out() instead. The returned pointer
+ *             refers to the driver API structure, which is not accessible from
+ *             user mode, so this function cannot be used correctly from a user
+ *             mode thread.
+ *
  * @note @kconfig{CONFIG_CAN_FD_MODE} must be selected for this function to be
  * available.
  *
@@ -1020,12 +1057,33 @@ __syscall int can_calc_timing(const struct device *dev, struct can_timing *res,
  * @return Pointer to the minimum supported timing parameter values, or NULL if
  *         CAN FD support is not implemented by the driver.
  */
-__syscall const struct can_timing *can_get_timing_data_min(const struct device *dev);
-
 #ifdef CONFIG_CAN_FD_MODE
-static inline const struct can_timing *z_impl_can_get_timing_data_min(const struct device *dev)
+__deprecated static inline const struct can_timing *
+can_get_timing_data_min(const struct device *dev)
 {
 	return &DEVICE_API_GET(can, dev)->timing_data_min;
+}
+#endif /* CONFIG_CAN_FD_MODE */
+
+/**
+ * @brief Get the minimum supported timing parameter values for the data phase.
+ *
+ * Same as @a can_get_timing_min_out() but for the minimum values for the data
+ * phase.
+ *
+ * @note @kconfig{CONFIG_CAN_FD_MODE} must be selected for this function to be
+ * available.
+ *
+ * @param dev      Pointer to the device structure for the driver instance.
+ * @param[out] res Minimum supported timing parameter values for the data phase.
+ */
+__syscall void can_get_timing_data_min_out(const struct device *dev, struct can_timing *res);
+
+#ifdef CONFIG_CAN_FD_MODE
+static inline void z_impl_can_get_timing_data_min_out(const struct device *dev,
+						      struct can_timing *res)
+{
+	*res = DEVICE_API_GET(can, dev)->timing_data_min;
 }
 #endif /* CONFIG_CAN_FD_MODE */
 
@@ -1033,6 +1091,11 @@ static inline const struct can_timing *z_impl_can_get_timing_data_min(const stru
  * @brief Get the maximum supported timing parameter values for the data phase.
  *
  * Same as @a can_get_timing_max() but for the maximum values for the data phase.
+ *
+ * @deprecated Use can_get_timing_data_max_out() instead. The returned pointer
+ *             refers to the driver API structure, which is not accessible from
+ *             user mode, so this function cannot be used correctly from a user
+ *             mode thread.
  *
  * @note @kconfig{CONFIG_CAN_FD_MODE} must be selected for this function to be
  * available.
@@ -1042,12 +1105,33 @@ static inline const struct can_timing *z_impl_can_get_timing_data_min(const stru
  * @return Pointer to the maximum supported timing parameter values, or NULL if
  *         CAN FD support is not implemented by the driver.
  */
-__syscall const struct can_timing *can_get_timing_data_max(const struct device *dev);
-
 #ifdef CONFIG_CAN_FD_MODE
-static inline const struct can_timing *z_impl_can_get_timing_data_max(const struct device *dev)
+__deprecated static inline const struct can_timing *
+can_get_timing_data_max(const struct device *dev)
 {
 	return &DEVICE_API_GET(can, dev)->timing_data_max;
+}
+#endif /* CONFIG_CAN_FD_MODE */
+
+/**
+ * @brief Get the maximum supported timing parameter values for the data phase.
+ *
+ * Same as @a can_get_timing_max_out() but for the maximum values for the data
+ * phase.
+ *
+ * @note @kconfig{CONFIG_CAN_FD_MODE} must be selected for this function to be
+ * available.
+ *
+ * @param dev      Pointer to the device structure for the driver instance.
+ * @param[out] res Maximum supported timing parameter values for the data phase.
+ */
+__syscall void can_get_timing_data_max_out(const struct device *dev, struct can_timing *res);
+
+#ifdef CONFIG_CAN_FD_MODE
+static inline void z_impl_can_get_timing_data_max_out(const struct device *dev,
+						      struct can_timing *res)
+{
+	*res = DEVICE_API_GET(can, dev)->timing_data_max;
 }
 #endif /* CONFIG_CAN_FD_MODE */
 

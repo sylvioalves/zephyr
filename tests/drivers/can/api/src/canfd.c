@@ -369,12 +369,15 @@ ZTEST_USER(canfd, test_filters_preserved_through_fd_to_classic_mode_change)
  */
 ZTEST_USER(canfd, test_set_timing_data_min)
 {
+	struct can_timing timing;
 	int err;
 
 	err = can_stop(can_dev);
 	zassert_ok(err, "failed to stop CAN controller (err %d)", err);
 
-	err = can_set_timing_data(can_dev, can_get_timing_data_min(can_dev));
+	can_get_timing_data_min_out(can_dev, &timing);
+
+	err = can_set_timing_data(can_dev, &timing);
 	zassert_ok(err, "failed to set minimum timing data parameters (err %d)", err);
 
 	err = can_set_bitrate_data(can_dev, CONFIG_CAN_DEFAULT_BITRATE_DATA);
@@ -444,12 +447,15 @@ ZTEST_USER(canfd, test_invalid_sample_point)
  */
 ZTEST_USER(canfd, test_set_timing_data_max)
 {
+	struct can_timing timing;
 	int err;
 
 	err = can_stop(can_dev);
 	zassert_ok(err, "failed to stop CAN controller (err %d)", err);
 
-	err = can_set_timing_data(can_dev, can_get_timing_data_max(can_dev));
+	can_get_timing_data_max_out(can_dev, &timing);
+
+	err = can_set_timing_data(can_dev, &timing);
 	zassert_ok(err, "failed to set maximum timing data parameters (err %d)", err);
 
 	err = can_set_bitrate_data(can_dev, CONFIG_CAN_DEFAULT_BITRATE_DATA);

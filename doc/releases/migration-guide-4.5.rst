@@ -516,6 +516,16 @@ Controller Area Network (CAN)
 * The deprecated ``bus-speed`` and ``bus-speed-data`` CAN controller devicetree properties have
   been removed. Use ``bitrate`` and ``bitrate-data`` instead.
 
+* :c:func:`can_get_timing_min`, :c:func:`can_get_timing_max`,
+  :c:func:`can_get_timing_data_min` and :c:func:`can_get_timing_data_max` are deprecated in favor
+  of :c:func:`can_get_timing_min_out`, :c:func:`can_get_timing_max_out`,
+  :c:func:`can_get_timing_data_min_out` and :c:func:`can_get_timing_data_max_out`, which copy the
+  timing limits into a caller-provided :c:struct:`can_timing` instead of returning a pointer into
+  the driver API structure. The deprecated functions are no longer system calls: the pointer they
+  return is not accessible from user mode, so they could not be used correctly from a user mode
+  thread. Replace ``const struct can_timing *min = can_get_timing_min(dev);`` with
+  ``struct can_timing min; can_get_timing_min_out(dev, &min);``.
+
 Counter
 =======
 

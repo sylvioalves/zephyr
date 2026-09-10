@@ -176,8 +176,8 @@ bool skip_timing_value_test(const struct device *dev, const struct can_timing_te
 static bool test_timing_values(const struct device *dev, const struct can_timing_test *test,
 			       bool data_phase)
 {
-	const struct can_timing *max = NULL;
-	const struct can_timing *min = NULL;
+	struct can_timing max = {0};
+	struct can_timing min = {0};
 	struct can_timing timing = {0};
 	int sp_err = -EINVAL;
 	int err;
@@ -192,15 +192,15 @@ static bool test_timing_values(const struct device *dev, const struct can_timing
 
 	if (data_phase) {
 		if (IS_ENABLED(CONFIG_CAN_FD_MODE)) {
-			min = can_get_timing_data_min(dev);
-			max = can_get_timing_data_max(dev);
+			can_get_timing_data_min_out(dev, &min);
+			can_get_timing_data_max_out(dev, &max);
 			sp_err = can_calc_timing_data(dev, &timing, test->bitrate, test->sp);
 		} else {
 			zassert_unreachable("data phase timing test without CAN FD support");
 		}
 	} else {
-		min = can_get_timing_min(dev);
-		max = can_get_timing_max(dev);
+		can_get_timing_min_out(dev, &min);
+		can_get_timing_max_out(dev, &max);
 		sp_err = can_calc_timing(dev, &timing, test->bitrate, test->sp);
 	}
 
@@ -217,7 +217,7 @@ static bool test_timing_values(const struct device *dev, const struct can_timing
 		       timing.prescaler);
 
 		assert_bitrate_correct(dev, &timing, test->bitrate);
-		assert_timing_within_bounds(&timing, min, max);
+		assert_timing_within_bounds(&timing, &min, &max);
 		assert_sp_within_margin(&timing, test->sp, CONFIG_CAN_SAMPLE_POINT_MARGIN);
 
 		if (IS_ENABLED(CONFIG_CAN_FD_MODE) && data_phase) {

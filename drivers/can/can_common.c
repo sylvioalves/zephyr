@@ -319,8 +319,8 @@ static int can_calc_timing_internal(const struct device *dev, struct can_timing 
 int z_impl_can_calc_timing(const struct device *dev, struct can_timing *res,
 			   uint32_t bitrate, uint16_t sample_pnt)
 {
-	const struct can_timing *min = can_get_timing_min(dev);
-	const struct can_timing *max = can_get_timing_max(dev);
+	const struct can_timing *min = &DEVICE_API_GET(can, dev)->timing_min;
+	const struct can_timing *max = &DEVICE_API_GET(can, dev)->timing_max;
 
 	if (bitrate > 1000000) {
 		return -EINVAL;
@@ -333,8 +333,8 @@ int z_impl_can_calc_timing(const struct device *dev, struct can_timing *res,
 int z_impl_can_calc_timing_data(const struct device *dev, struct can_timing *res,
 				uint32_t bitrate, uint16_t sample_pnt)
 {
-	const struct can_timing *min = can_get_timing_data_min(dev);
-	const struct can_timing *max = can_get_timing_data_max(dev);
+	const struct can_timing *min = &DEVICE_API_GET(can, dev)->timing_data_min;
+	const struct can_timing *max = &DEVICE_API_GET(can, dev)->timing_data_max;
 
 	if (bitrate > 8000000) {
 		return -EINVAL;
@@ -366,8 +366,8 @@ static int check_timing_in_range(const struct can_timing *timing,
 int z_impl_can_set_timing(const struct device *dev,
 			  const struct can_timing *timing)
 {
-	const struct can_timing *min = can_get_timing_min(dev);
-	const struct can_timing *max = can_get_timing_max(dev);
+	const struct can_timing *min = &DEVICE_API_GET(can, dev)->timing_min;
+	const struct can_timing *max = &DEVICE_API_GET(can, dev)->timing_max;
 	int err;
 
 	err = check_timing_in_range(timing, min, max);
@@ -408,8 +408,8 @@ int z_impl_can_set_timing_data(const struct device *dev,
 			       const struct can_timing *timing_data)
 {
 	const struct can_driver_api *api = DEVICE_API_GET(can, dev);
-	const struct can_timing *min = can_get_timing_data_min(dev);
-	const struct can_timing *max = can_get_timing_data_max(dev);
+	const struct can_timing *min = &api->timing_data_min;
+	const struct can_timing *max = &api->timing_data_max;
 	int err;
 
 	if (api->set_timing_data == NULL) {

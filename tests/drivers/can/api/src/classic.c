@@ -521,12 +521,15 @@ ZTEST_USER(can_classic, test_set_bitrate)
  */
 ZTEST_USER(can_classic, test_set_timing_min)
 {
+	struct can_timing timing;
 	int err;
 
 	err = can_stop(can_dev);
 	zassert_ok(err, "failed to stop CAN controller (err %d)", err);
 
-	err = can_set_timing(can_dev, can_get_timing_min(can_dev));
+	can_get_timing_min_out(can_dev, &timing);
+
+	err = can_set_timing(can_dev, &timing);
 	zassert_ok(err, "failed to set minimum timing parameters (err %d)", err);
 
 	err = can_set_bitrate(can_dev, CONFIG_CAN_DEFAULT_BITRATE);
@@ -541,12 +544,15 @@ ZTEST_USER(can_classic, test_set_timing_min)
  */
 ZTEST_USER(can_classic, test_set_timing_max)
 {
+	struct can_timing timing;
 	int err;
 
 	err = can_stop(can_dev);
 	zassert_ok(err, "failed to stop CAN controller (err %d)", err);
 
-	err = can_set_timing(can_dev, can_get_timing_max(can_dev));
+	can_get_timing_max_out(can_dev, &timing);
+
+	err = can_set_timing(can_dev, &timing);
 	zassert_ok(err, "failed to set maximum timing parameters (err %d)", err);
 
 	err = can_set_bitrate(can_dev, CONFIG_CAN_DEFAULT_BITRATE);

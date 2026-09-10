@@ -295,6 +295,15 @@ Deprecated APIs and options
   * The ``zephyr_file_copy()`` CMake function has been deprecated. Use the native
     ``file(COPY_FILE ...)`` CMake command instead.
 
+* CAN
+
+  * :c:func:`can_get_timing_min`, :c:func:`can_get_timing_max`,
+    :c:func:`can_get_timing_data_min` and :c:func:`can_get_timing_data_max` have been deprecated in
+    favor of :c:func:`can_get_timing_min_out`, :c:func:`can_get_timing_max_out`,
+    :c:func:`can_get_timing_data_min_out` and :c:func:`can_get_timing_data_max_out`. The deprecated
+    functions return a pointer into the driver API structure, which is not accessible from user
+    mode.
+
 * Clock control
 
   * The function :c:func:`z_nrf_clock_control_get_onoff` has been deprecated.
@@ -502,6 +511,13 @@ New APIs and options
     * :c:func:`bt_mesh_stat_lpn_timing_get`
     * :c:func:`bt_mesh_stat_lpn_timing_reset`
     * :kconfig:option:`CONFIG_BT_MESH_LPN_OFFER_WAIT_TIMEOUT`
+
+* CAN
+
+  * :c:func:`can_get_timing_min_out`
+  * :c:func:`can_get_timing_max_out`
+  * :c:func:`can_get_timing_data_min_out`
+  * :c:func:`can_get_timing_data_max_out`
 
 * Clock control
 

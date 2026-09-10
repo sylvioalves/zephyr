@@ -61,21 +61,27 @@ static inline uint32_t z_vrfy_can_get_bitrate_max(const struct device *dev)
 }
 #include <zephyr/syscalls/can_get_bitrate_max_mrsh.c>
 
-static inline const struct can_timing *z_vrfy_can_get_timing_min(const struct device *dev)
+static inline void z_vrfy_can_get_timing_min_out(const struct device *dev, struct can_timing *res)
 {
+	struct can_timing res_copy;
+
 	K_OOPS(K_SYSCALL_OBJ(dev, K_OBJ_DRIVER_CAN));
 
-	return z_impl_can_get_timing_min(dev);
+	z_impl_can_get_timing_min_out(dev, &res_copy);
+	K_OOPS(k_usermode_to_copy(res, &res_copy, sizeof(*res)));
 }
-#include <zephyr/syscalls/can_get_timing_min_mrsh.c>
+#include <zephyr/syscalls/can_get_timing_min_out_mrsh.c>
 
-static inline const struct can_timing *z_vrfy_can_get_timing_max(const struct device *dev)
+static inline void z_vrfy_can_get_timing_max_out(const struct device *dev, struct can_timing *res)
 {
+	struct can_timing res_copy;
+
 	K_OOPS(K_SYSCALL_OBJ(dev, K_OBJ_DRIVER_CAN));
 
-	return z_impl_can_get_timing_max(dev);
+	z_impl_can_get_timing_max_out(dev, &res_copy);
+	K_OOPS(k_usermode_to_copy(res, &res_copy, sizeof(*res)));
 }
-#include <zephyr/syscalls/can_get_timing_max_mrsh.c>
+#include <zephyr/syscalls/can_get_timing_max_out_mrsh.c>
 
 #ifdef CONFIG_CAN_FD_MODE
 
@@ -95,21 +101,29 @@ static int z_vrfy_can_calc_timing_data(const struct device *dev, struct can_timi
 }
 #include <zephyr/syscalls/can_calc_timing_data_mrsh.c>
 
-static inline const struct can_timing *z_vrfy_can_get_timing_data_min(const struct device *dev)
+static inline void z_vrfy_can_get_timing_data_min_out(const struct device *dev,
+						      struct can_timing *res)
 {
+	struct can_timing res_copy;
+
 	K_OOPS(K_SYSCALL_OBJ(dev, K_OBJ_DRIVER_CAN));
 
-	return z_impl_can_get_timing_data_min(dev);
+	z_impl_can_get_timing_data_min_out(dev, &res_copy);
+	K_OOPS(k_usermode_to_copy(res, &res_copy, sizeof(*res)));
 }
-#include <zephyr/syscalls/can_get_timing_data_min_mrsh.c>
+#include <zephyr/syscalls/can_get_timing_data_min_out_mrsh.c>
 
-static inline const struct can_timing *z_vrfy_can_get_timing_data_max(const struct device *dev)
+static inline void z_vrfy_can_get_timing_data_max_out(const struct device *dev,
+						      struct can_timing *res)
 {
+	struct can_timing res_copy;
+
 	K_OOPS(K_SYSCALL_OBJ(dev, K_OBJ_DRIVER_CAN));
 
-	return z_impl_can_get_timing_data_max(dev);
+	z_impl_can_get_timing_data_max_out(dev, &res_copy);
+	K_OOPS(k_usermode_to_copy(res, &res_copy, sizeof(*res)));
 }
-#include <zephyr/syscalls/can_get_timing_data_max_mrsh.c>
+#include <zephyr/syscalls/can_get_timing_data_max_out_mrsh.c>
 
 static inline int z_vrfy_can_set_timing_data(const struct device *dev,
 					     const struct can_timing *timing_data)
