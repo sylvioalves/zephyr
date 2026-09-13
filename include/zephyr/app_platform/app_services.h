@@ -646,6 +646,8 @@ enum app_event_kind {
 	APP_EVENT_BUTTON,     /**< the board button was pressed */
 	APP_EVENT_GPIO,       /**< a granted input line changed */
 	APP_EVENT_GATT_WRITE, /**< a peer wrote a served characteristic */
+	APP_EVENT_BLE_CONNECTED,    /**< a peer connected to the served app */
+	APP_EVENT_BLE_DISCONNECTED, /**< the connected peer went away */
 };
 
 /**
@@ -1631,10 +1633,11 @@ void app_platform_grant_ble_gatt(int id, const uint8_t *uuid, size_t uuid_len);
 
 /** @brief A characteristic the application asks the platform to serve. */
 struct app_ble_chrc {
-	uint8_t uuid[16];  /**< characteristic UUID bytes, little-endian */
-	uint8_t uuid_len;  /**< 2 or 16 */
-	uint8_t readable;  /**< non-zero to allow reads */
-	uint8_t writable;  /**< non-zero to allow writes */
+	uint8_t uuid[16];   /**< characteristic UUID bytes, little-endian */
+	uint8_t uuid_len;   /**< 2 or 16 */
+	uint8_t readable;   /**< non-zero to allow reads */
+	uint8_t writable;   /**< non-zero to allow writes */
+	uint8_t notifiable; /**< non-zero to allow @ref svc_ble_notify */
 };
 
 /**
@@ -1703,6 +1706,56 @@ __syscall int svc_ble_serve_get(int idx, uint8_t *buf, size_t cap);
  * @retval 0 on success, -EPERM without the capability.
  */
 __syscall int svc_ble_serve_stop(void);
+
+/**
+ * @brief Notify a subscribed peer of a characteristic's value. Needs
+ *        @ref APP_CAP_BLE.
+ *
+ * Pushes the value instead of waiting for the peer to read it. The
+ * characteristic must have been declared with @c notifiable, and a peer must
+ * have subscribed; without a subscriber the call reports -ENOTCONN rather than
+ * queueing, so an application does not build a backlog for a peer that is not
+ * listening. The value is stored as if by @ref svc_ble_serve_set, so a later
+ * read returns the same bytes.
+ *
+ * @param idx Characteristic index, in the order given to
+ *            @ref svc_ble_serve_start.
+ * @param buf Bytes to send.
+ * @param len Length, at most @ref APP_BLE_GATT_MAX.
+ * @retval 0 on success.
+ * @retval -EPERM without @ref APP_CAP_BLE.
+ * @retval -EINVAL on a bad index or length.
+ * @retval -EACCES if the characteristic is not notifiable.
+ * @retval -ENOTCONN with no connected or subscribed peer.
+ */
+__syscall int svc_ble_notify(int idx, const void *buf, size_t len);
+
+/**
+ * @brief Report whether a peer is connected to the served application.
+ *        Needs @ref APP_CAP_BLE.
+ *
+ * @retval 1 when a peer is connected, 0 when not.
+ * @retval -EPERM without @ref APP_CAP_BLE.
+ */
+__syscall int svc_ble_is_connected(void);
+
+/**
+ * @brief Start or stop advertising the served application. Needs
+ *        @ref APP_CAP_BLE.
+ *
+ * @ref svc_ble_serve_start already advertises, so this is for an application
+ * that wants to go quiet without dropping its service, or to advertise again
+ * after stopping. The platform re-advertises by itself when a peer
+ * disconnects.
+ *
+ * @param on          Non-zero to advertise, zero to stop.
+ * @param interval_ms Advertising interval in milliseconds, or 0 for the
+ *                    platform default. Clamped to what the controller allows.
+ * @retval 0 on success.
+ * @retval -EPERM without @ref APP_CAP_BLE.
+ * @retval -EINVAL when the application is not serving.
+ */
+__syscall int svc_ble_advertise(int on, uint32_t interval_ms);
 
 /**
  * @brief Send a datagram to the 802.15.4 peer. Needs @ref APP_CAP_RADIO.

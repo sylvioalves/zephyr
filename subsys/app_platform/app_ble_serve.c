@@ -39,10 +39,11 @@
 #define VALUE_MAX  APP_BLE_GATT_MAX
 #define CHRC_MAX   APP_BLE_SERVE_MAX_CHRC
 
-/* One primary-service attribute plus a declaration and a value per
- * characteristic.
+/* One primary-service attribute, then a declaration, a value and a client
+ * configuration descriptor per characteristic. The descriptor is present only
+ * for a notifiable characteristic, so the count is an upper bound.
  */
-#define ATTR_MAX (1 + (2 * CHRC_MAX))
+#define ATTR_MAX (1 + (3 * CHRC_MAX))
 
 static inline bool app_has_cap(app_caps_t mask)
 {
@@ -72,6 +73,26 @@ static uint16_t value_len[CHRC_MAX];
 static uint8_t n_chrc;
 static struct bt_gatt_chrc chrc_meta[CHRC_MAX];
 
+/* A notifiable characteristic carries a third attribute, so the value and
+ * descriptor positions are recorded rather than derived from a fixed stride.
+ */
+static uint8_t value_attr[CHRC_MAX];
+static uint8_t ccc_attr[CHRC_MAX];
+static bool notifiable[CHRC_MAX];
+static struct bt_gatt_ccc_managed_user_data ccc_store[CHRC_MAX];
+static bool subscribed[CHRC_MAX];
+static const struct bt_uuid_16 ccc_uuid = BT_UUID_INIT_16(BT_UUID_GATT_CCC_VAL);
+
+static void serve_ccc_changed(const struct bt_gatt_attr *attr, uint16_t value)
+{
+	for (int i = 0; i < n_chrc; i++) {
+		if (ccc_attr[i] != 0U && &attrs[ccc_attr[i]] == attr) {
+			subscribed[i] = (value == BT_GATT_CCC_NOTIFY);
+			return;
+		}
+	}
+}
+
 /*
  * BT_UUID_GATT_CHRC expands to a compound literal. At file scope that has
  * static storage, but used inside a function it lives only until the block
@@ -83,6 +104,18 @@ static char adv_name[NAME_MAX];
 
 static struct bt_data ad[2];
 static struct bt_conn *serve_conn;
+
+/* Advertising is on from serve_start until the application says otherwise, and
+ * a chosen interval outlives a disconnect so the platform resumes as asked.
+ */
+static bool advertising;
+static struct bt_le_adv_param adv_param;
+static bool adv_param_set;
+
+static const struct bt_le_adv_param *adv_param_current(void)
+{
+	return adv_param_set ? &adv_param : BT_LE_ADV_CONN_FAST_1;
+}
 
 static struct bt_uuid *make_uuid(void *storage, const uint8_t *bytes, size_t len)
 {
@@ -105,7 +138,7 @@ static struct bt_uuid *make_uuid(void *storage, const uint8_t *bytes, size_t len
 static int chrc_index(const struct bt_gatt_attr *attr)
 {
 	for (int i = 0; i < n_chrc; i++) {
-		if (&attrs[2 + (2 * i)] == attr) {
+		if (&attrs[value_attr[i]] == attr) {
 			return i;
 		}
 	}
@@ -162,6 +195,12 @@ static void serve_connected(struct bt_conn *conn, uint8_t err)
 		return;
 	}
 	serve_conn = bt_conn_ref(conn);
+
+	struct app_event evt = {
+		.kind = APP_EVENT_BLE_CONNECTED,
+	};
+
+	app_events_post(serving_id, &evt);
 }
 
 static void serve_disconnected(struct bt_conn *conn, uint8_t reason)
@@ -172,13 +211,21 @@ static void serve_disconnected(struct bt_conn *conn, uint8_t reason)
 	}
 	bt_conn_unref(serve_conn);
 	serve_conn = NULL;
+	(void)memset(subscribed, 0, sizeof(subscribed));
+
+	struct app_event evt = {
+		.kind = APP_EVENT_BLE_DISCONNECTED,
+	};
+
+	app_events_post(serving_id, &evt);
 
 	/* A peripheral does not resume on its own, and the previous set is
-	 * still registered, so stop before starting again.
+	 * still registered, so stop before starting again. An application that
+	 * asked to stop advertising stays quiet.
 	 */
-	if (serving) {
+	if (serving && advertising) {
 		(void)bt_le_adv_stop();
-		(void)bt_le_adv_start(BT_LE_ADV_CONN_FAST_1, ad,
+		(void)bt_le_adv_start(adv_param_current(), ad,
 				      ARRAY_SIZE(ad), NULL, 0);
 	}
 }
@@ -232,6 +279,8 @@ int z_impl_svc_ble_serve_start(const char *name, const uint8_t *svc_uuid,
 		bt_gatt_attr_read_service, NULL,
 		make_uuid(&svc_uuid_store, svc_uuid, uuid_len));
 
+	size_t at = 1U;
+
 	for (size_t i = 0; i < n; i++) {
 		if (chrc[i].uuid_len != 2U && chrc[i].uuid_len != 16U) {
 			k_mutex_unlock(&serve_lock);
@@ -251,14 +300,14 @@ int z_impl_svc_ble_serve_start(const char *name, const uint8_t *svc_uuid,
 			props |= BT_GATT_CHRC_WRITE;
 			perm |= BT_GATT_PERM_WRITE;
 		}
+		if (chrc[i].notifiable != 0U) {
+			props |= BT_GATT_CHRC_NOTIFY;
+		}
 
-		attrs[1 + (2 * i)] = (struct bt_gatt_attr)
+		attrs[at] = (struct bt_gatt_attr)
 			BT_GATT_ATTRIBUTE(&chrc_decl_uuid.uuid,
 					  BT_GATT_PERM_READ,
 					  bt_gatt_attr_read_chrc, NULL, NULL);
-		attrs[2 + (2 * i)] = (struct bt_gatt_attr)
-			BT_GATT_ATTRIBUTE(u, perm, serve_read, serve_write,
-					  NULL);
 
 		/* The declaration's user_data describes the value attribute
 		 * that follows it, which is what a discovering peer reads. The
@@ -269,10 +318,39 @@ int z_impl_svc_ble_serve_start(const char *name, const uint8_t *svc_uuid,
 			.value_handle = 0U,
 			.properties = props,
 		};
-		attrs[1 + (2 * i)].user_data = &chrc_meta[i];
+		attrs[at].user_data = &chrc_meta[i];
+		at++;
+
+		value_attr[i] = at;
+		attrs[at] = (struct bt_gatt_attr)
+			BT_GATT_ATTRIBUTE(u, perm, serve_read, serve_write,
+					  NULL);
+		at++;
+
+		/* A notifiable characteristic needs a client configuration
+		 * descriptor for a peer to subscribe through; without it the
+		 * host has nowhere to record the subscription.
+		 */
+		if (chrc[i].notifiable != 0U) {
+			ccc_store[i] = (struct bt_gatt_ccc_managed_user_data)
+				BT_GATT_CCC_MANAGED_USER_DATA_INIT(
+					serve_ccc_changed, NULL, NULL);
+			ccc_attr[i] = at;
+			attrs[at] = (struct bt_gatt_attr)
+				BT_GATT_ATTRIBUTE(&ccc_uuid.uuid,
+						  BT_GATT_PERM_READ |
+						  BT_GATT_PERM_WRITE,
+						  bt_gatt_attr_read_ccc,
+						  bt_gatt_attr_write_ccc,
+						  &ccc_store[i]);
+			at++;
+		} else {
+			ccc_attr[i] = 0U;
+		}
+		notifiable[i] = (chrc[i].notifiable != 0U);
 	}
 
-	svc.attr_count = 1U + (2U * n);
+	svc.attr_count = at;
 	rc = bt_gatt_service_register(&svc);
 	if (rc != 0) {
 		k_mutex_unlock(&serve_lock);
@@ -283,10 +361,10 @@ int z_impl_svc_ble_serve_start(const char *name, const uint8_t *svc_uuid,
 	 * Handles are assigned by the registration, and the value handle a
 	 * discovering peer reads comes from the declaration's metadata. The
 	 * host only derives it for statically defined services, so fill it in
-	 * here: the value attribute is always the one after its declaration.
+	 * here from the value attribute recorded above.
 	 */
 	for (size_t i = 0; i < n; i++) {
-		chrc_meta[i].value_handle = attrs[2 + (2 * i)].handle;
+		chrc_meta[i].value_handle = attrs[value_attr[i]].handle;
 	}
 	(void)strncpy(adv_name, name, sizeof(adv_name) - 1);
 	adv_name[sizeof(adv_name) - 1] = '\0';
@@ -307,8 +385,96 @@ int z_impl_svc_ble_serve_start(const char *name, const uint8_t *svc_uuid,
 
 	serving_id = id;
 	serving = true;
+	advertising = true;
 	k_mutex_unlock(&serve_lock);
 	return 0;
+}
+
+int z_impl_svc_ble_notify(int idx, const void *buf, size_t len)
+{
+	if (!app_has_cap(APP_CAP_BLE)) {
+		return -EPERM;
+	}
+	if (idx < 0 || idx >= n_chrc || len > VALUE_MAX) {
+		return -EINVAL;
+	}
+	if (app_platform_id_current() != serving_id) {
+		return -EACCES;
+	}
+	if (!notifiable[idx]) {
+		return -EACCES;
+	}
+	if (serve_conn == NULL || !subscribed[idx]) {
+		return -ENOTCONN;
+	}
+
+	/* Keep the stored value in step, so a peer that reads instead of
+	 * listening sees what was last sent.
+	 */
+	memcpy(values[idx], buf, len);
+	value_len[idx] = (uint16_t)len;
+
+	return bt_gatt_notify(serve_conn, &attrs[value_attr[idx]], buf, len);
+}
+
+int z_impl_svc_ble_is_connected(void)
+{
+	if (!app_has_cap(APP_CAP_BLE)) {
+		return -EPERM;
+	}
+	if (app_platform_id_current() != serving_id) {
+		return 0;
+	}
+	return (serve_conn != NULL) ? 1 : 0;
+}
+
+int z_impl_svc_ble_advertise(int on, uint32_t interval_ms)
+{
+	if (!app_has_cap(APP_CAP_BLE)) {
+		return -EPERM;
+	}
+	if (!serving || app_platform_id_current() != serving_id) {
+		return -EINVAL;
+	}
+
+	if (on == 0) {
+		if (advertising) {
+			(void)bt_le_adv_stop();
+			advertising = false;
+		}
+		return 0;
+	}
+
+	if (interval_ms != 0U) {
+		/* The controller counts in 0.625 ms units, and the window it
+		 * accepts is bounded, so an out-of-range request is clamped
+		 * rather than refused.
+		 */
+		uint32_t units = (interval_ms * 1000U) / 625U;
+
+		if (units < BT_GAP_ADV_FAST_INT_MIN_1) {
+			units = BT_GAP_ADV_FAST_INT_MIN_1;
+		}
+		if (units > BT_GAP_ADV_SLOW_INT_MAX) {
+			units = BT_GAP_ADV_SLOW_INT_MAX;
+		}
+		adv_param = *BT_LE_ADV_CONN_FAST_1;
+		adv_param.interval_min = (uint32_t)units;
+		adv_param.interval_max = (uint32_t)units;
+		adv_param_set = true;
+	}
+
+	if (advertising) {
+		(void)bt_le_adv_stop();
+	}
+
+	int rc = bt_le_adv_start(adv_param_current(), ad, ARRAY_SIZE(ad),
+				 NULL, 0);
+
+	if (rc == 0) {
+		advertising = true;
+	}
+	return rc;
 }
 
 int z_impl_svc_ble_serve_set(int idx, const uint8_t *buf, size_t len)
@@ -356,6 +522,10 @@ int z_impl_svc_ble_serve_stop(void)
 	}
 	if (serving && app_platform_id_current() == serving_id) {
 		serving = false;
+		advertising = false;
+		adv_param_set = false;
+		(void)memset(subscribed, 0, sizeof(subscribed));
+		(void)memset(notifiable, 0, sizeof(notifiable));
 		(void)bt_le_adv_stop();
 		(void)bt_gatt_service_unregister(&svc);
 		serving_id = -1;
@@ -416,4 +586,23 @@ static inline int z_vrfy_svc_ble_serve_stop(void)
 	return z_impl_svc_ble_serve_stop();
 }
 #include <zephyr/syscalls/svc_ble_serve_stop_mrsh.c>
+
+static inline int z_vrfy_svc_ble_notify(int idx, const void *buf, size_t len)
+{
+	K_OOPS(K_SYSCALL_MEMORY_READ(buf, len));
+	return z_impl_svc_ble_notify(idx, buf, len);
+}
+#include <zephyr/syscalls/svc_ble_notify_mrsh.c>
+
+static inline int z_vrfy_svc_ble_is_connected(void)
+{
+	return z_impl_svc_ble_is_connected();
+}
+#include <zephyr/syscalls/svc_ble_is_connected_mrsh.c>
+
+static inline int z_vrfy_svc_ble_advertise(int on, uint32_t interval_ms)
+{
+	return z_impl_svc_ble_advertise(on, interval_ms);
+}
+#include <zephyr/syscalls/svc_ble_advertise_mrsh.c>
 #endif
