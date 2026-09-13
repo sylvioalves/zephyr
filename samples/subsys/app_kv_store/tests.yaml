@@ -1,0 +1,9 @@
+sample:
+  name: Isolated key/value store application
+  description: Set, read, overwrite and delete keys namespaced per application
+tests:
+  sample.app_platform.kv_store:
+    platform_allow:
+      - esp32c5_devkitc/esp32c5/hpcore
+    tags: app_platform
+    build_only: true

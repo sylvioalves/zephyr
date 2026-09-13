@@ -132,6 +132,20 @@ __syscall int svc_kv_set(const char *key, uint32_t value);
 __syscall int svc_kv_get(const char *key, uint32_t *out);
 
 /**
+ * @brief Forget one of the calling application's keys. Needs @ref APP_CAP_KV.
+ *
+ * Per-app-keyed: an application deletes only its own keys, and the freed slot
+ * keeps no trace of what it held, so a later tenant of the slot cannot read it.
+ *
+ * @param key Key to remove.
+ * @retval 0 on success.
+ * @retval -EPERM without @ref APP_CAP_KV.
+ * @retval -ENOENT when the application has no such key.
+ * @retval -EBUSY if the store could not be locked.
+ */
+__syscall int svc_kv_delete(const char *key);
+
+/**
  * @brief Read from the raw storage partition. Needs @ref APP_CAP_FLASH.
  *
  * Lock-serialized: the partition is a shared peripheral, so accesses are
@@ -843,6 +857,22 @@ __syscall int svc_app_stop(int id);
  * @retval -EBUSY A previous stop of this group is still being cleaned up.
  */
 __syscall int svc_app_start(int id);
+
+/**
+ * @brief Stop an application and start it again. Needs @ref APP_CAP_CONTROL.
+ *
+ * One call so a supervising application does not have to sequence a stop and a
+ * start itself, and so the platform can refuse the pair together. An
+ * application that is already stopped is simply started. A caller may not
+ * restart itself.
+ *
+ * @param id Application group id, not the caller's own.
+ * @retval 0 on success.
+ * @retval -EPERM without @ref APP_CAP_CONTROL.
+ * @retval -EINVAL on a bad id or the caller's own id.
+ * @retval -ENOTSUP when loadable applications are not built in.
+ */
+__syscall int svc_app_restart(int id);
 
 /**
  * @brief Number of hardware counter instances the board announces. Needs

@@ -285,6 +285,56 @@ int z_impl_svc_kv_get(const char *key, uint32_t *out)
 	return rc;
 }
 
+/* Drop every key an application owned. The store is keyed by group id and a
+ * slot is handed to a new application once its previous tenant is reclaimed,
+ * so without this the newcomer would inherit the old keys as its own.
+ */
+static void kv_release(int id)
+{
+	if (k_mutex_lock(&kv_lock, SVC_LOCK_TIMEOUT) != 0) {
+		return;
+	}
+	for (int i = 0; i < KV_SLOTS; i++) {
+		if (kv_store[i].used && kv_store[i].owner == id) {
+			(void)memset(&kv_store[i], 0, sizeof(kv_store[i]));
+		}
+	}
+	k_mutex_unlock(&kv_lock);
+}
+
+static int kv_service_init(void)
+{
+	return app_platform_on_reclaim(kv_release);
+}
+SYS_INIT(kv_service_init, APPLICATION, 99);
+
+int z_impl_svc_kv_delete(const char *key)
+{
+	if (!app_has_cap(APP_CAP_KV)) {
+		return -EPERM;
+	}
+
+	int owner = app_platform_id_current();
+	int rc = -ENOENT;
+
+	if (k_mutex_lock(&kv_lock, SVC_LOCK_TIMEOUT) != 0) {
+		return -EBUSY;
+	}
+	for (int i = 0; i < KV_SLOTS; i++) {
+		if (kv_store[i].used && kv_store[i].owner == owner &&
+		    strcmp(kv_store[i].key, key) == 0) {
+			/* Clear the key too, so the freed slot keeps no trace
+			 * of what the previous tenant stored.
+			 */
+			(void)memset(&kv_store[i], 0, sizeof(kv_store[i]));
+			rc = 0;
+			break;
+		}
+	}
+	k_mutex_unlock(&kv_lock);
+	return rc;
+}
+
 /* Per-application window into the storage partition (len 0 = no grant). The
  * partition also holds the registry and the signed modules, so an application
  * reaches only the range the platform assigned to it.
@@ -959,6 +1009,32 @@ int z_impl_svc_app_start(int id)
 #endif
 }
 
+int z_impl_svc_app_restart(int id)
+{
+	if (!app_has_cap(APP_CAP_CONTROL)) {
+		return -EPERM;
+	}
+	if (id == app_platform_id_current()) {
+		return -EINVAL;
+	}
+#ifdef CONFIG_LLEXT
+	/* An application that is not running reports -EINVAL here, which is
+	 * not an error for a restart: the caller asked for it to end up
+	 * running, and starting a stopped one is the same operation. A busy
+	 * platform still fails, since the stop did not take effect.
+	 */
+	int rc = app_platform_stop(id);
+
+	if (rc != 0 && rc != -EINVAL) {
+		return rc;
+	}
+	rc = app_platform_start(id);
+	return rc < 0 ? rc : 0;
+#else
+	return -ENOTSUP;
+#endif
+}
+
 #ifdef CONFIG_USERSPACE
 static inline void z_vrfy_svc_log(const char *msg)
 {
@@ -1020,6 +1096,17 @@ static inline int z_vrfy_svc_kv_set(const char *key, uint32_t value)
 	return z_impl_svc_kv_set(buf, value);
 }
 #include <zephyr/syscalls/svc_kv_set_mrsh.c>
+
+static inline int z_vrfy_svc_kv_delete(const char *key)
+{
+	char buf[KV_KEY_MAX];
+
+	if (k_usermode_string_copy(buf, (char *)key, sizeof(buf)) != 0) {
+		return -EFAULT;
+	}
+	return z_impl_svc_kv_delete(buf);
+}
+#include <zephyr/syscalls/svc_kv_delete_mrsh.c>
 
 static inline int z_vrfy_svc_kv_get(const char *key, uint32_t *out)
 {
@@ -1214,4 +1301,10 @@ static inline int z_vrfy_svc_app_start(int id)
 	return z_impl_svc_app_start(id);
 }
 #include <zephyr/syscalls/svc_app_start_mrsh.c>
+
+static inline int z_vrfy_svc_app_restart(int id)
+{
+	return z_impl_svc_app_restart(id);
+}
+#include <zephyr/syscalls/svc_app_restart_mrsh.c>
 #endif

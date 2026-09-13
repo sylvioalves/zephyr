@@ -112,11 +112,13 @@ config APP_PLATFORM_LOADER_MAX_MODULE_BYTES
 
 config APP_PLATFORM_RECLAIM_HOOKS
 	int "Number of reclaim-hook slots"
-	default 4
+	default 8
 	help
 	  How many services can register a hook to release per-application
-	  resources when an application is reclaimed (for example the network
-	  and PSRAM services each register one).
+	  resources when an application is reclaimed (the network, PSRAM,
+	  key/value, timer-slot and UART services each register one). A service
+	  whose registration does not fit is left without cleanup, so raise
+	  this when adding one rather than letting it fail quietly.
 
 config APP_PLATFORM_SENSOR
 	bool "Typed sensor catalog service"
