@@ -28,6 +28,7 @@
 K_APPMEM_PARTITION_DEFINE(newsvc_part);
 K_APP_DMEM(newsvc_part) static int passes;
 K_APP_DMEM(newsvc_part) static int fails;
+K_APP_DMEM(newsvc_part) static uint8_t tick;
 
 static void check(bool ok, const char *what)
 {
@@ -356,7 +357,6 @@ static void newsvc_app(void *arg)
 		}
 
 		if (svc_ble_is_connected() == 1) {
-			static uint8_t tick;
 			uint8_t v[2] = {0xAA, tick++};
 			int rc = svc_ble_notify(0, v, sizeof(v));
 
