@@ -1529,6 +1529,86 @@ __syscall int svc_uart_configure(uint32_t baud, uint8_t parity,
 __syscall int svc_uart_close(void);
 
 /**
+ * @brief Header at the front of a ring bound with @ref svc_ring_bind.
+ *
+ * The application writes at @c head and the platform consumes from @c tail
+ * when sending; the platform writes at @c head and the application consumes
+ * from @c tail when receiving. Both live in the application's own memory, so
+ * the platform re-reads and range-checks them on every use and reports
+ * @c -EBADMSG rather than trusting a value that cannot be right.
+ */
+struct app_ring_hdr {
+	volatile uint32_t head;  /**< index one past the newest byte */
+	volatile uint32_t tail;  /**< index of the oldest unread byte */
+	uint32_t reserved[2];    /**< pad the data to an aligned offset */
+};
+
+/**
+ * @brief Bind a bulk-transfer ring into the application's memory. Needs
+ *        @ref APP_CAP_UART.
+ *
+ * The platform allocates the buffer and maps it into the calling
+ * application's domain, so the application fills or drains it directly and
+ * crosses the syscall boundary once per batch rather than once per transfer.
+ * The returned address points at a @ref app_ring_hdr followed by @p out_cap
+ * data bytes.
+ *
+ * The mapping becomes a memory partition, so the platform rounds the request
+ * up to a power of two and costs the application one partition slot until it
+ * unbinds. One ring per application.
+ *
+ * @param bytes         Data capacity wanted, before rounding.
+ * @param[out] out_addr Receives the ring address in the application's space.
+ * @param[out] out_cap  Receives the usable data capacity.
+ * @retval 0 on success.
+ * @retval -EPERM without @ref APP_CAP_UART.
+ * @retval -EINVAL on a zero or oversized request.
+ * @retval -EEXIST when the application already bound a ring.
+ * @retval -ENOMEM when the buffer could not be allocated.
+ */
+__syscall int svc_ring_bind(size_t bytes, uintptr_t *out_addr, size_t *out_cap);
+
+/**
+ * @brief Release the application's ring. Needs @ref APP_CAP_UART.
+ *
+ * The mapping is removed and the buffer freed, so the address returned by
+ * @ref svc_ring_bind must not be touched afterwards. A reclaimed application
+ * releases its ring automatically.
+ *
+ * @retval 0 on success, -EPERM without the capability, -EINVAL with no ring.
+ */
+__syscall int svc_ring_unbind(void);
+
+/**
+ * @brief Send everything queued in the ring. Needs @ref APP_CAP_UART.
+ *
+ * One call moves the whole batch the application wrote since the last flush,
+ * so a payload of any size costs a single crossing of the boundary.
+ *
+ * @retval >=0 bytes sent.
+ * @retval -EPERM without @ref APP_CAP_UART.
+ * @retval -EINVAL with no ring bound.
+ * @retval -EBADMSG when the ring's indices are out of range.
+ * @retval -ENODEV when no secondary UART is chosen.
+ */
+__syscall int svc_ring_flush(void);
+
+/**
+ * @brief Take everything waiting on the port into the ring. Needs
+ *        @ref APP_CAP_UART.
+ *
+ * Fills up to one byte short of the application's read position, so a full
+ * ring stays distinguishable from an empty one.
+ *
+ * @retval >=0 bytes received.
+ * @retval -EPERM without @ref APP_CAP_UART.
+ * @retval -EINVAL with no ring bound.
+ * @retval -EBADMSG when the ring's indices are out of range.
+ * @retval -ENODEV when no secondary UART is chosen.
+ */
+__syscall int svc_ring_fill(void);
+
+/**
  * @brief Scan for a BLE peer advertising a given name. Needs @ref APP_CAP_BLE.
  *
  * Lock-serialized: the platform owns the controller, so concurrent scans from

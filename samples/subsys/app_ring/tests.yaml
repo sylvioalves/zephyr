@@ -1,0 +1,9 @@
+sample:
+  name: Isolated bulk-transfer ring application
+  description: Move a batch of bytes through a ring mapped into the application
+tests:
+  sample.app_platform.ring:
+    platform_allow:
+      - esp32c5_devkitc/esp32c5/hpcore
+    tags: app_platform
+    build_only: true

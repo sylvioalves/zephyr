@@ -305,6 +305,26 @@ config APP_PLATFORM_SERVICES
 	  callers. The crypto service needs a PSA provider (CONFIG_PSA_CRYPTO
 	  with CONFIG_PSA_WANT_ALG_SHA_256); without it the rest still build.
 
+config APP_PLATFORM_RING
+	bool "Bulk transfer through an application-owned ring"
+	depends on APP_PLATFORM_SERVICES
+	depends on APP_PLATFORM_BUS
+	help
+	  Map a ring buffer into an application's own memory so it moves a
+	  batch of bytes per syscall instead of one buffer per syscall. The
+	  indices live in application memory and are range-checked by the
+	  platform on every use, so a corrupt ring costs the application only
+	  its own data. Each bound ring takes one memory-partition slot.
+
+config APP_PLATFORM_RING_MAX_BYTES
+	int "Largest ring an application may bind"
+	depends on APP_PLATFORM_RING
+	default 4096
+	help
+	  Upper bound on a single svc_ring_bind request. The size is rounded up
+	  to a power of two for the memory partition, so this bound also keeps
+	  that rounding finite.
+
 config APP_PLATFORM_NET
 	bool "Shared networking and MQTT service"
 	depends on APP_PLATFORM_SERVICES
