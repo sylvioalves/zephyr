@@ -136,6 +136,133 @@ int z_impl_svc_spi_xfer(const uint8_t *tx, uint8_t *rx, size_t len)
 static const struct device *const uart_dev = DEVICE_DT_GET(DT_CHOSEN(app_uart));
 #endif
 
+#if DT_HAS_CHOSEN(app_uart)
+/* The port is shared, so the configuration an application installs is backed
+ * by the one found at boot and restored on close or reclaim.
+ */
+static struct uart_config uart_boot_cfg;
+static bool uart_boot_cfg_valid;
+static bool uart_reconfigured;
+
+static void uart_save_boot_cfg(void)
+{
+	if (uart_boot_cfg_valid) {
+		return;
+	}
+	if (uart_config_get(uart_dev, &uart_boot_cfg) == 0) {
+		uart_boot_cfg_valid = true;
+	}
+}
+
+static void uart_restore_boot_cfg(int id)
+{
+	ARG_UNUSED(id);
+
+	if (uart_reconfigured && uart_boot_cfg_valid) {
+		(void)uart_configure(uart_dev, &uart_boot_cfg);
+		uart_reconfigured = false;
+	}
+}
+#endif
+
+int z_impl_svc_uart_configure(uint32_t baud, uint8_t parity, uint8_t stop_bits,
+			      uint8_t data_bits)
+{
+	if (!app_has_cap(APP_CAP_UART)) {
+		return -EPERM;
+	}
+#if DT_HAS_CHOSEN(app_uart)
+	if (!device_is_ready(uart_dev)) {
+		return -ENODEV;
+	}
+
+	struct uart_config cfg;
+
+	if (baud == 0U) {
+		return -EINVAL;
+	}
+
+	switch (parity) {
+	case APP_UART_PARITY_NONE:
+		cfg.parity = UART_CFG_PARITY_NONE;
+		break;
+	case APP_UART_PARITY_ODD:
+		cfg.parity = UART_CFG_PARITY_ODD;
+		break;
+	case APP_UART_PARITY_EVEN:
+		cfg.parity = UART_CFG_PARITY_EVEN;
+		break;
+	default:
+		return -EINVAL;
+	}
+
+	switch (stop_bits) {
+	case 1:
+		cfg.stop_bits = UART_CFG_STOP_BITS_1;
+		break;
+	case 2:
+		cfg.stop_bits = UART_CFG_STOP_BITS_2;
+		break;
+	default:
+		return -EINVAL;
+	}
+
+	switch (data_bits) {
+	case 5:
+		cfg.data_bits = UART_CFG_DATA_BITS_5;
+		break;
+	case 6:
+		cfg.data_bits = UART_CFG_DATA_BITS_6;
+		break;
+	case 7:
+		cfg.data_bits = UART_CFG_DATA_BITS_7;
+		break;
+	case 8:
+		cfg.data_bits = UART_CFG_DATA_BITS_8;
+		break;
+	case 9:
+		cfg.data_bits = UART_CFG_DATA_BITS_9;
+		break;
+	default:
+		return -EINVAL;
+	}
+
+	cfg.baudrate = baud;
+	cfg.flow_ctrl = UART_CFG_FLOW_CTRL_NONE;
+
+	uart_save_boot_cfg();
+
+	int err = uart_configure(uart_dev, &cfg);
+
+	if (err == 0) {
+		uart_reconfigured = true;
+	}
+	return err;
+#else
+	ARG_UNUSED(baud);
+	ARG_UNUSED(parity);
+	ARG_UNUSED(stop_bits);
+	ARG_UNUSED(data_bits);
+	return -ENODEV;
+#endif
+}
+
+int z_impl_svc_uart_close(void)
+{
+	if (!app_has_cap(APP_CAP_UART)) {
+		return -EPERM;
+	}
+#if DT_HAS_CHOSEN(app_uart)
+	if (!device_is_ready(uart_dev)) {
+		return -ENODEV;
+	}
+	uart_restore_boot_cfg(-1);
+	return 0;
+#else
+	return -ENODEV;
+#endif
+}
+
 int z_impl_svc_uart_write(const uint8_t *buf, size_t len)
 {
 	if (!app_has_cap(APP_CAP_UART)) {
@@ -282,4 +409,25 @@ static inline int z_vrfy_svc_uart_read(uint8_t *buf, size_t len)
 	return z_impl_svc_uart_read(buf, len);
 }
 #include <zephyr/syscalls/svc_uart_read_mrsh.c>
+
+static inline int z_vrfy_svc_uart_configure(uint32_t baud, uint8_t parity,
+					    uint8_t stop_bits, uint8_t data_bits)
+{
+	return z_impl_svc_uart_configure(baud, parity, stop_bits, data_bits);
+}
+#include <zephyr/syscalls/svc_uart_configure_mrsh.c>
+
+static inline int z_vrfy_svc_uart_close(void)
+{
+	return z_impl_svc_uart_close();
+}
+#include <zephyr/syscalls/svc_uart_close_mrsh.c>
+#endif
+
+#if DT_HAS_CHOSEN(app_uart)
+static int uart_service_init(void)
+{
+	return app_platform_on_reclaim(uart_restore_boot_cfg);
+}
+SYS_INIT(uart_service_init, APPLICATION, 99);
 #endif

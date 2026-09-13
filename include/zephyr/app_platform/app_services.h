@@ -1442,6 +1442,50 @@ __syscall int svc_uart_write(const uint8_t *buf, size_t len);
  */
 __syscall int svc_uart_read(uint8_t *buf, size_t len);
 
+/** @brief Parity for @ref svc_uart_configure. */
+enum app_uart_parity {
+	APP_UART_PARITY_NONE = 0,
+	APP_UART_PARITY_ODD,
+	APP_UART_PARITY_EVEN,
+};
+
+/**
+ * @brief Set the secondary UART's line parameters. Needs @ref APP_CAP_UART.
+ *
+ * The platform owns the port and keeps it open; this only changes how it is
+ * framed, so an application can talk to a device that does not run at the
+ * configured default without reaching the driver itself. The settings stay
+ * until another call or @ref svc_uart_close, and are restored when the
+ * application is reclaimed, so one application cannot leave the port
+ * misconfigured for the next.
+ *
+ * @param baud     Line rate in bits per second.
+ * @param parity   One of @ref app_uart_parity.
+ * @param stop_bits 1 or 2.
+ * @param data_bits 5 to 9.
+ * @retval 0 on success.
+ * @retval -EPERM without @ref APP_CAP_UART.
+ * @retval -EINVAL on an unsupported combination.
+ * @retval -ENODEV when no secondary UART is chosen.
+ * @retval -ENOTSUP when the driver cannot be reconfigured at runtime.
+ */
+__syscall int svc_uart_configure(uint32_t baud, uint8_t parity,
+				 uint8_t stop_bits, uint8_t data_bits);
+
+/**
+ * @brief Restore the secondary UART's boot configuration. Needs
+ *        @ref APP_CAP_UART.
+ *
+ * The port itself stays open for the platform; this drops whatever
+ * @ref svc_uart_configure changed, so a later reader sees the devicetree
+ * settings again.
+ *
+ * @retval 0 on success.
+ * @retval -EPERM without @ref APP_CAP_UART.
+ * @retval -ENODEV when no secondary UART is chosen.
+ */
+__syscall int svc_uart_close(void);
+
 /**
  * @brief Scan for a BLE peer advertising a given name. Needs @ref APP_CAP_BLE.
  *
