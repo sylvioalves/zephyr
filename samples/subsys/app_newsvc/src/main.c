@@ -18,6 +18,7 @@
 #include <zephyr/app_memory/app_memdomain.h>
 #include <zephyr/kernel.h>
 #include <zephyr/sys/printk.h>
+#include <string.h>
 #include <errno.h>
 
 /* The counters are written by the application in user mode, so they live in a
@@ -162,6 +163,59 @@ static void test_uart(void)
 
 	rc = svc_uart_configure(115200, APP_UART_PARITY_NONE, 1, 12);
 	check_rc(rc == -EINVAL, "bad data bits refused", rc);
+
+	/* Back to the rate the loopback pad is wired for before moving bytes. */
+	rc = svc_uart_configure(115200, APP_UART_PARITY_NONE, 1, 8);
+	check_rc(rc == 0, "uart_configure back to 115200 8N1", rc);
+
+	/* TX and RX share one pad, so whatever is written comes straight back
+	 * and the read must return the same bytes.
+	 */
+	static const uint8_t tx[5] = {'n', 'e', 'w', 's', 'v'};
+	uint8_t rx[8] = {0};
+
+	rc = svc_uart_write(tx, sizeof(tx));
+	check_rc(rc == (int)sizeof(tx), "uart_write on the loopback port", rc);
+
+	int got = 0;
+
+	for (int i = 0; i < 50 && got < (int)sizeof(tx); i++) {
+		int n = svc_uart_read(&rx[got], sizeof(rx) - got);
+
+		if (n > 0) {
+			got += n;
+		} else {
+			(void)svc_timer_start(2);
+			(void)svc_timer_wait(5);
+		}
+	}
+	check_rc(got == (int)sizeof(tx), "uart_read got every byte back", got);
+	check_rc(got == (int)sizeof(tx) && memcmp(rx, tx, sizeof(tx)) == 0,
+		 "loopback bytes match what was written", rx[0]);
+
+	/* A different framing must still loop back cleanly, which is the point
+	 * of being able to configure the port at all.
+	 */
+	rc = svc_uart_configure(9600, APP_UART_PARITY_EVEN, 1, 8);
+	check_rc(rc == 0, "uart_configure 9600 8E1 for a second pass", rc);
+
+	static const uint8_t tx2[3] = {0x5A, 0xA5, 0x42};
+	uint8_t rx2[4] = {0};
+
+	(void)svc_uart_write(tx2, sizeof(tx2));
+	got = 0;
+	for (int i = 0; i < 80 && got < (int)sizeof(tx2); i++) {
+		int n = svc_uart_read(&rx2[got], sizeof(rx2) - got);
+
+		if (n > 0) {
+			got += n;
+		} else {
+			(void)svc_timer_start(2);
+			(void)svc_timer_wait(5);
+		}
+	}
+	check_rc(got == (int)sizeof(tx2) && memcmp(rx2, tx2, sizeof(tx2)) == 0,
+		 "loopback matches at 9600 8E1 too", got);
 
 	rc = svc_uart_close();
 	check_rc(rc == 0, "uart_close restores the boot configuration", rc);
