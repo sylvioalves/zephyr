@@ -502,6 +502,199 @@ static void timers_init_once(void)
 	timers_inited = true;
 }
 
+/* Timer slots: each application owns APP_TIMER_SLOTS independent one-shot or
+ * periodic timers, claimed and released through the svc_timer_* calls below.
+ * Slots are a fixed array rather than allocations so a faulting application
+ * cannot exhaust a heap, and the reclaim hook returns them all at once.
+ */
+struct app_timer_slot {
+	struct k_timer timer;
+	struct k_sem   sem;
+	int64_t        armed_at;
+	bool           used;
+};
+
+static struct app_timer_slot slots[MAX_APPS][APP_TIMER_SLOTS];
+static struct k_spinlock slot_lock;
+
+static void slot_expiry(struct k_timer *t)
+{
+	struct app_timer_slot *s = CONTAINER_OF(t, struct app_timer_slot, timer);
+
+	k_sem_give(&s->sem);
+}
+
+static struct app_timer_slot *slot_of(int id, int slot)
+{
+	if (slot < 0 || slot >= APP_TIMER_SLOTS) {
+		return NULL;
+	}
+	if (!slots[id][slot].used) {
+		return NULL;
+	}
+	return &slots[id][slot];
+}
+
+/* Resolve the caller and its slot in one step, since every slot call needs
+ * the capability, a valid group id and a claimed slot.
+ */
+static int slot_lookup(int slot, struct app_timer_slot **out)
+{
+	if (!app_has_cap(APP_CAP_TIME)) {
+		return -EPERM;
+	}
+
+	int id = app_platform_id_current();
+
+	if (id < 0 || id >= MAX_APPS) {
+		return -EINVAL;
+	}
+
+	struct app_timer_slot *s = slot_of(id, slot);
+
+	if (s == NULL) {
+		return -EINVAL;
+	}
+	*out = s;
+	return 0;
+}
+
+int z_impl_svc_timer_create(void)
+{
+	if (!app_has_cap(APP_CAP_TIME)) {
+		return -EPERM;
+	}
+
+	int id = app_platform_id_current();
+
+	if (id < 0 || id >= MAX_APPS) {
+		return -EINVAL;
+	}
+
+	k_spinlock_key_t key = k_spin_lock(&slot_lock);
+
+	for (int i = 0; i < APP_TIMER_SLOTS; i++) {
+		if (!slots[id][i].used) {
+			slots[id][i].used = true;
+			k_spin_unlock(&slot_lock, key);
+			k_timer_init(&slots[id][i].timer, slot_expiry, NULL);
+			k_sem_init(&slots[id][i].sem, 0, 1);
+			slots[id][i].armed_at = 0;
+			return i;
+		}
+	}
+	k_spin_unlock(&slot_lock, key);
+	return -ENOSPC;
+}
+
+int z_impl_svc_timer_arm(int slot, uint32_t ms, int periodic)
+{
+	struct app_timer_slot *s;
+	int err = slot_lookup(slot, &s);
+
+	if (err != 0) {
+		return err;
+	}
+
+	if (ms == 0U) {
+		k_timer_stop(&s->timer);
+		s->armed_at = 0;
+		return 0;
+	}
+
+	k_sem_reset(&s->sem);
+	s->armed_at = k_uptime_get();
+	k_timer_start(&s->timer, K_MSEC(ms),
+		      (periodic != 0) ? K_MSEC(ms) : K_NO_WAIT);
+	return 0;
+}
+
+int z_impl_svc_timer_slot_wait(int slot, int32_t timeout_ms)
+{
+	struct app_timer_slot *s;
+	int err = slot_lookup(slot, &s);
+
+	if (err != 0) {
+		return err;
+	}
+
+	k_timeout_t t = (timeout_ms < 0) ? K_FOREVER : K_MSEC(timeout_ms);
+
+	return (k_sem_take(&s->sem, t) == 0) ? 0 : -EAGAIN;
+}
+
+int z_impl_svc_timer_stop(int slot)
+{
+	struct app_timer_slot *s;
+	int err = slot_lookup(slot, &s);
+
+	if (err != 0) {
+		return err;
+	}
+	k_timer_stop(&s->timer);
+	s->armed_at = 0;
+	return 0;
+}
+
+int z_impl_svc_timer_elapsed(int slot)
+{
+	struct app_timer_slot *s;
+	int err = slot_lookup(slot, &s);
+
+	if (err != 0) {
+		return err;
+	}
+
+	if (s->armed_at == 0) {
+		return 0;
+	}
+	return (int)(k_uptime_get() - s->armed_at);
+}
+
+int z_impl_svc_timer_free(int slot)
+{
+	struct app_timer_slot *s;
+	int err = slot_lookup(slot, &s);
+
+	if (err != 0) {
+		return err;
+	}
+	k_timer_stop(&s->timer);
+	s->armed_at = 0;
+
+	k_spinlock_key_t key = k_spin_lock(&slot_lock);
+
+	s->used = false;
+	k_spin_unlock(&slot_lock, key);
+	return 0;
+}
+
+/* Return every slot the reclaimed application held. */
+static void timer_slots_release(int id)
+{
+	if (id < 0 || id >= MAX_APPS) {
+		return;
+	}
+
+	for (int i = 0; i < APP_TIMER_SLOTS; i++) {
+		if (slots[id][i].used) {
+			k_timer_stop(&slots[id][i].timer);
+			slots[id][i].armed_at = 0;
+
+			k_spinlock_key_t key = k_spin_lock(&slot_lock);
+
+			slots[id][i].used = false;
+			k_spin_unlock(&slot_lock, key);
+		}
+	}
+}
+
+static int timer_slots_init(void)
+{
+	return app_platform_on_reclaim(timer_slots_release);
+}
+SYS_INIT(timer_slots_init, APPLICATION, 99);
+
 int z_impl_svc_timer_start(uint32_t ms)
 {
 	if (!app_has_cap(APP_CAP_TIME)) {
@@ -885,6 +1078,42 @@ static inline int z_vrfy_svc_timer_wait(uint32_t timeout_ms)
 	return z_impl_svc_timer_wait(timeout_ms);
 }
 #include <zephyr/syscalls/svc_timer_wait_mrsh.c>
+
+static inline int z_vrfy_svc_timer_create(void)
+{
+	return z_impl_svc_timer_create();
+}
+#include <zephyr/syscalls/svc_timer_create_mrsh.c>
+
+static inline int z_vrfy_svc_timer_arm(int slot, uint32_t ms, int periodic)
+{
+	return z_impl_svc_timer_arm(slot, ms, periodic);
+}
+#include <zephyr/syscalls/svc_timer_arm_mrsh.c>
+
+static inline int z_vrfy_svc_timer_slot_wait(int slot, int32_t timeout_ms)
+{
+	return z_impl_svc_timer_slot_wait(slot, timeout_ms);
+}
+#include <zephyr/syscalls/svc_timer_slot_wait_mrsh.c>
+
+static inline int z_vrfy_svc_timer_stop(int slot)
+{
+	return z_impl_svc_timer_stop(slot);
+}
+#include <zephyr/syscalls/svc_timer_stop_mrsh.c>
+
+static inline int z_vrfy_svc_timer_elapsed(int slot)
+{
+	return z_impl_svc_timer_elapsed(slot);
+}
+#include <zephyr/syscalls/svc_timer_elapsed_mrsh.c>
+
+static inline int z_vrfy_svc_timer_free(int slot)
+{
+	return z_impl_svc_timer_free(slot);
+}
+#include <zephyr/syscalls/svc_timer_free_mrsh.c>
 
 static inline int z_vrfy_svc_rtc_set(uint32_t epoch_sec)
 {

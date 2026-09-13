@@ -277,6 +277,87 @@ __syscall int svc_timer_start(uint32_t ms);
  */
 __syscall int svc_timer_wait(uint32_t timeout_ms);
 
+/** Timer slots an application may hold at once. */
+#define APP_TIMER_SLOTS 4
+
+/**
+ * @brief Claim one of the application's timer slots. Needs @ref APP_CAP_TIME.
+ *
+ * A slot is independent of @ref svc_timer_start and of the other slots, so an
+ * application can run several timers at once and tell which one fired. Slots
+ * are released when the application is reclaimed, so a faulting application
+ * leaks none.
+ *
+ * @retval >=0 the slot index, in [0, @ref APP_TIMER_SLOTS).
+ * @retval -EPERM without @ref APP_CAP_TIME.
+ * @retval -ENOSPC when the application already holds every slot.
+ */
+__syscall int svc_timer_create(void);
+
+/**
+ * @brief Arm a claimed slot. Needs @ref APP_CAP_TIME.
+ *
+ * Arming a running slot restarts it. A periodic slot re-arms itself at the same
+ * interval until stopped, so one call covers a recurring tick.
+ *
+ * @param slot     Slot from @ref svc_timer_create.
+ * @param ms       Milliseconds until it fires, and the repeat interval when
+ *                 @p periodic is non-zero. Zero stops the slot.
+ * @param periodic Non-zero to re-arm automatically.
+ * @retval 0 on success.
+ * @retval -EPERM without @ref APP_CAP_TIME.
+ * @retval -EINVAL on an unclaimed or out-of-range slot.
+ */
+__syscall int svc_timer_arm(int slot, uint32_t ms, int periodic);
+
+/**
+ * @brief Wait for a claimed slot to fire. Needs @ref APP_CAP_TIME.
+ *
+ * A periodic slot that fired more than once while the application was busy
+ * reports a single pending fire, so a slow reader coalesces rather than
+ * accumulating a backlog.
+ *
+ * @param slot       Slot from @ref svc_timer_create.
+ * @param timeout_ms Milliseconds to wait, negative to wait for ever.
+ * @retval 0 if the slot fired.
+ * @retval -EPERM without @ref APP_CAP_TIME.
+ * @retval -EINVAL on an unclaimed or out-of-range slot.
+ * @retval -EAGAIN if it did not fire before the timeout.
+ */
+__syscall int svc_timer_slot_wait(int slot, int32_t timeout_ms);
+
+/**
+ * @brief Stop a claimed slot without releasing it. Needs @ref APP_CAP_TIME.
+ *
+ * @param slot Slot from @ref svc_timer_create.
+ * @retval 0 on success.
+ * @retval -EPERM without @ref APP_CAP_TIME.
+ * @retval -EINVAL on an unclaimed or out-of-range slot.
+ */
+__syscall int svc_timer_stop(int slot);
+
+/**
+ * @brief Milliseconds since a claimed slot was armed. Needs @ref APP_CAP_TIME.
+ *
+ * @param slot Slot from @ref svc_timer_create.
+ * @retval >=0 elapsed milliseconds, 0 for a slot that is not running.
+ * @retval -EPERM without @ref APP_CAP_TIME.
+ * @retval -EINVAL on an unclaimed or out-of-range slot.
+ */
+__syscall int svc_timer_elapsed(int slot);
+
+/**
+ * @brief Release a claimed slot. Needs @ref APP_CAP_TIME.
+ *
+ * The slot is stopped and returned to the application's pool.
+ *
+ * @param slot Slot from @ref svc_timer_create.
+ * @retval 0 on success.
+ * @retval -EPERM without @ref APP_CAP_TIME.
+ * @retval -EINVAL on an unclaimed or out-of-range slot.
+ */
+__syscall int svc_timer_free(int slot);
+
 /**
  * @brief Read the wall-clock time in seconds. Needs @ref APP_CAP_TIME.
  *
