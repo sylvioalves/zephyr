@@ -1,9 +1,0 @@
-sample:
-  name: App platform newer services
-  description: Timer slots, UART line parameters, BLE notify and input polling
-tests:
-  sample.app_platform.newsvc:
-    platform_allow:
-      - esp32c5_devkitc/esp32c5/hpcore
-    tags: app_platform
-    build_only: true

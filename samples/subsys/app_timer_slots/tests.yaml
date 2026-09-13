@@ -1,0 +1,9 @@
+sample:
+  name: Isolated multi-timer application
+  description: Run several platform timers at once from one application
+tests:
+  sample.app_platform.timer_slots:
+    platform_allow:
+      - esp32c5_devkitc/esp32c5/hpcore
+    tags: app_platform
+    build_only: true

@@ -1,0 +1,9 @@
+sample:
+  name: Isolated UART line-parameter application
+  description: Set the secondary UART framing and check it over a loopback
+tests:
+  sample.app_platform.uart_line:
+    platform_allow:
+      - esp32c5_devkitc/esp32c5/hpcore
+    tags: app_platform
+    build_only: true

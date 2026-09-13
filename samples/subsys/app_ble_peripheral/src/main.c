@@ -58,6 +58,23 @@ struct state {
 	int writes;
 };
 
+/* The platform reports a peer arriving and leaving as ordinary events, so the
+ * application learns of them on the same queue it already reads.
+ */
+static void on_connect(const struct app_event *evt, void *user)
+{
+	ARG_UNUSED(evt);
+	ARG_UNUSED(user);
+	svc_log("peripheral: a peer connected");
+}
+
+static void on_disconnect(const struct app_event *evt, void *user)
+{
+	ARG_UNUSED(evt);
+	ARG_UNUSED(user);
+	svc_log("peripheral: the peer went away, advertising again");
+}
+
 static void on_write(const struct app_event *evt, void *user)
 {
 	struct state *s = user;
@@ -86,7 +103,8 @@ static void peripheral_app(void *arg)
 	struct state state = {0};
 
 	struct app_ble_chrc c[2] = {
-		[CHR_COUNT] = { .uuid_len = 16, .readable = 1, .writable = 0 },
+		[CHR_COUNT] = { .uuid_len = 16, .readable = 1, .writable = 0,
+				.notifiable = 1 },
 		[CHR_CONF]  = { .uuid_len = 16, .readable = 1, .writable = 1 },
 	};
 
@@ -105,16 +123,25 @@ static void peripheral_app(void *arg)
 	svc_log("peripheral: advertising as '" ADV_NAME "', connect and write");
 
 	(void)app_dispatch_on(&state.d, APP_EVENT_GATT_WRITE, on_write, &state);
+	(void)app_dispatch_on(&state.d, APP_EVENT_BLE_CONNECTED, on_connect,
+			      &state);
+	(void)app_dispatch_on(&state.d, APP_EVENT_BLE_DISCONNECTED,
+			      on_disconnect, &state);
 
 	/* Publish an increasing value so a read shows something live, and
-	 * dispatch any writes that arrive in between.
+	 * dispatch any writes that arrive in between. A peer that subscribed
+	 * is pushed the value instead of having to poll for it; without a
+	 * subscriber the notify is refused and the stored value still serves
+	 * a plain read.
 	 */
 	for (uint32_t sec = 0; ; sec++) {
 		uint8_t v[4] = {
 			(uint8_t)sec, (uint8_t)(sec >> 8), 0, 0,
 		};
 
-		(void)svc_ble_serve_set(CHR_COUNT, v, sizeof(v));
+		if (svc_ble_notify(CHR_COUNT, v, sizeof(v)) != 0) {
+			(void)svc_ble_serve_set(CHR_COUNT, v, sizeof(v));
+		}
 		(void)app_dispatch_run(&state.d, 1000);
 	}
 }
