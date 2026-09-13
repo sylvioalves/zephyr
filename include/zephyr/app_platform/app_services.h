@@ -669,8 +669,13 @@ struct app_event {
  * application is subscribed to. When the queue overflows the oldest events are
  * dropped and @c seq skips, so a reader can tell it fell behind.
  *
+ * Pass 0 for @p timeout_ms to poll: the call reports -EAGAIN at once when the
+ * queue is empty, so an application driving something else can fold input into
+ * its own loop instead of parking a thread on it.
+ *
  * @param[out] evt       Receives the event.
- * @param timeout_ms     Milliseconds to wait, negative to wait for ever.
+ * @param timeout_ms     Milliseconds to wait, 0 to poll, negative to wait for
+ *                       ever.
  * @retval 0 on success.
  * @retval -EPERM without @ref APP_CAP_INPUT.
  * @retval -EAGAIN if no event arrived before the timeout.
@@ -1301,7 +1306,12 @@ void app_platform_grant_led(int id, uint32_t pin_mask);
  * Blocks until the platform's button is pressed, then returns the running press
  * count. The platform owns the button and counts edges in supervisor mode.
  *
- * @param timeout_ms Milliseconds to wait, or negative to wait forever.
+ * Pass 0 to poll: the call returns -EAGAIN at once when no press is waiting, so
+ * an application that must keep working can check for input without blocking.
+ * @ref svc_event_wait polls the same way and covers every input source at once.
+ *
+ * @param timeout_ms Milliseconds to wait, 0 to poll, or negative to wait
+ *                   forever.
  * @retval >0 the running press count, -EAGAIN on timeout, -EPERM without the
  *         capability, -ENODEV if absent.
  */
