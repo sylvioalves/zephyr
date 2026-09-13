@@ -48,6 +48,7 @@ static int c_ipc(void)     { return svc_ipc_register("n"); }
  * the gate without ever stopping one of the other applications.
  */
 static int c_control(void)  { return svc_app_stop(-1); }
+static int c_restart(void)  { return svc_app_restart(-1); }
 
 static int c_inspect(void) { return svc_app_count(); }
 static int c_can(void)     { return svc_can_send(1, ubuf, 1); }
@@ -106,6 +107,7 @@ static const struct cap_case cases[] = {
 	{"IPC", APP_CAP_IPC, "svc_ipc_register", c_ipc},
 	{"INSPECT", APP_CAP_INSPECT, "svc_app_count", c_inspect},
 	{"CONTROL", APP_CAP_CONTROL, "svc_app_stop", c_control},
+	{"CONTROL", APP_CAP_CONTROL, "svc_app_restart", c_restart},
 	{"CAN", APP_CAP_CAN, "svc_can_send", c_can},
 	{"DMA", APP_CAP_DMA, "svc_dma_copy", c_dma},
 	{"PSRAM", APP_CAP_PSRAM, "svc_psram_map", c_psram},
