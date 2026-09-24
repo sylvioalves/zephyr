@@ -48,11 +48,11 @@ driver heap can be placed in PSRAM to free internal SRAM:
 Host the app
 ************
 
-Run a server on a machine on the same network, serving the signed app the build
-emitted (``<name>.llext`` and a ``<name>.manifest`` of the 92-byte manifest
-followed by its 64-byte signature)::
+The build writes the reference app to ``build/serve``: ``weather.llext`` and
+``weather.manifest``, the 92-byte manifest followed by its 64-byte signature.
+Serve that directory on port 8000 from a machine on the same network::
 
-   python3 serve.py        # simple http.server on :8000
+   python3 -m http.server 8000 --directory build/serve
 
 A module signed outside this build must carry the device firmware's ABI
 identifier, written to ``build/zephyr/app_platform_abi_id.txt``. The device

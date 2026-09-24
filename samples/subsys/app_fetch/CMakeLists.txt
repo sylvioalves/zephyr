@@ -18,16 +18,22 @@ set(inc ${ZEPHYR_BINARY_DIR}/include/generated/fetch_app.inc)
 set(mf  ${ZEPHYR_BINARY_DIR}/include/generated/fetch_app.manifest.inc)
 set(sig ${ZEPHYR_BINARY_DIR}/include/generated/fetch_app.sig.inc)
 set(pub ${ZEPHYR_BINARY_DIR}/include/generated/fetch_app.pubkey.inc)
+set(serve_dir ${PROJECT_BINARY_DIR}/serve)
+set(served_ext ${serve_dir}/${APP_NAME}.llext)
+set(served_mf ${serve_dir}/${APP_NAME}.manifest)
 
 add_llext_target(fetch_ext OUTPUT ${bin} SOURCES ${ext_src})
 llext_include_directories(fetch_ext ${ZEPHYR_BINARY_DIR}/include/generated)
 generate_inc_file_for_target(app ${bin} ${inc})
 
 # Sign a manifest binding the served app's name, version and module hash. The
-# device embeds only the public key. The same key signs the app the Python
-# server hosts. The private key is generated once and never compiled in.
+# device embeds only the public key. The app and its signed manifest are also
+# written to the serve directory for the HTTP server to host. The private key
+# is generated once and never compiled in.
 add_custom_command(
-  OUTPUT  ${mf} ${sig} ${pub}
+  OUTPUT  ${mf} ${sig} ${pub} ${served_ext} ${served_mf}
+  COMMAND ${CMAKE_COMMAND} -E make_directory ${serve_dir}
+  COMMAND ${CMAKE_COMMAND} -E copy ${bin} ${served_ext}
   COMMAND ${CMAKE_COMMAND}
     -DMODULE_BIN=${bin}
     -DKEY_DIR=${CMAKE_CURRENT_SOURCE_DIR}/keys
@@ -37,6 +43,7 @@ add_custom_command(
     -DOUT_MF_INC=${mf}
     -DOUT_SIG_INC=${sig}
     -DOUT_PUB_INC=${pub}
+    -DOUT_MANIFEST=${served_mf}
     -DPYTHON_EXECUTABLE=${PYTHON_EXECUTABLE}
     -P ${ZEPHYR_BASE}/subsys/app_platform/cmake/sign_module.cmake
   DEPENDS ${bin} ${APP_PLATFORM_ABI_FILE}
