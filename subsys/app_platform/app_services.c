@@ -287,6 +287,7 @@ int z_impl_svc_kv_get(const char *key, uint32_t *out)
 
 	int owner = app_platform_id_current();
 	int rc = -ENOENT;
+	uint32_t value = 0U;
 
 	if (app_svc_lock(&kv_lock, SVC_LOCK_TIMEOUT) != 0) {
 		return -EBUSY;
@@ -294,12 +295,15 @@ int z_impl_svc_kv_get(const char *key, uint32_t *out)
 	for (int i = 0; i < KV_SLOTS; i++) {
 		if (kv_store[i].used && kv_store[i].owner == owner &&
 		    strcmp(kv_store[i].key, key) == 0) {
-			*out = kv_store[i].value;
+			value = kv_store[i].value;
 			rc = 0;
 			break;
 		}
 	}
 	app_svc_unlock(&kv_lock);
+	if (rc == 0) {
+		*out = value;
+	}
 	return rc;
 }
 
@@ -419,6 +423,7 @@ int z_impl_svc_flash_read(uint32_t off, uint8_t *buf, size_t len)
 	}
 #if defined(CONFIG_FLASH_MAP) && DT_NODE_EXISTS(DT_NODELABEL(storage_partition))
 	const struct flash_area *fa;
+	uint8_t tmp[SVC_XFER_MAX];
 
 	if (flash_area_open(PARTITION_ID(storage_partition), &fa) != 0) {
 		return -EIO;
@@ -432,10 +437,13 @@ int z_impl_svc_flash_read(uint32_t off, uint8_t *buf, size_t len)
 			flash_area_close(fa);
 			return -EBUSY;
 		}
-		rc = flash_area_read(fa, abs_off, buf, len);
+		rc = flash_area_read(fa, abs_off, tmp, len);
 		app_svc_unlock(&flash_lock);
 	}
 	flash_area_close(fa);
+	if (rc == 0) {
+		memcpy(buf, tmp, len);
+	}
 	return rc;
 #else
 	ARG_UNUSED(off);
@@ -454,6 +462,7 @@ int z_impl_svc_flash_write(uint32_t off, const uint8_t *buf, size_t len)
 	}
 #if defined(CONFIG_FLASH_MAP) && DT_NODE_EXISTS(DT_NODELABEL(storage_partition))
 	const struct flash_area *fa;
+	uint8_t tmp[SVC_XFER_MAX];
 
 	if (flash_area_open(PARTITION_ID(storage_partition), &fa) != 0) {
 		return -EIO;
@@ -463,11 +472,12 @@ int z_impl_svc_flash_write(uint32_t off, const uint8_t *buf, size_t len)
 	int rc = flash_window(off, len, fa->fa_size, &abs_off);
 
 	if (rc == 0) {
+		memcpy(tmp, buf, len);
 		if (app_svc_lock(&flash_lock, SVC_LOCK_TIMEOUT) != 0) {
 			flash_area_close(fa);
 			return -EBUSY;
 		}
-		rc = flash_area_write(fa, abs_off, buf, len);
+		rc = flash_area_write(fa, abs_off, tmp, len);
 		app_svc_unlock(&flash_lock);
 		if (rc == 0) {
 			rc = (int)len;
@@ -942,13 +952,17 @@ int z_impl_svc_topic_publish(const char *topic, const void *buf, size_t len)
 	}
 
 	int delivered = 0;
+	struct ipc_msg msg;
+
+	msg.len = (uint16_t)len;
+	memcpy(msg.data, buf, len);
 
 	if (app_svc_lock(&ipc_dir_lock, SVC_LOCK_TIMEOUT) != 0) {
 		return -EBUSY;
 	}
 	for (int i = 0; i < MAX_APPS; i++) {
 		if (ipc_topics[i][0] != '\0' && strcmp(ipc_topics[i], topic) == 0) {
-			if (mailbox_put(i, buf, len) == 0) {
+			if (k_msgq_put(&mailbox[i], &msg, K_NO_WAIT) == 0) {
 				delivered++;
 			}
 		}

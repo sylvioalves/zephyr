@@ -130,15 +130,17 @@ int z_impl_svc_event_wait(struct app_event *evt, int32_t timeout_ms)
 
 	k_spinlock_key_t key = k_spin_lock(&ev_lock);
 	struct app_queue *q = &queues[id];
+	struct app_event got;
 
 	if (q->count == 0U) {
 		k_spin_unlock(&ev_lock, key);
 		return -EAGAIN;
 	}
-	*evt = q->buf[q->head];
+	got = q->buf[q->head];
 	q->head = (uint8_t)((q->head + 1U) % QUEUE_LEN);
 	q->count--;
 	k_spin_unlock(&ev_lock, key);
+	*evt = got;
 	return 0;
 }
 

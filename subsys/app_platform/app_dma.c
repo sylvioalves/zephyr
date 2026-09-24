@@ -60,15 +60,18 @@ int z_impl_svc_dma_copy(const uint8_t *src, uint8_t *dst, size_t len)
 		return -EINVAL;
 	}
 #if DT_NODE_EXISTS(DT_NODELABEL(dma))
+	uint8_t tmp[DMA_MAX];
+
 	if (!device_is_ready(dma_dev)) {
 		return -ENODEV;
 	}
 
+	memcpy(tmp, src, len);
 	if (app_svc_lock(&dma_lock, SVC_LOCK_TIMEOUT) != 0) {
 		return -EBUSY;
 	}
 
-	memcpy(dma_src, src, len);
+	memcpy(dma_src, tmp, len);
 	sys_cache_data_flush_range(dma_src, len);
 	sys_cache_data_invd_range(dma_dst, len);
 
@@ -93,12 +96,15 @@ int z_impl_svc_dma_copy(const uint8_t *src, uint8_t *dst, size_t len)
 		rc = dma_start(dma_dev, DMA_CHAN);
 		if (rc == 0 && k_sem_take(&dma_done_sem, K_MSEC(100)) == 0) {
 			sys_cache_data_invd_range(dma_dst, len);
-			memcpy(dst, dma_dst, len);
+			memcpy(tmp, dma_dst, len);
 		} else {
 			rc = -EIO;
 		}
 	}
 	app_svc_unlock(&dma_lock);
+	if (rc == 0) {
+		memcpy(dst, tmp, len);
+	}
 	return rc;
 #else
 	ARG_UNUSED(src);

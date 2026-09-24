@@ -726,11 +726,12 @@ int z_impl_svc_ble_hr_read(uint32_t timeout_ms, uint8_t *out_bpm)
 		return -ETIMEDOUT;
 	}
 	int rc = ble_result;
+	uint8_t bpm = ble_bpm;
 
-	if (rc == 0) {
-		*out_bpm = ble_bpm;
-	}
 	app_svc_unlock(&ble_lock);
+	if (rc == 0) {
+		*out_bpm = bpm;
+	}
 	return rc;
 }
 
@@ -1138,11 +1139,12 @@ int z_impl_svc_ble_ota_fetch(const char *name, uint32_t timeout_ms,
 		return -ETIMEDOUT;
 	}
 	int rc = ble_result;
+	uint32_t len = (uint32_t)ble_ota_len;
 
-	if (rc == 0 && out_len != NULL) {
-		*out_len = (uint32_t)ble_ota_len;
-	}
 	app_svc_unlock(&ble_lock);
+	if (rc == 0 && out_len != NULL) {
+		*out_len = len;
+	}
 	return rc;
 }
 #endif /* CONFIG_APP_PLATFORM_BLE_OTA */
@@ -1285,6 +1287,8 @@ static inline int z_vrfy_svc_ble_gatt_read(const char *name,
 	char nbuf[BLE_NAME_MAX];
 	uint8_t svc[16];
 	uint8_t chr[16];
+	uint8_t vbuf[APP_BLE_GATT_MAX];
+	int rc;
 
 	if ((svc_uuid_len != 2U && svc_uuid_len != 16U) ||
 	    (chr_uuid_len != 2U && chr_uuid_len != 16U) ||
@@ -1300,8 +1304,12 @@ static inline int z_vrfy_svc_ble_gatt_read(const char *name,
 	memcpy(svc, svc_uuid, svc_uuid_len);
 	memcpy(chr, chr_uuid, chr_uuid_len);
 
-	return z_impl_svc_ble_gatt_read(nbuf, svc, svc_uuid_len, chr,
-					chr_uuid_len, buf, cap, timeout_ms);
+	rc = z_impl_svc_ble_gatt_read(nbuf, svc, svc_uuid_len, chr,
+				      chr_uuid_len, vbuf, cap, timeout_ms);
+	if (rc > 0) {
+		K_OOPS(k_usermode_to_copy(buf, vbuf, rc));
+	}
+	return rc;
 }
 #include <zephyr/syscalls/svc_ble_gatt_read_mrsh.c>
 

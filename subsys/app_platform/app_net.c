@@ -923,20 +923,39 @@ static int sock_send(bool tcp, const void *buf, size_t len)
 	if (!sk->used || sk->fd < 0 || sk->is_tcp != tcp) {
 		return -ENOTCONN;
 	}
-
-	if (app_svc_lock(&net_lock, NET_LOCK_TIMEOUT) != 0) {
-		return -EBUSY;
+	if (!tcp && len > SOCK_PAYLOAD_MAX) {
+		return -EMSGSIZE;
 	}
-	ssize_t n;
 
-	if (tcp) {
-		n = zsock_send(sk->fd, buf, len, 0);
-	} else {
-		n = zsock_sendto(sk->fd, buf, len, 0,
-				 (struct sockaddr *)&sk->peer, sizeof(sk->peer));
-	}
-	app_svc_unlock(&net_lock);
-	return (n < 0) ? -errno : (int)n;
+	uint8_t tmp[SOCK_PAYLOAD_MAX];
+	size_t sent = 0U;
+
+	/* A stream is sent in bounded chunks, a datagram in one piece. */
+	do {
+		size_t chunk = MIN(len - sent, sizeof(tmp));
+		ssize_t n;
+
+		memcpy(tmp, (const uint8_t *)buf + sent, chunk);
+		if (app_svc_lock(&net_lock, NET_LOCK_TIMEOUT) != 0) {
+			return (sent > 0U) ? (int)sent : -EBUSY;
+		}
+		if (tcp) {
+			n = zsock_send(sk->fd, tmp, chunk, 0);
+		} else {
+			n = zsock_sendto(sk->fd, tmp, chunk, 0,
+					 (struct sockaddr *)&sk->peer, sizeof(sk->peer));
+		}
+		app_svc_unlock(&net_lock);
+		if (n < 0) {
+			return (sent > 0U) ? (int)sent : -errno;
+		}
+		sent += (size_t)n;
+		if ((size_t)n < chunk) {
+			break;
+		}
+	} while (sent < len);
+
+	return (int)sent;
 }
 
 static int sock_recv(bool tcp, void *buf, size_t cap, uint32_t timeout_ms,
