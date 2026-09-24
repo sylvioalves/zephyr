@@ -4,8 +4,7 @@
  * SPDX-License-Identifier: Apache-2.0
  */
 
-/*
- * Typed sensor services. The platform announces a catalog of sensor kinds; an
+/* Typed sensor services. The platform announces a catalog of sensor kinds; an
  * application asks for a value by index and never touches the peripheral, the
  * bus or the driver behind it. An entry is present when this board has a device
  * backing that kind, and announced otherwise, so the same application runs on a

@@ -4,8 +4,7 @@
  * SPDX-License-Identifier: Apache-2.0
  */
 
-/*
- * The installed-application registry, persisted to a littlefs partition so the
+/* The installed-application registry, persisted to a littlefs partition so the
  * set of installed applications survives reboots.
  */
 

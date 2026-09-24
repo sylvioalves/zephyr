@@ -4,8 +4,7 @@
  * SPDX-License-Identifier: Apache-2.0
  */
 
-/*
- * The external-RAM (PSRAM) mapping service. The platform allocates a region of
+/* The external-RAM (PSRAM) mapping service. The platform allocates a region of
  * external RAM and adds it as a partition to the calling application's own
  * memory domain, so the application reads and writes it directly at full speed -
  * no per-access syscall, unlike a brokered copy. The region is power-of-two

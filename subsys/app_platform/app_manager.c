@@ -4,8 +4,7 @@
  * SPDX-License-Identifier: Apache-2.0
  */
 
-/*
- * Application group lifecycle: launch an application as an isolated user-mode
+/* Application group lifecycle: launch an application as an isolated user-mode
  * thread in its own memory domain and supervise it so a misbehaving group is
  * reclaimed without affecting the system or the other groups.
  *
@@ -47,15 +46,14 @@ LOG_MODULE_REGISTER(app_platform, CONFIG_APP_PLATFORM_LOG_LEVEL);
 #define CLEANUP_WAIT_TRIES 100
 #define CLEANUP_WAIT_MS    2
 
-/* A running app: an isolated user-mode group with its own memory domain. */
-/*
- * Application name length, including the terminator. An application's name
+/* Application name length, including the terminator. An application's name
  * outlives the call that launched it (the fault handler, the watchdog and the
  * thread name all read it), so the slot keeps its own copy rather than the
  * caller's pointer, which is often a stack local.
  */
 #define APP_NAME_LEN APP_PLATFORM_NAME_LEN
 
+/* A running app: an isolated user-mode group with its own memory domain. */
 struct running_app {
 	char                name[APP_NAME_LEN];
 	bool                active;    /* slot occupied (running or stopped) */
@@ -92,8 +90,7 @@ static uint8_t reclaim_buf[MAX_APPS];
 static struct k_thread sup_thread;
 static K_THREAD_STACK_DEFINE(sup_stack, CONFIG_APP_PLATFORM_SUPERVISOR_STACK_SIZE);
 
-/*
- * Deferred per-application cleanup. The supervisor aborts an application's
+/* Deferred per-application cleanup. The supervisor aborts an application's
  * threads itself (it owns them and that work is bounded and driver-free), then
  * hands the heavy, driver-touching cleanup - service reclaim hooks and module
  * unload - to the reaper-helper thread. Keeping that work off the supervisor
@@ -125,8 +122,7 @@ static struct running_app *app_of_thread(k_tid_t t)
 	return NULL;
 }
 
-/*
- * The id of the application the current thread belongs to. The identity has to
+/* The id of the application the current thread belongs to. The identity has to
  * come from state the application cannot reach: an app runs in user mode and
  * k_thread_custom_data_set() is an unrestricted syscall, so anything cached
  * there could be rewritten by the app to borrow another app's capabilities.
@@ -329,8 +325,7 @@ void app_platform_heartbeat(void)
 	}
 }
 
-/*
- * Death-watch: one watcher per app, blocked in k_thread_join() until the app
+/* Death-watch: one watcher per app, blocked in k_thread_join() until the app
  * thread terminates for any reason (fault, abort or clean return). This is the
  * passive liveness signal - it needs no cooperation from the app - and the
  * equivalent of an OTP link or a parent reaping a child. A fault is also caught
@@ -361,8 +356,7 @@ static void death_watch(void *p_app, void *p_id, void *u)
 	(void)k_msgq_put(&reclaim_q, &id, K_NO_WAIT);
 }
 
-/*
- * The heavy, driver-touching part of reclaim: run each service's reclaim hook
+/* The heavy, driver-touching part of reclaim: run each service's reclaim hook
  * (which may free a heap, touch a service lock or reprogram a memory domain) and
  * unload the module. This runs ONLY on the reaper-helper thread, never on the
  * supervisor, so the supervisor stays detached from drivers and service locks.
@@ -456,8 +450,7 @@ static void run_cleanup(int id, bool full, struct llext *ext)
 	apps[id].cleaning = false;
 }
 
-/*
- * Wait for the reaper to finish releasing a slot. The reaper runs below the
+/* Wait for the reaper to finish releasing a slot. The reaper runs below the
  * supervisor, so a slot reclaimed from the supervisor is still marked cleaning
  * when control returns; anything that reuses or restarts that slot has to give
  * the reaper a chance to run first. The wait is bounded and touches no driver
@@ -512,8 +505,7 @@ static void reaper(void *p1, void *p2, void *p3)
 	}
 }
 
-/*
- * Stop a running app's thread, then hand its per-app service cleanup and module
+/* Stop a running app's thread, then hand its per-app service cleanup and module
  * unload to the reaper-helper thread. Keep the slot and its loaded module when
  * @p full is false (a stop that can be started again); with @p full the slot is
  * released and the module scheduled for unload (a complete reclaim).
@@ -531,8 +523,7 @@ static void reclaim_ex(struct running_app *a, bool full)
 		goto release_slot;
 	}
 
-	/*
-	 * Clear running before aborting the thread. Aborting wakes the app's
+	/* Clear running before aborting the thread. Aborting wakes the app's
 	 * death-watcher, which signals the supervisor to reclaim; the supervisor
 	 * skips an app that is no longer running, so an intentional stop is not
 	 * mistaken for a crash and turned into a full reclaim.

@@ -4,8 +4,7 @@
  * SPDX-License-Identifier: Apache-2.0
  */
 
-/*
- * The shared memory-to-memory DMA service. The platform owns the DMA channel and
+/* The shared memory-to-memory DMA service. The platform owns the DMA channel and
  * a pair of DMA-capable buffers; an application holding APP_CAP_DMA hands in
  * bytes, the platform copies them through the DMA engine and hands the result
  * back. The application never touches the channel or the cache. Lock-serialized,

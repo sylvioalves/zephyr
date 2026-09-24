@@ -4,8 +4,7 @@
  * SPDX-License-Identifier: Apache-2.0
  */
 
-/*
- * Shared motion-control services: a hardware pulse counter and a motor-control
+/* Shared motion-control services: a hardware pulse counter and a motor-control
  * PWM (MCPWM) output. The platform owns both peripherals; an application reads
  * the pulse count, emits a fixed-frequency burst, and drives granted MCPWM
  * channels with a duty cycle. Each service builds to a safe stub when its

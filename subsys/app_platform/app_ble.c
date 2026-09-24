@@ -4,8 +4,7 @@
  * SPDX-License-Identifier: Apache-2.0
  */
 
-/*
- * The shared BLE service. The Bluetooth controller and host live in the
+/* The shared BLE service. The Bluetooth controller and host live in the
  * platform; an application that holds APP_CAP_BLE asks the platform to scan for
  * a peer by advertised name and gets back a yes or no. The application never
  * touches the BLE stack, so it links none of it. Scanning is serialized so that
@@ -34,8 +33,7 @@
 
 #define BLE_NAME_MAX 24
 
-/*
- * Bounded wait for the BLE request lock: a caller waits at most one in-flight
+/* Bounded wait for the BLE request lock: a caller waits at most one in-flight
  * operation's own timeout plus this margin (in milliseconds), then gets -EBUSY
  * instead of being parked for ever behind a stuck request.
  */
@@ -46,8 +44,7 @@ static K_SEM_DEFINE(found_sem, 0, 1);
 static char want_name[BLE_NAME_MAX];
 static bool bt_started;
 
-/*
- * The BLE controller and host are brought up, and every scan and GATT client
+/* The BLE controller and host are brought up, and every scan and GATT client
  * flow is driven, on this dedicated supervisor thread. A service syscall runs
  * on the calling user-mode application thread, where bt_enable() and the HCI
  * command path cannot complete; it only posts a request here and waits for the
@@ -183,8 +180,7 @@ int z_impl_svc_ble_scan(const char *name, uint32_t timeout_ms)
 	return rc;
 }
 
-/*
- * Connect to a heart-rate peer, discover the measurement characteristic,
+/* Connect to a heart-rate peer, discover the measurement characteristic,
  * subscribe, and capture one reading. The platform owns the whole client; the
  * application gets back a single value.
  */
@@ -352,8 +348,7 @@ static int ble_do_ota_fetch(const char *name, uint32_t timeout_ms);
 #endif
 
 #ifdef CONFIG_APP_PLATFORM_BLE_GATT
-/*
- * The generic GATT client. An application names a service and a characteristic
+/* The generic GATT client. An application names a service and a characteristic
  * by UUID; the platform connects, discovers both and performs one read or
  * write. Handles never leave the platform, so an application cannot address an
  * attribute it did not name, and a UUID is only accepted when it was granted
@@ -579,8 +574,7 @@ static void gatt_scan_cb(const bt_addr_le_t *addr, int8_t rssi, uint8_t type,
 				BT_LE_CONN_PARAM_DEFAULT, &gatt_conn);
 }
 
-/*
- * Connect to the named peer, discover the requested characteristic and perform
+/* Connect to the named peer, discover the requested characteristic and perform
  * one exchange. Runs on the BLE worker thread.
  */
 static int ble_do_gatt(bool is_write, const char *name, uint32_t timeout_ms)
@@ -595,8 +589,7 @@ static int ble_do_gatt(bool is_write, const char *name, uint32_t timeout_ms)
 	gatt_want[sizeof(gatt_want) - 1] = '\0';
 	gatt_chr_handle = 0;
 
-	/*
-	 * Reuse a link that is already up to the same peer. Each service call
+	/* Reuse a link that is already up to the same peer. Each service call
 	 * is otherwise its own connection, and a peripheral does not resume
 	 * advertising the instant the previous one drops, so reconnecting per
 	 * call would lose the peer between two calls of the same application.
@@ -730,8 +723,7 @@ int z_impl_svc_ble_hr_read(uint32_t timeout_ms, uint8_t *out_bpm)
 }
 
 #ifdef CONFIG_APP_PLATFORM_BLE_OTA
-/*
- * Pull a signed application from a BLE peer.
+/* Pull a signed application from a BLE peer.
  *
  * The peer advertises the OTA service and exposes two characteristics: a
  * control point the device writes a 4-byte little-endian offset to, and a data
@@ -912,8 +904,7 @@ static void ota_connected(struct bt_conn *conn, uint8_t err)
 	ota_ctrl_handle = 0;
 	ota_data_handle = 0;
 
-	/*
-	 * Raise the ATT MTU before discovering anything. At the 23-byte default
+	/* Raise the ATT MTU before discovering anything. At the 23-byte default
 	 * a read returns about 22 bytes, so a module of a few kilobytes costs
 	 * hundreds of round trips; one exchange makes each read carry an entire
 	 * chunk instead.
@@ -983,8 +974,7 @@ static void ota_scan_cb(const bt_addr_le_t *addr, int8_t rssi, uint8_t type,
 				BT_LE_CONN_PARAM_DEFAULT, &ota_conn);
 }
 
-/*
- * Fetch the named application from the peer and leave it on flash. Runs on the
+/* Fetch the named application from the peer and leave it on flash. Runs on the
  * BLE worker thread; the calling application is parked in the syscall.
  */
 static int ble_do_ota_fetch(const char *name, uint32_t timeout_ms)
@@ -1143,8 +1133,7 @@ int z_impl_svc_ble_ota_fetch(const char *name, uint32_t timeout_ms,
 #endif /* CONFIG_APP_PLATFORM_BLE_OTA */
 
 #ifdef CONFIG_APP_PLATFORM_BLE_GATT
-/*
- * Shared entry for both directions. The capability and the service grant are
+/* Shared entry for both directions. The capability and the service grant are
  * checked before anything is copied or the worker is woken, so an ungranted
  * caller never reaches the controller.
  */
@@ -1263,8 +1252,7 @@ static inline int z_vrfy_svc_ble_ota_fetch(const char *name,
 #include <zephyr/syscalls/svc_ble_ota_fetch_mrsh.c>
 #endif
 #ifdef CONFIG_APP_PLATFORM_BLE_GATT
-/*
- * Both UUIDs and the value are copied into platform memory before use: the
+/* Both UUIDs and the value are copied into platform memory before use: the
  * lengths are validated first so a caller cannot describe a buffer larger than
  * it owns, and the copies mean a second thread in the same application cannot
  * change the bytes after they were checked.

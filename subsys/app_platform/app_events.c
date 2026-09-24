@@ -4,8 +4,7 @@
  * SPDX-License-Identifier: Apache-2.0
  */
 
-/*
- * Per-application event delivery. Input sources post events into a queue owned
+/* Per-application event delivery. Input sources post events into a queue owned
  * by one application instead of a single shared semaphore, so one application
  * waiting no longer consumes another's events and one wait covers every source
  * an application is subscribed to. That is what lets an application dispatch
@@ -55,8 +54,7 @@ static int events_init(void)
 }
 SYS_INIT(events_init, PRE_KERNEL_2, 0);
 
-/*
- * Post an event to one application. Safe from an ISR: the spinlock is held for
+/* Post an event to one application. Safe from an ISR: the spinlock is held for
  * a copy and a couple of counter updates, and a full queue drops the oldest
  * event rather than waiting for the application to catch up.
  */

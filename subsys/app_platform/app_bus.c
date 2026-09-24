@@ -4,8 +4,7 @@
  * SPDX-License-Identifier: Apache-2.0
  */
 
-/*
- * Shared bus services: I2C, SPI and a secondary UART. Each is capability-gated
+/* Shared bus services: I2C, SPI and a secondary UART. Each is capability-gated
  * and scoped: I2C and SPI by a per-application device grant, UART by holding the
  * capability. The bus controllers live in the platform; an application transfers
  * bytes through copied buffers and never holds a bus handle. Each service builds

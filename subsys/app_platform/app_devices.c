@@ -4,8 +4,7 @@
  * SPDX-License-Identifier: Apache-2.0
  */
 
-/*
- * Index-keyed wrappers over the remaining device classes an application may
+/* Index-keyed wrappers over the remaining device classes an application may
  * reach: the real-time clock, the 1-Wire bus, battery state, regulators and
  * stepper motors. Each follows the platform's shape - the application names an
  * instance by index, never receives a device, and is refused before any

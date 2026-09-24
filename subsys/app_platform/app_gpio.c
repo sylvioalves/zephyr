@@ -4,8 +4,7 @@
  * SPDX-License-Identifier: Apache-2.0
  */
 
-/*
- * The shared GPIO service. The platform owns a set of output lines taken from
+/* The shared GPIO service. The platform owns a set of output lines taken from
  * the board's "leds" devicetree node. An application that holds APP_CAP_GPIO may
  * drive only the lines it was granted (see app_platform_grant_gpio), so the
  * capability admits the service and a per-line mask scopes it to specific pins -
@@ -100,7 +99,7 @@ static void gpio_ready_init(void)
 #if DT_NODE_EXISTS(LEDS_NODE) && defined(CONFIG_APP_PLATFORM_EVENTS)
 /* Bit N set means application N is watching this line. A line is configured as
  * an input and its interrupt enabled only while at least one application is
- * watching, so an unwatched line stays an output as before.
+ * watching, so an unwatched line stays an output.
  */
 static uint32_t line_watchers[LINE_COUNT];
 static struct gpio_callback line_cb[LINE_COUNT];

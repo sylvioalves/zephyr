@@ -4,8 +4,7 @@
  * SPDX-License-Identifier: Apache-2.0
  */
 
-/*
- * Analog output and the application's EEPROM window. Both are scoped
+/* Analog output and the application's EEPROM window. Both are scoped
  * resources: a DAC channel is granted per index, and an application's EEPROM
  * access is confined to a window the platform assigns, so one application
  * cannot read or overwrite another's stored bytes.

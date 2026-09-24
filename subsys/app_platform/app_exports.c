@@ -4,8 +4,7 @@
  * SPDX-License-Identifier: Apache-2.0
  */
 
-/*
- * Standard-library functions a loadable application may call.
+/* Standard-library functions a loadable application may call.
  *
  * CONFIG_LLEXT_EXPORT_SYMBOL_GROUP_LIBC already exports what the firmware
  * itself links, but a function no other code uses is dropped by --gc-sections

@@ -4,8 +4,7 @@
  * SPDX-License-Identifier: Apache-2.0
  */
 
-/*
- * Bulk transfer through a ring the application owns. The platform allocates a
+/* Bulk transfer through a ring the application owns. The platform allocates a
  * buffer, maps it into the calling application's domain and keeps a supervisor
  * pointer to it, so an application moves a batch of bytes and crosses the
  * syscall boundary once for the batch instead of once per transfer.

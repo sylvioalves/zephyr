@@ -10,8 +10,7 @@
 #include <zephyr/app_platform/app_services.h>
 #include <zephyr/kernel.h>
 
-/*
- * Producer side of the per-application event queues. Input services call these
+/* Producer side of the per-application event queues. Input services call these
  * to deliver an event; they are safe from an interrupt handler. Internal to the
  * subsystem and not part of the public API.
  */

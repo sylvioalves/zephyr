@@ -4,8 +4,7 @@
  * SPDX-License-Identifier: Apache-2.0
  */
 
-/*
- * Verify a module and load it as an llext. Two levels are offered: a SHA-256
+/* Verify a module and load it as an llext. Two levels are offered: a SHA-256
  * integrity check (detects corruption) and an ECDSA P-256 signature check
  * (proves the module came from the holder of a trusted private key, the path a
  * network-downloaded module must follow). The check runs before the module is
@@ -76,8 +75,7 @@ static int ecdsa_verify(const uint8_t *pubkey, size_t pubkey_len,
 	return (st == PSA_SUCCESS) ? 0 : -EPERM;
 }
 
-/*
- * Reject an image that cannot be a valid 32-bit relocatable ELF before the
+/* Reject an image that cannot be a valid 32-bit relocatable ELF before the
  * loader touches it: enough bytes for a header, the ELF magic, an ET_REL type,
  * and a section table that lies inside the image. @p hdr supplies at least the
  * ELF header; @p hdr_len is how many header bytes are available; @p total_len
@@ -113,8 +111,7 @@ static int elf_bounds_ok(const uint8_t *buf, size_t len)
 	return elf_bounds_chk(buf, len, len);
 }
 
-/*
- * Set of extensions this loader verified. The launch path checks membership so
+/* Set of extensions this loader verified. The launch path checks membership so
  * an unverified extension cannot be run even if a caller hands one in. Sized to
  * the number of concurrent applications the platform supports.
  */
@@ -171,8 +168,7 @@ void app_loader_forget(const struct llext *ext)
 	k_mutex_unlock(&verified_lock);
 }
 
-/*
- * Resolve the entry symbol and enforce the per-application memory budget on a
+/* Resolve the entry symbol and enforce the per-application memory budget on a
  * freshly loaded extension. A module whose footprint exceeds the budget is
  * unloaded and rejected, so one module cannot exhaust the shared loadable-
  * extension heap. On success the extension is recorded as verified.

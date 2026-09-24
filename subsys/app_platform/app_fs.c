@@ -4,8 +4,7 @@
  * SPDX-License-Identifier: Apache-2.0
  */
 
-/*
- * Per-application sandboxed files. The platform owns one filesystem mount and
+/* Per-application sandboxed files. The platform owns one filesystem mount and
  * confines each application to its own subtree, "/lfs/apps/<name>". An
  * application names a file relative to that root and cannot leave it: an
  * absolute path, or one holding a ".." component, is refused before the

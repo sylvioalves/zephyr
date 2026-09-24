@@ -4,8 +4,7 @@
  * SPDX-License-Identifier: Apache-2.0
  */
 
-/*
- * Shared PWM and ADC services. Both follow the per-channel grant pattern: an
+/* Shared PWM and ADC services. Both follow the per-channel grant pattern: an
  * application holding the capability may use only the channels it was granted
  * (app_platform_grant_pwm / app_platform_grant_adc), so the capability admits
  * the service and a per-channel mask scopes it. Channels come from devicetree;

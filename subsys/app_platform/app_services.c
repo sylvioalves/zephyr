@@ -4,8 +4,7 @@
  * SPDX-License-Identifier: Apache-2.0
  */
 
-/*
- * The shared service library. Each service runs in the supervisor, enforces its
+/* The shared service library. Each service runs in the supervisor, enforces its
  * capability bit at the syscall boundary, and is safe to call concurrently from
  * several isolated applications. This first group (log, crypto, random, time) is
  * stateless beyond the cap check, so concurrency needs no locking.
@@ -72,8 +71,7 @@ static K_MUTEX_DEFINE(kv_lock);
 static const struct device *const svc_die_temp = DEVICE_DT_GET(DT_ALIAS(die_temp0));
 #endif
 
-/*
- * Per-application mailbox: a fixed-size message queue, one per group. The
+/* Per-application mailbox: a fixed-size message queue, one per group. The
  * queues and their backing storage are arrays sized by the number of
  * application groups, so the messaging service scales with
  * CONFIG_APP_PLATFORM_MAX_APPS without per-group boilerplate.

@@ -32,8 +32,7 @@ static inline bool app_has_cap(app_caps_t mask)
 int app_svc_lock(struct k_mutex *lock, k_timeout_t timeout);
 int app_svc_unlock(struct k_mutex *lock);
 
-/*
- * Per-resource grants live in the service that owns the resource, indexed by
+/* Per-resource grants live in the service that owns the resource, indexed by
  * application slot. A slot is reused once its previous tenant is reclaimed, so
  * the manager drops the grants before it hands the slot to a new application:
  * otherwise the newcomer would inherit devices the platform never assigned it.

@@ -4,8 +4,7 @@
  * SPDX-License-Identifier: Apache-2.0
  */
 
-/*
- * Shared general-I/O services: status LEDs, button/input events and a per-app
+/* Shared general-I/O services: status LEDs, button/input events and a per-app
  * checkpoint store. The platform owns the LED pins and the button; an
  * application drives only the LED pins it was granted and receives button
  * presses one at a time. The checkpoint store lives outside any application's
@@ -200,8 +199,7 @@ void app_platform_clear_led_grants(int id)
 /* ---- button / input events ---- */
 
 #ifdef CONFIG_APP_PLATFORM_INPUT_KEYS
-/*
- * Key events come from the input subsystem, so the driver debounces and reports
+/* Key events come from the input subsystem, so the driver debounces and reports
  * which key moved: an application sees one event per press rather than every
  * raw edge. Every application holding APP_CAP_INPUT receives every key, and the
  * code travels with the event so an application can tell them apart. Posting to

@@ -4,8 +4,7 @@
  * SPDX-License-Identifier: Apache-2.0
  */
 
-/*
- * The GATT server side of the BLE service. An application describes a service
+/* The GATT server side of the BLE service. An application describes a service
  * and its characteristics by UUID; the platform builds the attribute table,
  * registers it, advertises, and owns both the connection and the value
  * buffers. The application never sees a bt_conn or an attribute handle, so it
@@ -88,8 +87,7 @@ static void serve_ccc_changed(const struct bt_gatt_attr *attr, uint16_t value)
 	}
 }
 
-/*
- * BT_UUID_GATT_CHRC expands to a compound literal. At file scope that has
+/* BT_UUID_GATT_CHRC expands to a compound literal. At file scope that has
  * static storage, but used inside a function it lives only until the block
  * ends, leaving the attribute's uuid pointer dangling. Keep our own copy.
  */
@@ -352,8 +350,7 @@ int z_impl_svc_ble_serve_start(const char *name, const uint8_t *svc_uuid,
 		return rc;
 	}
 
-	/*
-	 * Handles are assigned by the registration, and the value handle a
+	/* Handles are assigned by the registration, and the value handle a
 	 * discovering peer reads comes from the declaration's metadata. The
 	 * host only derives it for statically defined services, so fill it in
 	 * here from the value attribute recorded above.

@@ -4,8 +4,7 @@
  * SPDX-License-Identifier: Apache-2.0
  */
 
-/*
- * The shared CAN service. The platform owns the controller and runs it in
+/* The shared CAN service. The platform owns the controller and runs it in
  * loopback so frames sent by an application come back to be received, letting
  * the path be exercised on a single board. An application holding APP_CAP_CAN
  * sends and receives frames through copied buffers and never holds the bus. A

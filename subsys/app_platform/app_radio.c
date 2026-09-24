@@ -4,8 +4,7 @@
  * SPDX-License-Identifier: Apache-2.0
  */
 
-/*
- * The shared 802.15.4 messaging service. The platform owns the radio, the IPv6
+/* The shared 802.15.4 messaging service. The platform owns the radio, the IPv6
  * stack and the UDP socket; an application that holds APP_CAP_RADIO sends and
  * receives datagrams to a peer through copied buffers and never holds the socket
  * (a socket is a kernel object a user thread cannot keep). A supervisor pair of

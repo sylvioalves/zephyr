@@ -4,8 +4,7 @@
  * SPDX-License-Identifier: Apache-2.0
  */
 
-/*
- * The shared networking and MQTT service. The Wi-Fi interface, the network
+/* The shared networking and MQTT service. The Wi-Fi interface, the network
  * stack and the socket all live here in the platform; each application gets its
  * own MQTT session keyed by its group id, so several isolated applications
  * publish under their own identity over one shared stack. A supervisor net
@@ -43,8 +42,7 @@
 #define SSID_MAX     33
 #define PSK_MAX      65
 
-/*
- * Association attempts, the pause between them, and how long to wait for an
+/* Association attempts, the pause between them, and how long to wait for an
  * address once associated. DHCP on a busy access point can take well over
  * twenty seconds, so the address wait is the generous one.
  */
@@ -90,8 +88,7 @@ struct sock_msg {
 	uint8_t            data[SOCK_PAYLOAD_MAX];
 };
 
-/*
- * One platform-owned raw socket per application, keyed by group id. The
+/* One platform-owned raw socket per application, keyed by group id. The
  * application never holds the socket; the supervisor net thread pumps incoming
  * bytes into the inbox and the send syscall writes directly under net_lock.
  */
@@ -169,8 +166,7 @@ static void creds_save(void)
 static void creds_save(void) { }
 #endif
 
-/*
- * Losing the address or the association is what tells the platform the shared
+/* Losing the address or the association is what tells the platform the shared
  * link is gone: without it link_ready would stay true after the access point
  * disappears, svc_wifi_status would keep reporting a live link and the net
  * thread's retry (which is gated on the link being down) would never run
@@ -206,8 +202,7 @@ static void ipv4_evt(struct net_mgmt_event_callback *cb, uint64_t ev,
 	}
 }
 
-/*
- * Wi-Fi events carry a different layer than the IPv4 ones, so they need their
+/* Wi-Fi events carry a different layer than the IPv4 ones, so they need their
  * own callback: OR-ing the two masks together would corrupt the layer field and
  * the handler would match nothing at all.
  */
@@ -244,8 +239,7 @@ static int wifi_up(void)
 		cb_added = true;
 	}
 
-	/*
-	 * Zero every call: the request carries fields this code does not set
+	/* Zero every call: the request carries fields this code does not set
 	 * (BSSID, SAE password, timeout), and a static struct would hand the
 	 * driver whatever a previous attempt left behind.
 	 */
@@ -383,8 +377,7 @@ static int session_connect(struct session *s)
 	return 0;
 }
 
-/*
- * Bring the shared Wi-Fi link up. This runs only on the supervisor net thread,
+/* Bring the shared Wi-Fi link up. This runs only on the supervisor net thread,
  * never on an application thread: the Wi-Fi connect path must execute from a
  * plain kernel thread (as the stand-alone Wi-Fi samples do), not from inside a
  * service syscall invoked by a user-mode app, or the connect never completes.
@@ -410,8 +403,7 @@ static void bring_link_up(void)
 
 	bool got_ip = false;
 
-	/*
-	 * Retry the association, backing off between attempts. A board that
+	/* Retry the association, backing off between attempts. A board that
 	 * reboots while it was still associated is refused by the access point
 	 * until the old session ages out, and there wifi_up() fails immediately
 	 * rather than timing out: without a delay of its own the loop would
@@ -421,8 +413,7 @@ static void bring_link_up(void)
 	for (int attempt = 0; attempt < WIFI_CONNECT_TRIES && !got_ip; attempt++) {
 		int wrc = wifi_up();
 
-		/*
-		 * -EALREADY means the driver still has the previous connect in
+		/* -EALREADY means the driver still has the previous connect in
 		 * flight; that attempt is what we are waiting on, so wait for
 		 * the address rather than starting another one.
 		 */
@@ -434,8 +425,7 @@ static void bring_link_up(void)
 		}
 		printk("net: Wi-Fi attempt %d got no IP, retrying\n",
 		       attempt + 1);
-		/*
-		 * The attempt is spent: clear it so the next one is a fresh
+		/* The attempt is spent: clear it so the next one is a fresh
 		 * connect rather than another -EALREADY, and give the access
 		 * point a moment to release the old session.
 		 */
@@ -641,8 +631,7 @@ int z_impl_svc_net_ready(void)
 	link_started = true;
 	app_svc_unlock(&net_lock);
 
-	/*
-	 * Wait for the net thread's own budget to run out, not less: it makes
+	/* Wait for the net thread's own budget to run out, not less: it makes
 	 * WIFI_CONNECT_TRIES attempts, each up to WIFI_IP_WAIT_S plus the pause
 	 * between them. Returning earlier would report a failure while the
 	 * platform was still associating.
@@ -1079,8 +1068,7 @@ int z_impl_svc_tcp_close(void)
 	return sock_close(true);
 }
 
-/*
- * Release a reclaimed application's network resources: its MQTT session and any
+/* Release a reclaimed application's network resources: its MQTT session and any
  * raw socket it left open. Registered as a platform reclaim hook, so it runs on
  * the reaper-helper thread (never the supervisor) when an app is reclaimed.
  */

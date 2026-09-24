@@ -4,8 +4,7 @@
  * SPDX-License-Identifier: Apache-2.0
  */
 
-/*
- * Shared hardware counter service. The platform owns the counter instances and
+/* Shared hardware counter service. The platform owns the counter instances and
  * hands an application a granted one by index, so an application can time an
  * interval against real hardware rather than the scheduler. Reading is the
  * whole surface: an application never receives the device, and alarms stay with

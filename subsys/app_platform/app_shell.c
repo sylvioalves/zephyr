@@ -4,8 +4,7 @@
  * SPDX-License-Identifier: Apache-2.0
  */
 
-/*
- * Console control and introspection for the application platform: a live view
+/* Console control and introspection for the application platform: a live view
  * of installed and running applications and their resource use, plus lifecycle
  * control (start/stop/restart/remove). Queryable over any shell backend
  * (serial, or the mcumgr/network shell for remote access).
