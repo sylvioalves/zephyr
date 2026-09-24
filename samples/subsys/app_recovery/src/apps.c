@@ -11,8 +11,7 @@
  * survived the crash because it was held outside the app's memory domain.
  */
 
-#include "svc.h"
-
+#include <zephyr/app_platform/app_services.h>
 #include <zephyr/kernel.h>
 
 void app_worker(void *arg)
@@ -22,9 +21,9 @@ void app_worker(void *arg)
 	uint32_t count = svc_checkpoint_get();
 
 	if (count == 0U) {
-		app_log("worker: fresh start, count = 0");
+		svc_log("worker: fresh start, count = 0");
 	} else {
-		app_log("worker: resumed from checkpoint after a crash");
+		svc_log("worker: resumed from checkpoint after a crash");
 	}
 
 	for (;;) {
@@ -32,7 +31,7 @@ void app_worker(void *arg)
 		svc_checkpoint_set(count);
 
 		if (count == 4U) {
-			app_log("worker: at count 4, about to crash...");
+			svc_log("worker: at count 4, about to crash...");
 			/* Deliberate fault: write through a null pointer. */
 			volatile uint32_t *bad = (volatile uint32_t *)0;
 
@@ -40,7 +39,7 @@ void app_worker(void *arg)
 		}
 
 		if (count >= 8U) {
-			app_log("worker: reached count 8, finished cleanly");
+			svc_log("worker: reached count 8, finished cleanly");
 			return;
 		}
 

@@ -12,9 +12,8 @@
  * platform held it outside the app's memory domain.
  */
 
-#include "svc.h"
-
 #include <zephyr/app_platform/app_platform.h>
+#include <zephyr/app_platform/app_caps.h>
 #include <zephyr/kernel.h>
 #include <zephyr/sys/printk.h>
 
@@ -30,7 +29,10 @@ int main(void)
 	}
 
 	const struct app_def worker = {
-		.name = "worker", .source = APP_BUILTIN, .entry = app_worker, .caps = 0,
+		.name = "worker",
+		.source = APP_BUILTIN,
+		.entry = app_worker,
+		.caps = APP_CAP_LOG,
 	};
 	int id = app_platform_launch(&worker);
 

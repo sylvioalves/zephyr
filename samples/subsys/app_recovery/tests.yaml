@@ -1,0 +1,20 @@
+sample:
+  name: Crash recovery with retained state
+  description: >
+    Restart a crashed application and let it resume from a checkpoint the
+    platform kept outside its memory domain.
+tests:
+  sample.subsys.app_recovery:
+    tags: app_platform
+    platform_allow:
+      - esp32c5_devkitc/esp32c5/hpcore
+      - esp32c6_devkitc/esp32c6/hpcore
+    ignore_faults: true
+    harness: console
+    harness_config:
+      type: multi_line
+      ordered: true
+      regex:
+        - "worker: resumed from checkpoint after a crash"
+        - "worker: reached count 8, finished cleanly"
+        - "done: app crashed, was restarted, and resumed its work"
