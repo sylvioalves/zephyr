@@ -25,14 +25,6 @@
 
 #include "app_grants.h"
 
-#define MAX_APPS CONFIG_APP_PLATFORM_MAX_APPS
-#define SVC_LOCK_TIMEOUT K_SECONDS(2)
-
-static inline bool app_has_cap(app_caps_t mask)
-{
-	return (app_platform_caps_current() & mask) == mask;
-}
-
 /* ---- hardware pulse counter ---- */
 
 #if DT_NODE_HAS_STATUS(DT_NODELABEL(pcnt), okay) && DT_HAS_ALIAS(pcnt_stim)

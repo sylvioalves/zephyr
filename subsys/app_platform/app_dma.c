@@ -24,15 +24,7 @@
 #include "app_grants.h"
 
 #define DMA_MAX  256
-
-/* Bounded wait for the shared lock; -EBUSY rather than parking the caller. */
-#define SVC_LOCK_TIMEOUT K_SECONDS(2)
 #define DMA_CHAN 0U
-
-static inline bool app_has_cap(app_caps_t mask)
-{
-	return (app_platform_caps_current() & mask) == mask;
-}
 
 #if DT_NODE_EXISTS(DT_NODELABEL(dma))
 static const struct device *const dma_dev = DEVICE_DT_GET(DT_NODELABEL(dma));

@@ -43,9 +43,6 @@
 #define SSID_MAX     33
 #define PSK_MAX      65
 
-/* Bounded wait for the network lock; -EBUSY rather than parking the caller. */
-#define NET_LOCK_TIMEOUT K_SECONDS(2)
-
 /*
  * Association attempts, the pause between them, and how long to wait for an
  * address once associated. DHCP on a busy access point can take well over
@@ -60,11 +57,6 @@
 /* Live Wi-Fi credentials, seeded from Kconfig and overridable at runtime. */
 static char wifi_ssid[SSID_MAX] = CONFIG_APP_PLATFORM_NET_WIFI_SSID;
 static char wifi_psk[PSK_MAX] = CONFIG_APP_PLATFORM_NET_WIFI_PSK;
-
-static inline bool app_has_cap(app_caps_t mask)
-{
-	return (app_platform_caps_current() & mask) == mask;
-}
 
 struct inbox_msg {
 	uint16_t len;
@@ -643,7 +635,7 @@ int z_impl_svc_net_ready(void)
 	/* Ask the supervisor net thread to bring the shared link up, then wait
 	 * for the result. The connect itself must not run on this app thread.
 	 */
-	if (app_svc_lock(&net_lock, NET_LOCK_TIMEOUT) != 0) {
+	if (app_svc_lock(&net_lock, SVC_LOCK_TIMEOUT) != 0) {
 		return -EBUSY;
 	}
 	link_started = true;
@@ -689,7 +681,7 @@ int z_impl_svc_mqtt_open(const char *client_id, const char *pub_topic,
 	strncpy(s->sub_topic, sub_topic, sizeof(s->sub_topic) - 1);
 	k_msgq_init(&s->inbox, s->inbox_buf, sizeof(struct inbox_msg), 4);
 
-	if (app_svc_lock(&net_lock, NET_LOCK_TIMEOUT) != 0) {
+	if (app_svc_lock(&net_lock, SVC_LOCK_TIMEOUT) != 0) {
 		return -EBUSY;
 	}
 	int rc = session_connect(s);
@@ -786,7 +778,7 @@ int z_impl_svc_wifi_connect(const char *ssid, const char *psk)
 		return -EINVAL;
 	}
 
-	if (app_svc_lock(&net_lock, NET_LOCK_TIMEOUT) != 0) {
+	if (app_svc_lock(&net_lock, SVC_LOCK_TIMEOUT) != 0) {
 		return -EBUSY;
 	}
 	strncpy(wifi_ssid, ssid, sizeof(wifi_ssid) - 1);
@@ -808,7 +800,7 @@ int z_impl_svc_wifi_disconnect(void)
 		return -EPERM;
 	}
 
-	if (app_svc_lock(&net_lock, NET_LOCK_TIMEOUT) != 0) {
+	if (app_svc_lock(&net_lock, SVC_LOCK_TIMEOUT) != 0) {
 		return -EBUSY;
 	}
 	k_sem_reset(&link_change_sem);
@@ -870,7 +862,7 @@ static int sock_open(bool tcp, const char *host, uint16_t port)
 		return rc;
 	}
 
-	if (app_svc_lock(&net_lock, NET_LOCK_TIMEOUT) != 0) {
+	if (app_svc_lock(&net_lock, SVC_LOCK_TIMEOUT) != 0) {
 		return -EBUSY;
 	}
 	int fd = zsock_socket(AF_INET, tcp ? SOCK_STREAM : SOCK_DGRAM,
@@ -936,7 +928,7 @@ static int sock_send(bool tcp, const void *buf, size_t len)
 		ssize_t n;
 
 		memcpy(tmp, (const uint8_t *)buf + sent, chunk);
-		if (app_svc_lock(&net_lock, NET_LOCK_TIMEOUT) != 0) {
+		if (app_svc_lock(&net_lock, SVC_LOCK_TIMEOUT) != 0) {
 			return (sent > 0U) ? (int)sent : -EBUSY;
 		}
 		if (tcp) {
@@ -1014,7 +1006,7 @@ static int sock_close(bool tcp)
 		return -ENOTCONN;
 	}
 
-	if (app_svc_lock(&net_lock, NET_LOCK_TIMEOUT) != 0) {
+	if (app_svc_lock(&net_lock, SVC_LOCK_TIMEOUT) != 0) {
 		return -EBUSY;
 	}
 	if (sk->fd >= 0) {
@@ -1098,7 +1090,7 @@ static void net_release(int id)
 		return;
 	}
 
-	if (app_svc_lock(&net_lock, NET_LOCK_TIMEOUT) != 0) {
+	if (app_svc_lock(&net_lock, SVC_LOCK_TIMEOUT) != 0) {
 		return;
 	}
 	if (sessions[id].used) {

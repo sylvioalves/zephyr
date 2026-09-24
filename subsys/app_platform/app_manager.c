@@ -38,7 +38,6 @@
 
 LOG_MODULE_REGISTER(app_platform, CONFIG_APP_PLATFORM_LOG_LEVEL);
 
-#define MAX_APPS    CONFIG_APP_PLATFORM_MAX_APPS
 #define MAX_RESTARTS ((uint32_t)CONFIG_APP_PLATFORM_MAX_RESTARTS)
 #define APP_STACK   CONFIG_APP_PLATFORM_APP_STACK_SIZE
 #define APP_PRIO    CONFIG_APP_PLATFORM_APP_PRIORITY
@@ -84,7 +83,6 @@ struct running_app {
 
 static struct running_app apps[MAX_APPS];
 static K_THREAD_STACK_ARRAY_DEFINE(app_stacks, MAX_APPS, APP_STACK);
-
 
 static void trampoline(void *entry, void *arg, void *u2);
 
@@ -690,7 +688,6 @@ int app_platform_remove(int id)
 	reclaim_ex(&apps[id], true);
 	return 0;
 }
-
 
 static int launch(const char *name, app_entry_t entry, void *arg, app_caps_t caps,
 		  struct llext *ext, bool restart, bool monitored);

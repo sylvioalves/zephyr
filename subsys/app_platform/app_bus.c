@@ -22,13 +22,9 @@
 #include <zephyr/drivers/uart.h>
 #include <errno.h>
 
-#define MAX_APPS CONFIG_APP_PLATFORM_MAX_APPS
-#define BUS_XFER_MAX 64
+#include "app_grants.h"
 
-static inline bool app_has_cap(app_caps_t mask)
-{
-	return (app_platform_caps_current() & mask) == mask;
-}
+#define BUS_XFER_MAX 64
 
 /* ---- I2C ---- */
 

@@ -53,14 +53,6 @@ bool app_platform_log_is_enabled(void)
 
 #define SVC_XFER_MAX 256
 
-/*
- * Bound how long an application waits for a shared-resource lock. The protected
- * sections are short, so reaching this cap means the resource is genuinely
- * wedged; the service then returns -EBUSY instead of parking the caller for
- * ever, so a stuck or greedy application cannot block a well-behaved one.
- */
-#define SVC_LOCK_TIMEOUT K_SECONDS(2)
-
 static K_MUTEX_DEFINE(flash_lock);
 
 /* A shared, lock-serialized key/value store namespaced by application id. */
@@ -86,7 +78,6 @@ static const struct device *const svc_die_temp = DEVICE_DT_GET(DT_ALIAS(die_temp
  * application groups, so the messaging service scales with
  * CONFIG_APP_PLATFORM_MAX_APPS without per-group boilerplate.
  */
-#define MAX_APPS  CONFIG_APP_PLATFORM_MAX_APPS
 #define IPC_MSG_MAX 64
 #define IPC_QUEUE_DEPTH 4
 
@@ -139,12 +130,6 @@ static int mailbox_put(int dest, const void *buf, size_t len)
 	msg.len = (uint16_t)len;
 	memcpy(msg.data, buf, len);
 	return k_msgq_put(&mailbox[dest], &msg, K_NO_WAIT) == 0 ? 0 : -EAGAIN;
-}
-
-/* True when the calling application holds every bit in @mask. */
-static inline bool app_has_cap(app_caps_t mask)
-{
-	return (app_platform_caps_current() & mask) == mask;
 }
 
 void z_impl_svc_log(const char *msg)

@@ -98,11 +98,6 @@ static struct sensor_svc catalog[] = {
  */
 static K_MUTEX_DEFINE(sensor_lock);
 
-static inline bool app_has_cap(app_caps_t mask)
-{
-	return (app_platform_caps_current() & mask) == mask;
-}
-
 int z_impl_svc_sensor_count(void)
 {
 	if (!app_has_cap(APP_CAP_SENSOR)) {
@@ -145,7 +140,7 @@ int z_impl_svc_sensor_read(int idx, int32_t *milli_value)
 	if (!device_is_ready(die_temp)) {
 		return -ENODEV;
 	}
-	if (app_svc_lock(&sensor_lock, K_SECONDS(2)) != 0) {
+	if (app_svc_lock(&sensor_lock, SVC_LOCK_TIMEOUT) != 0) {
 		return -EBUSY;
 	}
 

@@ -24,14 +24,6 @@
 
 #define CAN_PAYLOAD_MAX 8
 
-/* Bounded wait for the shared lock; -EBUSY rather than parking the caller. */
-#define SVC_LOCK_TIMEOUT K_SECONDS(2)
-
-static inline bool app_has_cap(app_caps_t mask)
-{
-	return (app_platform_caps_current() & mask) == mask;
-}
-
 #if DT_HAS_CHOSEN(zephyr_canbus)
 static const struct device *const can_dev = DEVICE_DT_GET(DT_CHOSEN(zephyr_canbus));
 CAN_MSGQ_DEFINE(app_can_q, 8);

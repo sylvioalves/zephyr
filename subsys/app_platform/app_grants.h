@@ -8,8 +8,23 @@
 #define ZEPHYR_SUBSYS_APP_PLATFORM_APP_GRANTS_H_
 
 #include <zephyr/kernel.h>
+#include <zephyr/app_platform/app_platform.h>
 
 #define APP_PLATFORM_NAME_LEN 24
+
+#define MAX_APPS CONFIG_APP_PLATFORM_MAX_APPS
+
+/* Bound on the wait for a service lock. The protected sections are short, so
+ * reaching it means the resource is wedged and the service returns -EBUSY
+ * instead of parking the caller.
+ */
+#define SVC_LOCK_TIMEOUT K_SECONDS(2)
+
+/* True when the calling application holds every capability in @p mask. */
+static inline bool app_has_cap(app_caps_t mask)
+{
+	return (app_platform_caps_current() & mask) == mask;
+}
 
 /* Service lock operations. A stop of an application that holds a service lock
  * takes effect once it releases the last one.

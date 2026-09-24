@@ -35,7 +35,6 @@
 #include "app_events.h"
 #include "app_grants.h"
 
-#define MAX_APPS   CONFIG_APP_PLATFORM_MAX_APPS
 #define NAME_MAX   24
 #define VALUE_MAX  APP_BLE_GATT_MAX
 #define CHRC_MAX   APP_BLE_SERVE_MAX_CHRC
@@ -45,11 +44,6 @@
  * for a notifiable characteristic, so the count is an upper bound.
  */
 #define ATTR_MAX (1 + (3 * CHRC_MAX))
-
-static inline bool app_has_cap(app_caps_t mask)
-{
-	return (app_platform_caps_current() & mask) == mask;
-}
 
 static K_MUTEX_DEFINE(serve_lock);
 
@@ -255,7 +249,7 @@ int z_impl_svc_ble_serve_start(const char *name, const uint8_t *svc_uuid,
 	if (!app_platform_ble_gatt_granted(id, svc_uuid, uuid_len)) {
 		return -EACCES;
 	}
-	if (app_svc_lock(&serve_lock, K_SECONDS(2)) != 0) {
+	if (app_svc_lock(&serve_lock, SVC_LOCK_TIMEOUT) != 0) {
 		return -EBUSY;
 	}
 	if (serving) {
@@ -518,7 +512,7 @@ int z_impl_svc_ble_serve_stop(void)
 	if (!app_has_cap(APP_CAP_BLE)) {
 		return -EPERM;
 	}
-	if (app_svc_lock(&serve_lock, K_SECONDS(2)) != 0) {
+	if (app_svc_lock(&serve_lock, SVC_LOCK_TIMEOUT) != 0) {
 		return -EBUSY;
 	}
 	if (serving && app_platform_id_current() == serving_id) {

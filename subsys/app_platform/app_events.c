@@ -26,7 +26,8 @@
 #include <errno.h>
 #include <string.h>
 
-#define MAX_APPS  CONFIG_APP_PLATFORM_MAX_APPS
+#include "app_grants.h"
+
 #define QUEUE_LEN CONFIG_APP_PLATFORM_EVENT_QUEUE_LEN
 
 struct app_queue {
@@ -40,11 +41,6 @@ struct app_queue {
 
 static struct app_queue queues[MAX_APPS];
 static struct k_spinlock ev_lock;
-
-static inline bool app_has_cap(app_caps_t mask)
-{
-	return (app_platform_caps_current() & mask) == mask;
-}
 
 /* Semaphores are initialized once at boot: k_sem_init() must not run with a
  * spinlock held, and a producer in an ISR must never find a half-built queue.

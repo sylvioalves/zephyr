@@ -44,9 +44,7 @@ static const char *const line_name[] = {
 #define LINE_COUNT 0
 #endif
 
-#define MAX_APPS CONFIG_APP_PLATFORM_MAX_APPS
 #define IO_NAME_MAX 24
-#define SVC_LOCK_TIMEOUT K_SECONDS(2)
 
 static uint32_t line_grant[MAX_APPS];
 /* Bit N set means this application last drove line N active. */
@@ -76,11 +74,6 @@ void app_platform_clear_gpio_grants(int id)
 	(void)app_svc_unlock(&line_lock);
 }
 static bool gpio_ready;
-
-static inline bool app_has_cap(app_caps_t mask)
-{
-	return (app_platform_caps_current() & mask) == mask;
-}
 
 void app_platform_grant_gpio(int id, uint32_t line_mask)
 {

@@ -23,17 +23,8 @@
 #include <errno.h>
 #include "app_grants.h"
 
-#define MAX_APPS  CONFIG_APP_PLATFORM_MAX_APPS
 #define PSRAM_MIN 1024U
 #define PSRAM_MAX ((size_t)CONFIG_APP_PLATFORM_PSRAM_MAX_BYTES)
-
-/* Bounded wait for the shared lock; -EBUSY rather than parking the caller. */
-#define SVC_LOCK_TIMEOUT K_SECONDS(2)
-
-static inline bool app_has_cap(app_caps_t mask)
-{
-	return (app_platform_caps_current() & mask) == mask;
-}
 
 /* One mapped region per application group. */
 struct psram_region {

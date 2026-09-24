@@ -28,9 +28,6 @@
 #include <errno.h>
 #include "app_grants.h"
 
-#define MAX_APPS CONFIG_APP_PLATFORM_MAX_APPS
-#define SVC_LOCK_TIMEOUT K_SECONDS(2)
-
 /* The mapped region becomes a memory partition, and on an MPU or PMP a
  * partition must be a power of two and aligned to its own size.
  */
@@ -40,11 +37,6 @@
 #if DT_HAS_CHOSEN(app_uart)
 static const struct device *const ring_uart = DEVICE_DT_GET(DT_CHOSEN(app_uart));
 #endif
-
-static inline bool app_has_cap(app_caps_t mask)
-{
-	return (app_platform_caps_current() & mask) == mask;
-}
 
 struct ring_region {
 	uint8_t                *base;  /* supervisor view of the buffer */

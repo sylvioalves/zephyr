@@ -32,14 +32,7 @@
 #include <errno.h>
 #include <string.h>
 
-#define MAX_APPS CONFIG_APP_PLATFORM_MAX_APPS
 #define IO_NAME_MAX 24
-#define SVC_LOCK_TIMEOUT K_SECONDS(2)
-
-static inline bool app_has_cap(app_caps_t mask)
-{
-	return (app_platform_caps_current() & mask) == mask;
-}
 
 /* ---- status LEDs ---- */
 

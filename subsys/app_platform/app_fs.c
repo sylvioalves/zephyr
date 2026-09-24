@@ -46,11 +46,6 @@ static int file_owner[OPEN_FILES];
 static bool file_used[OPEN_FILES];
 static K_MUTEX_DEFINE(fs_lock);
 
-static inline bool app_has_cap(app_caps_t mask)
-{
-	return (app_platform_caps_current() & mask) == mask;
-}
-
 /* The application's name, which names its root directory. Only names that are
  * a plain directory component are accepted.
  */

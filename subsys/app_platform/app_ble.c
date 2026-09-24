@@ -33,7 +33,6 @@
 #include <errno.h>
 
 #define BLE_NAME_MAX 24
-#define MAX_APPS CONFIG_APP_PLATFORM_MAX_APPS
 
 /*
  * Bounded wait for the BLE request lock: a caller waits at most one in-flight
@@ -41,11 +40,6 @@
  * instead of being parked for ever behind a stuck request.
  */
 #define BLE_LOCK_MARGIN_MS 2000U
-
-static inline bool app_has_cap(app_caps_t mask)
-{
-	return (app_platform_caps_current() & mask) == mask;
-}
 
 static K_MUTEX_DEFINE(ble_lock);
 static K_SEM_DEFINE(found_sem, 0, 1);
@@ -734,7 +728,6 @@ int z_impl_svc_ble_hr_read(uint32_t timeout_ms, uint8_t *out_bpm)
 	}
 	return rc;
 }
-
 
 #ifdef CONFIG_APP_PLATFORM_BLE_OTA
 /*
