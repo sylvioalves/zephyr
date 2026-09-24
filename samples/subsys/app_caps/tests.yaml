@@ -1,0 +1,15 @@
+sample:
+  name: Capability tokens
+  description: >
+    Use, forge, delegate and revoke an unforgeable capability token between
+    applications.
+tests:
+  sample.subsys.app_caps:
+    tags: app_platform
+    platform_allow:
+      - esp32c6_devkitc/esp32c6/hpcore
+    harness: console
+    harness_config:
+      type: one_line
+      regex:
+        - "done: used / forge-blocked / delegated / holder-checked / revoked"

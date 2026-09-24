@@ -1,0 +1,11 @@
+sample:
+  name: Scoped I2C capability
+  description: >
+    Grant an application a single I2C address and deny every other address on
+    the bus.
+tests:
+  sample.subsys.app_i2c_scoped:
+    tags: app_platform
+    platform_allow:
+      - esp32c6_devkitc/esp32c6/hpcore
+    build_only: true

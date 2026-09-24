@@ -1,0 +1,12 @@
+sample:
+  name: Shared BLE scan
+  description: >
+    Share one BLE scan between two isolated applications, each receiving every
+    discovered device.
+tests:
+  sample.subsys.ble_service:
+    tags: app_platform
+    platform_allow:
+      - esp32c5_devkitc/esp32c5/hpcore
+      - esp32c6_devkitc/esp32c6/hpcore
+    build_only: true

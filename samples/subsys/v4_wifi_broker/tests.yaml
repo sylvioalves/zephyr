@@ -1,0 +1,12 @@
+sample:
+  name: Brokered Wi-Fi scan
+  description: >
+    Run a Wi-Fi scan requested by a user-mode application through a supervisor
+    broker.
+tests:
+  sample.subsys.v4_wifi_broker:
+    tags: app_platform
+    platform_allow:
+      - esp32c5_devkitc/esp32c5/hpcore
+      - esp32c6_devkitc/esp32c6/hpcore
+    build_only: true

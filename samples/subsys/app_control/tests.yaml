@@ -1,0 +1,16 @@
+sample:
+  name: Application lifecycle control
+  description: >
+    Let an isolated manager application start and stop other applications at
+    runtime.
+tests:
+  sample.subsys.app_control:
+    tags: app_platform
+    platform_allow:
+      - esp32c5_devkitc/esp32c5/hpcore
+      - esp32c6_devkitc/esp32c6/hpcore
+    harness: console
+    harness_config:
+      type: one_line
+      regex:
+        - "done: an app started and stopped other apps at runtime"

@@ -1,0 +1,16 @@
+sample:
+  name: Application SDK
+  description: >
+    Build a loadable application against the SDK header alone and gate
+    privileged calls by capability.
+tests:
+  sample.subsys.app_sdk:
+    tags: app_platform
+    platform_allow:
+      - esp32c5_devkitc/esp32c5/hpcore
+      - esp32c6_devkitc/esp32c6/hpcore
+    harness: console
+    harness_config:
+      type: one_line
+      regex:
+        - "done: app coded only against app_sdk.h; admin gated by capability"

@@ -1,0 +1,15 @@
+sample:
+  name: External RAM mapping from a loadable application
+  description: >
+    Map a region of external RAM into a loadable application's domain and use
+    it directly.
+tests:
+  sample.subsys.psram_demo:
+    tags: app_platform
+    platform_allow:
+      - esp32c5_devkitc/esp32c5/hpcore
+    harness: console
+    harness_config:
+      type: one_line
+      regex:
+        - "done: app used mapped external RAM directly"

@@ -1,0 +1,17 @@
+sample:
+  name: Per-application service permission
+  description: >
+    Allow a service to an application holding its token and deny it to one
+    that does not.
+tests:
+  sample.subsys.v3_broker_perm:
+    tags: app_platform
+    platform_allow:
+      - esp32c5_devkitc/esp32c5/hpcore
+      - esp32c6_devkitc/esp32c6/hpcore
+    ignore_faults: true
+    harness: console
+    harness_config:
+      type: one_line
+      regex:
+        - "V3 PASS"

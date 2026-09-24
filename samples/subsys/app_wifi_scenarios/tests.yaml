@@ -1,0 +1,11 @@
+sample:
+  name: Wi-Fi scenarios
+  description: >
+    Run a TCP round trip over the shared Wi-Fi link and recover from losing
+    the access point.
+tests:
+  sample.subsys.app_wifi_scenarios:
+    tags: app_platform
+    platform_allow:
+      - esp32c5_devkitc/esp32c5/hpcore
+    build_only: true

@@ -1,0 +1,16 @@
+sample:
+  name: Messaging between loadable applications
+  description: >
+    Exchange directed and published messages between three isolated loadable
+    applications.
+tests:
+  sample.subsys.ipc_multi:
+    tags: app_platform
+    platform_allow:
+      - esp32c5_devkitc/esp32c5/hpcore
+      - esp32c6_devkitc/esp32c6/hpcore
+    harness: console
+    harness_config:
+      type: one_line
+      regex:
+        - "done: apps exchanged directed and published messages"

@@ -1,0 +1,11 @@
+sample:
+  name: Private external RAM for two loadable applications
+  description: >
+    Stress two loadable applications, each on its own private region of
+    external RAM.
+tests:
+  sample.subsys.psram_two_apps_llext:
+    tags: app_platform
+    platform_allow:
+      - esp32c5_devkitc/esp32c5/hpcore
+    build_only: true

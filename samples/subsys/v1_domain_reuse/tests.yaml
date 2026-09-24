@@ -1,0 +1,17 @@
+sample:
+  name: Memory domain reuse
+  description: >
+    Reuse a memory domain for a new application and check it cannot reach the
+    previous one's memory.
+tests:
+  sample.subsys.v1_domain_reuse:
+    tags: app_platform
+    platform_allow:
+      - esp32c5_devkitc/esp32c5/hpcore
+      - esp32c6_devkitc/esp32c6/hpcore
+    ignore_faults: true
+    harness: console
+    harness_config:
+      type: one_line
+      regex:
+        - "V1 PASS"

@@ -1,0 +1,11 @@
+sample:
+  name: Application launcher
+  description: >
+    List isolated applications as tiles in an LVGL user interface and start or
+    stop each one.
+tests:
+  sample.subsys.app_launcher:
+    tags: app_platform
+    platform_allow:
+      - esp32c5_devkitc/esp32c5/hpcore
+    build_only: true

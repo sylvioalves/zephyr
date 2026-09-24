@@ -1,0 +1,11 @@
+sample:
+  name: Application update over BLE
+  description: >
+    Pull a signed application from a BLE peer, verify it and run it as an
+    isolated application.
+tests:
+  sample.subsys.app_ble_ota:
+    tags: app_platform
+    platform_allow:
+      - esp32c5_devkitc/esp32c5/hpcore
+    build_only: true

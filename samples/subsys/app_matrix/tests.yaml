@@ -1,0 +1,16 @@
+sample:
+  name: Capability matrix
+  description: >
+    Check that every capability bit gates its service: denied without the bit,
+    allowed with it.
+tests:
+  sample.subsys.app_matrix:
+    tags: app_platform
+    platform_allow:
+      - esp32c5_devkitc/esp32c5/hpcore
+    ignore_faults: true
+    harness: console
+    harness_config:
+      type: one_line
+      regex:
+        - "app_matrix done: 0 mismatches"

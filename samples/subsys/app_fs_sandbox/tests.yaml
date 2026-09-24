@@ -1,0 +1,12 @@
+sample:
+  name: Per-application sandboxed filesystem
+  description: >
+    Confine an application's file access to its own directory and deny every
+    path that escapes it.
+tests:
+  sample.subsys.app_fs_sandbox:
+    tags: app_platform
+    platform_allow:
+      - esp32c5_devkitc/esp32c5/hpcore
+      - esp32c6_devkitc/esp32c6/hpcore
+    build_only: true

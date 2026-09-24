@@ -1,0 +1,16 @@
+sample:
+  name: Busy user threads under timeslicing
+  description: >
+    Run two busy user-mode threads under timeslicing and check the system
+    keeps running.
+tests:
+  sample.subsys.app_lock_bare:
+    tags: app_platform
+    platform_allow:
+      - esp32c5_devkitc/esp32c5/hpcore
+      - esp32c6_devkitc/esp32c6/hpcore
+    harness: console
+    harness_config:
+      type: one_line
+      regex:
+        - "survived 8 s, no lockup"

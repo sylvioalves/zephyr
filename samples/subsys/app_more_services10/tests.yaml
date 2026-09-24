@@ -1,0 +1,12 @@
+sample:
+  name: I2S audio from an application
+  description: >
+    Stream PCM samples from a user-mode application through the platform's I2S
+    service.
+tests:
+  sample.subsys.app_more_services10:
+    tags: app_platform
+    platform_allow:
+      - esp32c5_devkitc/esp32c5/hpcore
+      - esp32c6_devkitc/esp32c6/hpcore
+    build_only: true

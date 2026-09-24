@@ -1,0 +1,15 @@
+sample:
+  name: Many parallel loadable applications
+  description: >
+    Launch as many loadable applications as the platform allows and keep them
+    running.
+tests:
+  sample.subsys.llext_many:
+    tags: app_platform
+    platform_allow:
+      - esp32c5_devkitc/esp32c5/hpcore
+    harness: console
+    harness_config:
+      type: one_line
+      regex:
+        - "apps alive after 8 s"

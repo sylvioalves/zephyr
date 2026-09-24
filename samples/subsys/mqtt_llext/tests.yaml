@@ -1,0 +1,11 @@
+sample:
+  name: MQTT from a loadable application
+  description: >
+    Publish the die temperature over MQTT from a verified loadable
+    application.
+tests:
+  sample.subsys.mqtt_llext:
+    tags: app_platform
+    platform_allow:
+      - esp32c6_devkitc/esp32c6/hpcore
+    build_only: true

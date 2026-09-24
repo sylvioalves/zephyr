@@ -1,0 +1,11 @@
+sample:
+  name: Platform MQTT client
+  description: >
+    Connect to Wi-Fi and an MQTT broker from the platform and publish the die
+    temperature.
+tests:
+  sample.subsys.platform_mqtt:
+    tags: app_platform
+    platform_allow:
+      - esp32c6_devkitc/esp32c6/hpcore
+    build_only: true

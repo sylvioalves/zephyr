@@ -1,0 +1,16 @@
+sample:
+  name: Multi-threaded application
+  description: >
+    Run one application as several threads that share its memory domain and
+    are reclaimed together.
+tests:
+  sample.subsys.app_threads:
+    tags: app_platform
+    platform_allow:
+      - esp32c5_devkitc/esp32c5/hpcore
+      - esp32c6_devkitc/esp32c6/hpcore
+    harness: console
+    harness_config:
+      type: one_line
+      regex:
+        - "done: app ran 3 threads sharing its memory; aborted together"

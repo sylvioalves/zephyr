@@ -1,0 +1,15 @@
+sample:
+  name: Private external RAM for two applications
+  description: >
+    Stress two isolated applications, each on its own private region of
+    external RAM.
+tests:
+  sample.subsys.psram_two_apps:
+    tags: app_platform
+    platform_allow:
+      - esp32c5_devkitc/esp32c5/hpcore
+    harness: console
+    harness_config:
+      type: one_line
+      regex:
+        - "done: two isolated apps each used a private region"
