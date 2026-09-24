@@ -1301,6 +1301,7 @@ __syscall int svc_file_close(int handle);
  * @param ch       Channel index.
  * @param permille Duty cycle in tenths of a percent (0..1000).
  * @retval 0 on success.
+ * @retval -EINVAL Invalid channel or a duty above 1000.
  * @retval -EPERM without @ref APP_CAP_PWM.
  * @retval -EACCES with the capability but without a grant for this channel.
  * @retval -EBUSY The service stayed locked by another caller.

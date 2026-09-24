@@ -76,7 +76,7 @@ int z_impl_svc_pwm_set(int ch, uint32_t permille)
 
 	int id = app_platform_id_current();
 
-	if (id < 0 || id >= MAX_APPS || ch < 0 || ch >= (int)PWM_COUNT) {
+	if (id < 0 || id >= MAX_APPS || ch < 0 || ch >= (int)PWM_COUNT || permille > 1000U) {
 		return -EINVAL;
 	}
 	if ((pwm_grant[id] & BIT(ch)) == 0U) {
@@ -92,7 +92,7 @@ int z_impl_svc_pwm_set(int ch, uint32_t permille)
 	if (app_svc_lock(&pwm_lock, SVC_LOCK_TIMEOUT) != 0) {
 		return -EBUSY;
 	}
-	rc = pwm_set_dt(&pwm_ch[ch], period, (period * permille) / 1000U);
+	rc = pwm_set_dt(&pwm_ch[ch], period, (uint32_t)(((uint64_t)period * permille) / 1000U));
 	if (rc == 0) {
 		for (int i = 0; i < MAX_APPS; i++) {
 			pwm_driven[i] &= ~BIT(ch);
