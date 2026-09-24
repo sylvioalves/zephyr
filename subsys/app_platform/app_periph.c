@@ -168,7 +168,9 @@ void app_platform_clear_periph_grants(int id)
 	pwm_driven[id] = 0U;
 	(void)app_svc_unlock(&pwm_lock);
 }
+#if ADC_HAS_CH
 static bool adc_ready;
+#endif
 
 void app_platform_grant_adc(int id, uint32_t ch_mask)
 {
