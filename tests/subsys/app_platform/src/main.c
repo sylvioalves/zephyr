@@ -319,6 +319,53 @@ ZTEST(loader, test_same_name_loaded_twice)
 			"a reference leaked: the extension outlived its unload");
 }
 
+static int load_file_with(const uint8_t *bytes, size_t len, struct llext **ext)
+{
+	struct app_manifest mf = manifest_copy();
+	char path[64];
+	void *entry = NULL;
+	int rc;
+
+	zassert_equal(app_registry_store_blob("fileapp", bytes, len), 0);
+	zassert_equal(app_registry_blob_path("fileapp", path, sizeof(path)), 0);
+	rc = app_loader_verify_load_manifest_file(&mf, mod_sig, ARRAY_SIZE(mod_sig), path,
+						  mod_pubkey, ARRAY_SIZE(mod_pubkey),
+						  "app_main", ext, &entry);
+	(void)fs_unlink(path);
+	return rc;
+}
+
+ZTEST(loader, test_file_genuine_loads)
+{
+	size_t len = fresh_module();
+	struct llext *ext = NULL;
+
+	zassert_equal(load_file_with(work, len, &ext), 0, "genuine file should load");
+	zassert_true(app_loader_is_verified(ext));
+	app_loader_forget(ext);
+	llext_unload(&ext);
+}
+
+ZTEST(loader, test_file_longer_than_signed_rejected)
+{
+	size_t len = fresh_module();
+	struct llext *ext = NULL;
+
+	work[len] = 0;
+	zassert_equal(load_file_with(work, len + 1U, &ext), -EPERM);
+	zassert_is_null(ext);
+}
+
+ZTEST(loader, test_file_tampered_rejected)
+{
+	size_t len = fresh_module();
+	struct llext *ext = NULL;
+
+	work[len / 2] ^= 0xff;
+	zassert_equal(load_file_with(work, len, &ext), -EPERM);
+	zassert_is_null(ext);
+}
+
 ZTEST(loader, test_tampered_module_rejected)
 {
 	struct app_manifest mf = manifest_copy();
@@ -417,7 +464,7 @@ static void *registry_setup(void)
 }
 
 ZTEST_SUITE(registry, NULL, registry_setup, NULL, NULL, NULL);
-ZTEST_SUITE(loader, NULL, NULL, NULL, NULL, NULL);
+ZTEST_SUITE(loader, NULL, registry_setup, NULL, NULL, NULL);
 
 /* ---- lifecycle / reaper ---- */
 

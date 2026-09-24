@@ -99,6 +99,19 @@ config APP_PLATFORM_LOADER
 	  PSA crypto provider (for example CONFIG_PSA_CRYPTO and
 	  CONFIG_PSA_WANT_ALG_SHA_256) for the SHA-256 implementation.
 
+config APP_PLATFORM_LOADER_FILE_IN_RAM
+	bool "Verify a module from a file as one private copy in RAM"
+	depends on APP_PLATFORM_LOADER
+	default y
+	help
+	  Read a module stored in a file into a buffer allocated from the
+	  system heap, verify that buffer and link the extension from it, so
+	  the bytes that are linked are the bytes that were verified. The heap
+	  must hold the largest module once. When disabled, the module is
+	  hashed as a stream and linked from the file, which is re-hashed
+	  afterwards; a writer that changes the file between the reads and
+	  restores it before the re-hash is not detected.
+
 config APP_PLATFORM_LOADER_MAX_MODULE_BYTES
 	int "Per-application loadable-extension memory budget (bytes)"
 	depends on APP_PLATFORM_LOADER

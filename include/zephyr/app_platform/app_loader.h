@@ -121,14 +121,14 @@ int app_loader_verify_load_manifest(const struct app_manifest *mf,
 				    void **entry);
 
 /**
- * @brief Verify a signed manifest, then stream-load the module from a file.
+ * @brief Verify a signed manifest, then load the module from a file.
  *
- * Like @ref app_loader_verify_load_manifest, but the module is read directly
- * from the filesystem rather than a memory buffer: the module hash is computed
- * by streaming the file, and the extension is loaded straight from it. So the
- * module size is bounded by storage, not RAM, and no copy of the whole module
- * is held in memory. The manifest still binds and authenticates the name,
- * version and module hash.
+ * Like @ref app_loader_verify_load_manifest, but the module comes from the
+ * filesystem. With @kconfig{CONFIG_APP_PLATFORM_LOADER_FILE_IN_RAM} the file is
+ * read once into a heap buffer that is verified and linked, and freed after
+ * loading. Otherwise the file is hashed as a stream, linked from the file and
+ * re-hashed afterwards, so no copy of the whole module is held in memory. The
+ * manifest binds and authenticates the name, version and module hash.
  *
  * @param mf        Manifest body (the bytes the signature covers).
  * @param sig       ECDSA P-256 signature over @p mf (raw r||s, 64 bytes).
@@ -145,6 +145,8 @@ int app_loader_verify_load_manifest(const struct app_manifest *mf,
  * @retval -ENOENT if the entry symbol is not found.
  * @retval -E2BIG if the module fails a structural bounds check.
  * @retval -EALREADY if an extension with this name is already loaded.
+ * @retval -EFBIG if the signed length is zero or above the module budget.
+ * @retval -ENOMEM if the heap cannot hold the module copy.
  * @retval other negative errno from filesystem, crypto or llext on failure.
  */
 int app_loader_verify_load_manifest_file(const struct app_manifest *mf,

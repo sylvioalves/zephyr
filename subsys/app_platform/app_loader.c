@@ -206,10 +206,15 @@ static int finish_load(const char *name, struct llext *loaded,
 	return 0;
 }
 
-static int load_checked(const char *name, const uint8_t *buf, size_t len,
+static int load_checked(const char *name, const uint8_t *buf, size_t len, bool copy,
 			const char *entry_sym, struct llext **ext, void **entry)
 {
 	struct llext_buf_loader bl = LLEXT_BUF_LOADER(buf, len);
+
+	if (copy) {
+		bl.loader.storage = LLEXT_STORAGE_TEMPORARY;
+	}
+
 	struct llext_load_param parm = LLEXT_LOAD_PARAM_DEFAULT;
 	struct llext *loaded = NULL;
 	int rc = llext_load(&bl.loader, name, &loaded, &parm);
@@ -252,7 +257,7 @@ int app_loader_verify_load(const char *name, const uint8_t *buf, size_t len,
 	}
 	LOG_INF("verify OK for '%s' (sha-256 matches)", name);
 
-	return load_checked(name, buf, len, entry_sym, ext, entry);
+	return load_checked(name, buf, len, false, entry_sym, ext, entry);
 }
 
 int app_loader_verify_load_signed(const char *name, const uint8_t *buf,
@@ -282,7 +287,7 @@ int app_loader_verify_load_signed(const char *name, const uint8_t *buf,
 	}
 	LOG_INF("verify OK for '%s' (ecdsa-p256 signature authentic)", name);
 
-	return load_checked(name, buf, len, entry_sym, ext, entry);
+	return load_checked(name, buf, len, false, entry_sym, ext, entry);
 }
 
 int app_loader_verify_load_manifest(const struct app_manifest *mf,
@@ -341,7 +346,7 @@ int app_loader_verify_load_manifest(const struct app_manifest *mf,
 	LOG_INF("verify OK for '%s' v%u (manifest authentic, module bound)",
 		mf->name, mf->version);
 
-	return load_checked(mf->name, buf, len, entry_sym, ext, entry);
+	return load_checked(mf->name, buf, len, false, entry_sym, ext, entry);
 }
 
 /* Streaming SHA-256 over a file: hashes the whole file in small chunks without
@@ -435,6 +440,76 @@ static int fs_load_checked(const char *name, const char *path,
 	return finish_load(name, loaded, entry_sym, ext, entry);
 }
 
+/* Read exactly @p len bytes from @p path; a longer or shorter file fails. */
+static int read_file_exact(const char *path, uint8_t *buf, size_t len)
+{
+	struct fs_file_t f;
+	size_t got = 0;
+	uint8_t extra;
+	int rc;
+
+	fs_file_t_init(&f);
+	rc = fs_open(&f, path, FS_O_READ);
+	if (rc != 0) {
+		return rc;
+	}
+	while (got < len) {
+		ssize_t n = fs_read(&f, &buf[got], len - got);
+
+		if (n <= 0) {
+			break;
+		}
+		got += (size_t)n;
+	}
+	rc = (got == len && fs_read(&f, &extra, 1) == 0) ? 0 : -EPERM;
+	fs_close(&f);
+	return rc;
+}
+
+/* Verify and link one private copy of the module, so the bytes that are
+ * linked are the bytes that were hashed.
+ */
+static int verify_load_copy(const struct app_manifest *mf, const char *path,
+			    const char *entry_sym, struct llext **ext, void **entry)
+{
+	uint8_t mod_digest[32];
+	uint8_t *buf;
+	int rc;
+
+	if (mf->module_len == 0U ||
+	    (CONFIG_APP_PLATFORM_LOADER_MAX_MODULE_BYTES != 0 &&
+	     mf->module_len > CONFIG_APP_PLATFORM_LOADER_MAX_MODULE_BYTES)) {
+		LOG_WRN("'%s' module length %u out of range, rejected", mf->name,
+			mf->module_len);
+		return -EFBIG;
+	}
+	buf = k_malloc(mf->module_len);
+	if (buf == NULL) {
+		return -ENOMEM;
+	}
+
+	rc = read_file_exact(path, buf, mf->module_len);
+	if (rc != 0) {
+		LOG_WRN("'%s' module unreadable or not %u bytes, rejected", mf->name,
+			mf->module_len);
+	} else if (sha256(buf, mf->module_len, mod_digest) != 0) {
+		rc = -EIO;
+	} else if (elf_bounds_ok(buf, mf->module_len) != 0) {
+		LOG_WRN("'%s' rejected: not a valid relocatable module", mf->name);
+		rc = -E2BIG;
+	} else if (memcmp(mod_digest, mf->module_sha256, 32) != 0) {
+		LOG_WRN("'%s' module hash != manifest, rejected", mf->name);
+		rc = -EPERM;
+	} else {
+		LOG_INF("verify OK for '%s' v%u (manifest authentic, module bound)",
+			mf->name, mf->version);
+		rc = load_checked(mf->name, buf, mf->module_len, true, entry_sym, ext, entry);
+	}
+
+	k_free(buf);
+	return rc;
+}
+
 int app_loader_verify_load_manifest_file(const struct app_manifest *mf,
 					 const uint8_t *sig, size_t sig_len,
 					 const char *path, const uint8_t *pubkey,
@@ -462,6 +537,10 @@ int app_loader_verify_load_manifest_file(const struct app_manifest *mf,
 	    mf->name[APP_MANIFEST_NAME_MAX - 1] != '\0') {
 		LOG_WRN("malformed manifest, rejected");
 		return -EPERM;
+	}
+
+	if (IS_ENABLED(CONFIG_APP_PLATFORM_LOADER_FILE_IN_RAM)) {
+		return verify_load_copy(mf, path, entry_sym, ext, entry);
 	}
 
 	/* 2. Stream the module from flash: hash it and capture its header,
