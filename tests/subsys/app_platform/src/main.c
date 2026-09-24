@@ -4,8 +4,7 @@
  * SPDX-License-Identifier: Apache-2.0
  */
 
-/*
- * Tests for the app_platform registry and verifying loader: the chip-agnostic
+/* Tests for the app_platform registry and verifying loader: the chip-agnostic
  * security logic that gates what gets installed and launched. Runs on hardware
  * with USERSPACE so it exercises the same code paths the platform ships.
  */
@@ -419,8 +418,7 @@ ZTEST(loader, test_length_mismatch_rejected)
 	zassert_is_null(ext);
 }
 
-/*
- * A separately-signed module whose first relocation's r_offset is past its
+/* A separately-signed module whose first relocation's r_offset is past its
  * target section. Its manifest and signature are valid - the bytes were signed
  * after corruption - so it passes hash and signature verification and reaches
  * the loader, where the relocation bounds check must reject it. This proves the
@@ -469,14 +467,12 @@ ZTEST_SUITE(loader, NULL, registry_setup, NULL, NULL, NULL);
 
 /* ---- lifecycle / reaper ---- */
 
-/*
- * Built-in test apps. The platform reclaims a faulted or finished app and a
+/* Built-in test apps. The platform reclaims a faulted or finished app and a
  * dedicated reaper-helper thread releases its resources off the supervisor.
  * These tests prove the supervisor reclaims, the reaper completes cleanup, and
  * the slot becomes reusable - the contract of the detached-cleanup design.
  */
-/*
- * These run as user-mode apps, so they must not touch kernel memory (no shared
+/* These run as user-mode apps, so they must not touch kernel memory (no shared
  * counters): the test observes the lifecycle through app_platform_status, which
  * is exactly the contract being verified.
  */

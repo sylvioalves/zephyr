@@ -4,8 +4,7 @@
  * SPDX-License-Identifier: Apache-2.0
  */
 
-/*
- * The index-keyed device services, driven against emulated devices. What is
+/* The index-keyed device services, driven against emulated devices. What is
  * under test is the platform's own behaviour rather than the drivers': that a
  * service refuses an application without the capability, refuses an instance
  * that was not granted to it, and confines an EEPROM window to the bytes it

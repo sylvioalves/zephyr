@@ -4,8 +4,7 @@
  * SPDX-License-Identifier: Apache-2.0
  */
 
-/*
- * Minimal loadable application: it announces itself once, then loops forever,
+/* Minimal loadable application: it announces itself once, then loops forever,
  * doing a little random work and sleeping one second between iterations. Many
  * instances of this module run in parallel as isolated user-mode apps so the
  * maximum number of concurrent loadable apps can be measured.

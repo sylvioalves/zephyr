@@ -4,8 +4,7 @@
  * SPDX-License-Identifier: Apache-2.0
  */
 
-/*
- * Hostile applications: each one attempts something it must not be able to do.
+/* Hostile applications: each one attempts something it must not be able to do.
  * Pass condition: the offending app is trapped and reclaimed (or the call is
  * refused with an error), the platform and a canary app keep running.
  */
