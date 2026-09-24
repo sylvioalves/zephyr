@@ -4,11 +4,8 @@ cmake_minimum_required(VERSION 3.20.0)
 find_package(Zephyr REQUIRED HINTS $ENV{ZEPHYR_BASE})
 project(app_update)
 
-zephyr_syscall_header(${CMAKE_CURRENT_SOURCE_DIR}/src/svc.h)
-
 target_sources(app PRIVATE
   src/main.c
-  src/svc.c
 )
 
 # Build the same module twice as two releases (v1 and v2) of one app.
@@ -22,10 +19,7 @@ function(build_release ver)
 
   add_llext_target(${name}_ext OUTPUT ${bin} SOURCES ${ext_src})
   llext_compile_definitions(${name}_ext APP_VERSION=${ver})
-  llext_include_directories(${name}_ext
-    ${CMAKE_CURRENT_SOURCE_DIR}/src
-    ${ZEPHYR_BINARY_DIR}/include/generated
-  )
+  llext_include_directories(${name}_ext ${ZEPHYR_BINARY_DIR}/include/generated)
   generate_inc_file_for_target(app ${bin} ${inc})
 
   add_custom_command(

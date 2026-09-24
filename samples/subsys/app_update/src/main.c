@@ -13,10 +13,9 @@
  * stand in for two downloaded releases.
  */
 
-#include "svc.h"
-
 #include <zephyr/app_platform/app_platform.h>
 #include <zephyr/app_platform/app_loader.h>
+#include <zephyr/app_platform/app_caps.h>
 #include <zephyr/kernel.h>
 #include <zephyr/sys/printk.h>
 
@@ -46,7 +45,7 @@ static int install_version(const char *name, const uint8_t *buf, size_t len,
 		printk("update: install of %s failed: %d\n", name, rc);
 		return rc;
 	}
-	return app_platform_launch_llext(name, ext, (app_entry_t)entry, NULL, 0);
+	return app_platform_launch_llext(name, ext, (app_entry_t)entry, NULL, APP_CAP_LOG);
 }
 
 int main(void)

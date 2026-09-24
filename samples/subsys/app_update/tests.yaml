@@ -1,0 +1,19 @@
+sample:
+  name: Live application update
+  description: >
+    Replace a running loadable application with a verified new release
+    without rebooting.
+tests:
+  sample.subsys.app_update:
+    tags: app_platform
+    platform_allow:
+      - esp32c5_devkitc/esp32c5/hpcore
+      - esp32c6_devkitc/esp32c6/hpcore
+    harness: console
+    harness_config:
+      type: multi_line
+      ordered: true
+      regex:
+        - "app v1: running"
+        - "app v2: running"
+        - "done: app updated at runtime, no reboot"

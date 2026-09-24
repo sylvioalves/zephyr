@@ -10,8 +10,7 @@
  * version logs its own banner, so the hot-update is visible at runtime.
  */
 
-#include "svc.h"
-
+#include <zephyr/app_platform/app_services.h>
 #include <zephyr/llext/symbol.h>
 #include <zephyr/kernel.h>
 
