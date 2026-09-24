@@ -69,7 +69,7 @@ int main(void)
 	 */
 	app_platform_grant_flash(0, 184 * 1024, 8 * 1024);
 
-	app_platform_launch_llext("probe", ext, (app_entry_t)entry, caps);
+	app_platform_launch_llext("probe", ext, (app_entry_t)entry, NULL, caps);
 
 	k_msleep(25000);
 

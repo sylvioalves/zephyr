@@ -34,5 +34,5 @@ int loader_install(const char *name, uint32_t caps)
 		return rc;
 	}
 
-	return app_platform_launch_llext(name, ext, (app_entry_t)entry, caps);
+	return app_platform_launch_llext(name, ext, (app_entry_t)entry, NULL, caps);
 }

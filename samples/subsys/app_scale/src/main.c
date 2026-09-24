@@ -78,7 +78,7 @@ static int load_launch(const char *name)
 	if (rc != 0) {
 		return rc;
 	}
-	rc = app_platform_launch_llext(name, ext, (app_entry_t)entry, APP_CAPS);
+	rc = app_platform_launch_llext(name, ext, (app_entry_t)entry, NULL, APP_CAPS);
 	if (rc < 0) {
 		app_loader_forget(ext);
 		llext_unload(&ext);

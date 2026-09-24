@@ -533,7 +533,7 @@ ZTEST(lifecycle, test_restart_refused_for_loaded_app)
 						      len, mod_pubkey, ARRAY_SIZE(mod_pubkey),
 						      "app_main", &ext, &entry), 0);
 
-	int id = app_platform_launch_llext(mf.name, ext, (app_entry_t)entry, APP_CAP_LOG);
+	int id = app_platform_launch_llext(mf.name, ext, (app_entry_t)entry, NULL, APP_CAP_LOG);
 
 	zassert_true(id >= 0, "launch failed (%d)", id);
 	zassert_equal(app_platform_set_restart(id, true), -ENOTSUP,
@@ -599,6 +599,38 @@ ZTEST(lifecycle, test_slot_reusable_after_reclaim)
 		zassert_true(wait_slot_free("recycle", 2000),
 			     "round %d slot not reclaimed", round);
 	}
+}
+
+#define ARG_MAGIC ((void *)0x5a5aU)
+
+static void arg_checker_app(void *arg)
+{
+	while (arg == ARG_MAGIC) {
+		k_msleep(10);
+	}
+}
+
+ZTEST(lifecycle, test_entry_receives_argument)
+{
+	struct app_def def = {
+		.name = "argapp",
+		.source = APP_BUILTIN,
+		.entry = arg_checker_app,
+		.arg = ARG_MAGIC,
+		.caps = APP_CAP_LOG,
+	};
+	int id = app_platform_launch(&def);
+
+	zassert_true(id >= 0, "launch failed (%d)", id);
+	k_msleep(100);
+	zassert_equal(slot_of("argapp"), id, "the entry did not receive its argument");
+	zassert_equal(app_platform_remove(id), 0);
+	zassert_true(wait_slot_free("argapp", 2000));
+
+	def.arg = NULL;
+	id = app_platform_launch(&def);
+	zassert_true(id >= 0, "launch failed (%d)", id);
+	zassert_true(wait_slot_free("argapp", 2000), "the entry ignored its argument");
 }
 
 static void file_writer_app(void *arg)

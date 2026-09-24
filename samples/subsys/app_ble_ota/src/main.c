@@ -91,7 +91,7 @@ static int install_fetched(const char *name)
 		return rc;
 	}
 
-	rc = app_platform_launch_llext(mf.name, ext, (app_entry_t)entry,
+	rc = app_platform_launch_llext(mf.name, ext, (app_entry_t)entry, NULL,
 				       FETCHED_CAPS);
 	if (rc < 0) {
 		printk("launch refused (%d)\n", rc);
@@ -119,7 +119,7 @@ int main(void)
 
 	if (rc == 0) {
 		rc = app_platform_launch_llext("fetcher", ext,
-					       (app_entry_t)entry, FETCHER_CAPS);
+					       (app_entry_t)entry, NULL, FETCHER_CAPS);
 	}
 	if (rc < 0) {
 		printk("fetcher app failed to start (%d)\n", rc);

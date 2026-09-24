@@ -45,7 +45,7 @@ int main(void)
 	}
 
 	uint32_t caps = APP_CAP_LOG | APP_CAP_SENSOR | APP_CAP_NET;
-	int id = app_platform_launch_llext("temp-app", ext, (app_entry_t)entry, caps);
+	int id = app_platform_launch_llext("temp-app", ext, (app_entry_t)entry, NULL, caps);
 
 	printk("temp-app launched as isolated group %d\n", id);
 

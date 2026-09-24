@@ -199,7 +199,7 @@ int main(void)
 		return 0;
 	}
 
-	app_platform_launch_llext(mf.name, ext, (app_entry_t)entry, APP_CAPS);
+	app_platform_launch_llext(mf.name, ext, (app_entry_t)entry, NULL, APP_CAPS);
 	printk("running authenticated '%s' v%u from persisted binary\n",
 	       mf.name, mf.version);
 

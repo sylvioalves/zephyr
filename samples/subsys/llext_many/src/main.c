@@ -80,7 +80,7 @@ int main(void)
 			break;
 		}
 
-		rc = app_platform_launch_llext(name, ext, (app_entry_t)entry,
+		rc = app_platform_launch_llext(name, ext, (app_entry_t)entry, NULL,
 					       APP_CAPS);
 		if (rc < 0) {
 			printk("launch #%d failed: %d\n", i, rc);

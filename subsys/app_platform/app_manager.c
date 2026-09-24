@@ -72,6 +72,7 @@ struct running_app {
 	uint8_t             svc_holds; /* service locks the app thread holds */
 	bool                domain_ready; /* memory domain initialized once per slot */
 	app_entry_t         entry;
+	void               *arg;       /* passed to entry */
 	app_caps_t          caps;
 	size_t              module_bytes; /* loadable-extension footprint, 0 if built-in */
 #ifdef CONFIG_LLEXT
@@ -83,7 +84,7 @@ static struct running_app apps[MAX_APPS];
 static K_THREAD_STACK_ARRAY_DEFINE(app_stacks, MAX_APPS, APP_STACK);
 
 
-static void trampoline(void *entry, void *unused1, void *u2);
+static void trampoline(void *entry, void *arg, void *u2);
 
 /* Reclaim requests from the wdt callback / fatal handler -> supervisor thread. */
 static struct k_msgq reclaim_q;
@@ -605,7 +606,7 @@ static int restart_thread(struct running_app *a)
 	}
 
 	k_tid_t t = k_thread_create(&a->thread, app_stacks[id], APP_STACK,
-				    trampoline, (void *)a->entry, NULL, NULL,
+				    trampoline, (void *)a->entry, a->arg, NULL,
 				    APP_PRIO, K_USER, K_FOREVER);
 
 	k_thread_name_set(t, a->name);
@@ -662,7 +663,7 @@ int app_platform_remove(int id)
 }
 
 
-static int launch(const char *name, app_entry_t entry, app_caps_t caps,
+static int launch(const char *name, app_entry_t entry, void *arg, app_caps_t caps,
 		  struct llext *ext, bool restart, bool monitored);
 
 static void supervisor(void *p1, void *p2, void *p3)
@@ -691,6 +692,7 @@ static void supervisor(void *p1, void *p2, void *p3)
 		name[sizeof(name) - 1] = '\0';
 
 		app_entry_t entry = a->entry;
+		void *arg = a->arg;
 		app_caps_t caps = a->caps;
 		bool monitored = a->monitored;
 		uint32_t restarts = a->restarts;
@@ -720,7 +722,7 @@ static void supervisor(void *p1, void *p2, void *p3)
 				LOG_ERR("app '%s' not restarted: cleanup stuck", name);
 				continue;
 			}
-			int nid = launch(name, entry, caps, NULL, true, monitored);
+			int nid = launch(name, entry, arg, caps, NULL, true, monitored);
 
 			if (nid < 0) {
 				LOG_ERR("app '%s' could not be restarted", name);
@@ -734,11 +736,10 @@ static void supervisor(void *p1, void *p2, void *p3)
 	}
 }
 
-static void trampoline(void *entry, void *unused1, void *u2)
+static void trampoline(void *entry, void *arg, void *u2)
 {
-	ARG_UNUSED(unused1);
 	ARG_UNUSED(u2);
-	((app_entry_t)entry)(NULL);
+	((app_entry_t)entry)(arg);
 	/* The app returned. Exit through the kernel so a user-mode thread does
 	 * not fall off its entry into an undefined return address; the death-
 	 * watcher then reclaims the slot.
@@ -768,7 +769,7 @@ int app_platform_init(void)
 }
 
 /* Common launch: find a free slot, set up the domain, start a user-mode thread. */
-static int launch(const char *name, app_entry_t entry, app_caps_t caps,
+static int launch(const char *name, app_entry_t entry, void *arg, app_caps_t caps,
 		  struct llext *ext, bool restart, bool monitored)
 {
 	for (int i = 0; i < MAX_APPS; i++) {
@@ -786,6 +787,7 @@ static int launch(const char *name, app_entry_t entry, app_caps_t caps,
 		(void)strncpy(a->name, name, sizeof(a->name) - 1);
 		a->name[sizeof(a->name) - 1] = '\0';
 		a->entry = entry;
+		a->arg = arg;
 		a->caps = caps;
 		a->restart = restart;
 		a->monitored = monitored;
@@ -827,7 +829,7 @@ static int launch(const char *name, app_entry_t entry, app_caps_t caps,
 		}
 
 		k_tid_t t = k_thread_create(&a->thread, app_stacks[i], APP_STACK,
-					    trampoline, (void *)entry, NULL, NULL,
+					    trampoline, (void *)entry, arg, NULL,
 					    APP_PRIO, K_USER, K_FOREVER);
 		k_thread_name_set(t, name);
 		k_mem_domain_add_thread(&a->domain, t);
@@ -855,12 +857,12 @@ static int launch(const char *name, app_entry_t entry, app_caps_t caps,
 
 int app_platform_launch(const struct app_def *def)
 {
-	return launch(def->name, def->entry, def->caps, NULL, false, def->monitored);
+	return launch(def->name, def->entry, def->arg, def->caps, NULL, false, def->monitored);
 }
 
 #ifdef CONFIG_LLEXT
 int app_platform_launch_llext(const char *name, struct llext *ext,
-			      app_entry_t entry, app_caps_t caps)
+			      app_entry_t entry, void *arg, app_caps_t caps)
 {
 #ifdef CONFIG_APP_PLATFORM_LOADER
 	/* Refuse any extension that did not pass the verifying loader, so a
@@ -871,7 +873,7 @@ int app_platform_launch_llext(const char *name, struct llext *ext,
 		return -EPERM;
 	}
 #endif
-	return launch(name, entry, caps, ext, false, false);
+	return launch(name, entry, arg, caps, ext, false, false);
 }
 #endif
 

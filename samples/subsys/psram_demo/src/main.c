@@ -42,7 +42,7 @@ int main(void)
 		return 0;
 	}
 
-	app_platform_launch_llext("psram", ext, (app_entry_t)entry,
+	app_platform_launch_llext("psram", ext, (app_entry_t)entry, NULL,
 				  APP_CAP_LOG | APP_CAP_TIME | APP_CAP_PSRAM);
 
 	k_msleep(8000);

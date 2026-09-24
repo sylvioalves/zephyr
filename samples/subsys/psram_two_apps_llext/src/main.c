@@ -42,7 +42,7 @@ static int load_and_launch(const char *name)
 		return rc;
 	}
 
-	return app_platform_launch_llext(name, ext, (app_entry_t)entry, APP_CAPS);
+	return app_platform_launch_llext(name, ext, (app_entry_t)entry, NULL, APP_CAPS);
 }
 
 int main(void)

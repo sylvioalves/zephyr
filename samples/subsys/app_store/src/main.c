@@ -64,7 +64,7 @@ static int install_and_run(const struct app_manifest *mf, const uint8_t *sig,
 		return rc;
 	}
 
-	rc = app_platform_launch_llext(mf->name, ext, (app_entry_t)entry,
+	rc = app_platform_launch_llext(mf->name, ext, (app_entry_t)entry, NULL,
 				       APP_CAPS);
 	if (rc < 0) {
 		printk("app-store: launch refused (rc=%d)\n", rc);
@@ -116,7 +116,7 @@ int main(void)
 	if (llext_load(&bl.loader, "rogue", &raw, &parm) == 0) {
 		void *entry = llext_find_sym(&raw->exp_tab, "app_main");
 		int rc = app_platform_launch_llext("rogue", raw,
-						   (app_entry_t)entry, APP_CAPS);
+						   (app_entry_t)entry, NULL, APP_CAPS);
 
 		if (rc == -EPERM) {
 			printk("app-store: unverified module refused at launch OK\n");

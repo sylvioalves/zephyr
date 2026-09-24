@@ -227,7 +227,7 @@ static int autostart_one(const struct app_record *rec, void *user)
 	}
 	rc = app_registry_check(rec, &mf);
 	if (rc == 0) {
-		rc = app_platform_launch_llext(mf.name, ext, (app_entry_t)entry, APP_CAPS);
+		rc = app_platform_launch_llext(mf.name, ext, (app_entry_t)entry, NULL, APP_CAPS);
 	}
 	if (rc < 0) {
 		app_loader_forget(ext);
@@ -301,7 +301,7 @@ static int cmd_fetch(const struct shell *sh, size_t argc, char **argv)
 		return rc;
 	}
 
-	rc = app_platform_launch_llext(mf.name, ext, (app_entry_t)entry, APP_CAPS);
+	rc = app_platform_launch_llext(mf.name, ext, (app_entry_t)entry, NULL, APP_CAPS);
 	if (rc < 0) {
 		shell_error(sh, "launch refused (%d)", rc);
 		app_loader_forget(ext);

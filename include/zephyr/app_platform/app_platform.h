@@ -44,6 +44,11 @@ typedef void (*app_entry_t)(void *arg);
  * @p caps is opaque to the platform: it is stored per application and exposed
  * through @ref app_platform_caps_current so the application's services can
  * enforce whatever capability scheme they define.
+ *
+ * @p arg reaches the entry point unchanged, also when the application is
+ * restarted. The application runs in user mode, so a pointer must refer to
+ * memory its domain can read; a plain value, such as an instance number, needs
+ * no access.
  */
 struct app_def {
 	const char     *name;    /**< unique application name */
@@ -51,6 +56,7 @@ struct app_def {
 	app_entry_t     entry;   /**< entry point (APP_BUILTIN) */
 	app_caps_t      caps;    /**< per-app grant mask (application-defined) */
 	bool            monitored; /**< opt in to hang detection (see heartbeat) */
+	void           *arg;     /**< argument passed to entry, see below */
 };
 
 /**
@@ -79,12 +85,13 @@ int app_platform_launch(const struct app_def *def);
  * @param name Application name.
  * @param ext  Loaded extension (see @ref app_platform_load).
  * @param entry Resolved entry symbol.
+ * @param arg  Argument passed to @p entry, as for @ref app_def.arg.
  * @param caps Per-app grant mask.
  * @retval >=0 the application's group id, or negative errno on failure.
  * @retval -EEXIST An application with this name is already running.
  */
 int app_platform_launch_llext(const char *name, struct llext *ext,
-			      app_entry_t entry, app_caps_t caps);
+			      app_entry_t entry, void *arg, app_caps_t caps);
 
 /**
  * @brief Feed the calling application's liveness watchdog.

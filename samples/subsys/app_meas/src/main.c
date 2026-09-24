@@ -171,7 +171,7 @@ static void phase_load(const struct mod *m)
 	heap_stats("after load", &sys1, &ext1);
 
 	t0 = cyc();
-	int id = app_platform_launch_llext(m->name, ext, (app_entry_t)entry,
+	int id = app_platform_launch_llext(m->name, ext, (app_entry_t)entry, NULL,
 					   APP_CAPS);
 	t1 = cyc();
 
@@ -325,7 +325,7 @@ static void phase_heapcmp(const struct mod *m)
 		printk("  %s: load FAILED %d\n", m->name, rc);
 		return;
 	}
-	int id = app_platform_launch_llext(m->name, ext, (app_entry_t)entry, APP_CAPS);
+	int id = app_platform_launch_llext(m->name, ext, (app_entry_t)entry, NULL, APP_CAPS);
 	uint32_t t2 = cyc();
 
 	k_msleep(20);

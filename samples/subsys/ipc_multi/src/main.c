@@ -49,7 +49,7 @@ static int install(const char *name, const uint8_t *buf, size_t len,
 		printk("%s of %s failed: %d\n", __func__, name, rc);
 		return rc;
 	}
-	return app_platform_launch_llext(name, ext, (app_entry_t)entry,
+	return app_platform_launch_llext(name, ext, (app_entry_t)entry, NULL,
 					 APP_CAP_LOG | APP_CAP_IPC);
 }
 

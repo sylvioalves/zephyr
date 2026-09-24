@@ -44,7 +44,7 @@ int main(void)
 		return 0;
 	}
 
-	rc = app_platform_launch_llext("ble_llext", ext, (app_entry_t)entry,
+	rc = app_platform_launch_llext("ble_llext", ext, (app_entry_t)entry, NULL,
 				       APP_CAP_LOG | APP_CAP_BLE | APP_CAP_INPUT);
 	if (rc < 0) {
 		printk("launch failed (%d)\n", rc);

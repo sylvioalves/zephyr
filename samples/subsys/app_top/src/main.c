@@ -73,7 +73,7 @@ int main(void)
 					"app_main", &ext, &entry);
 
 	if (rc == 0) {
-		app_platform_launch_llext("loadable0", ext, (app_entry_t)entry,
+		app_platform_launch_llext("loadable0", ext, (app_entry_t)entry, NULL,
 					  APP_CAPS);
 	} else {
 		printk("loadable load failed: %d\n", rc);

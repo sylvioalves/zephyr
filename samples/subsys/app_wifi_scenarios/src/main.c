@@ -47,7 +47,7 @@ int main(void)
 		printk("verify/load failed (%d)\n", rc);
 		return 0;
 	}
-	rc = app_platform_launch_llext("netwatch", ext, (app_entry_t)entry,
+	rc = app_platform_launch_llext("netwatch", ext, (app_entry_t)entry, NULL,
 				       APP_CAPS);
 	if (rc < 0) {
 		printk("launch refused (%d)\n", rc);

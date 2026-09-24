@@ -43,7 +43,7 @@ int main(void)
 		return 0;
 	}
 
-	app_platform_launch_llext("bench", ext, (app_entry_t)entry,
+	app_platform_launch_llext("bench", ext, (app_entry_t)entry, NULL,
 				  APP_CAP_LOG | APP_CAP_IPC | APP_CAP_TIME);
 
 	k_msleep(8000);

@@ -52,7 +52,7 @@ static int launch(const char *name, const uint8_t *bytes, size_t len,
 		printk("%s: load failed %d\n", name, rc);
 		return rc;
 	}
-	rc = app_platform_launch_llext(name, ext, (app_entry_t)entry, caps);
+	rc = app_platform_launch_llext(name, ext, (app_entry_t)entry, NULL, caps);
 	if (rc < 0) {
 		printk("%s: %s failed %d\n", name, __func__, rc);
 	}
