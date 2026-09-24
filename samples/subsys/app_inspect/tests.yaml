@@ -1,0 +1,18 @@
+sample:
+  name: Per-application resource inspection
+  description: >
+    Report every application's stack and CPU use from an application granted
+    the inspect capability.
+tests:
+  sample.subsys.app_inspect:
+    tags: app_platform
+    platform_allow:
+      - esp32c5_devkitc/esp32c5/hpcore
+      - esp32c6_devkitc/esp32c6/hpcore
+    harness: console
+    harness_config:
+      type: multi_line
+      ordered: true
+      regex:
+        - "inspector: done"
+        - "done: inspector reported per-app stack and cpu use"

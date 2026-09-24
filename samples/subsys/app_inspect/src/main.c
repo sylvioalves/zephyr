@@ -12,10 +12,8 @@
  * an app cannot observe its neighbours unless the platform granted it the right.
  */
 
-#include "svc.h"
-#include "app_caps.h"
-
 #include <zephyr/app_platform/app_platform.h>
+#include <zephyr/app_platform/app_caps.h>
 #include <zephyr/kernel.h>
 #include <zephyr/sys/printk.h>
 
@@ -34,10 +32,10 @@ int main(void)
 	}
 
 	const struct app_def apps[] = {
-		{ "spinner", APP_BUILTIN, app_spinner, 0, false },
-		{ "sleeper", APP_BUILTIN, app_sleeper, 0, false },
-		{ "deep", APP_BUILTIN, app_deep, 0, false },
-		{ "inspector", APP_BUILTIN, app_inspector, CAP_INSPECT, false },
+		{"spinner", APP_BUILTIN, app_spinner, APP_CAP_LOG, false},
+		{"sleeper", APP_BUILTIN, app_sleeper, APP_CAP_LOG, false},
+		{"deep", APP_BUILTIN, app_deep, APP_CAP_LOG, false},
+		{"inspector", APP_BUILTIN, app_inspector, APP_CAP_LOG | APP_CAP_INSPECT, false},
 	};
 
 	for (size_t i = 0; i < ARRAY_SIZE(apps); i++) {

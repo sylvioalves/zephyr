@@ -8,12 +8,10 @@
  * Worker apps with different resource profiles, plus an inspector app that holds
  * the inspect capability and prints a top-style table of every group's stack and
  * CPU use. The inspector reads the others only through the brokered svc_app_info
- * call; an app without CAP_INSPECT is refused.
+ * call; an app without APP_CAP_INSPECT is refused.
  */
 
-#include "svc.h"
-#include "app_caps.h"
-
+#include <zephyr/app_platform/app_services.h>
 #include <zephyr/kernel.h>
 #include <stdio.h>
 
