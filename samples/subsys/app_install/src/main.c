@@ -9,10 +9,11 @@
  *
  * A host signs an application on a build machine, then uploads two files over
  * the shell's mcumgr transport into the device's storage:
- *   mcumgr ... fs upload app.llext     /lfs/<name>.llext
- *   mcumgr ... fs upload app.manifest  /lfs/<name>.manifest
+ *   mcumgr ... fs upload app.llext     /lfs/<name>.llext.new
+ *   mcumgr ... fs upload app.manifest  /lfs/<name>.manifest.new
  * The shell command "app install <name>" then verifies the signed manifest
  * against the public key compiled into the firmware, binds the module to it,
+ * moves both over the installed copies unless that would be a downgrade,
  * records it in the registry, and launches it as an isolated user-mode app -
  * streamed from flash, never held whole in RAM. "app list" shows what is
  * installed. The same cable carries both the upload and the shell, so no extra
@@ -38,44 +39,6 @@ static const uint8_t trusted_pubkey[] = {
 };
 
 #define APP_CAPS    (APP_CAP_LOG | APP_CAP_TIME)
-#define MOUNT_POINT CONFIG_APP_PLATFORM_REGISTRY_MOUNT_POINT
-
-static int manifest_path(char *out, size_t cap, const char *name)
-{
-	int n = snprintk(out, cap, "%s/%s.manifest", MOUNT_POINT, name);
-
-	return (n > 0 && (size_t)n < cap) ? 0 : -ENAMETOOLONG;
-}
-
-/* Read an uploaded manifest file into the manifest struct + signature. */
-static int read_uploaded_manifest(const char *name, struct app_manifest *mf,
-				  uint8_t *sig, size_t sig_cap)
-{
-	char path[64];
-
-	if (manifest_path(path, sizeof(path), name) != 0 ||
-	    sig_cap < APP_MANIFEST_SIG_LEN) {
-		return -EINVAL;
-	}
-
-	struct fs_file_t f;
-
-	fs_file_t_init(&f);
-	if (fs_open(&f, path, FS_O_READ) != 0) {
-		return -ENOENT;
-	}
-
-	ssize_t n = fs_read(&f, mf, sizeof(*mf));
-
-	if (n == (ssize_t)sizeof(*mf)) {
-		n = fs_read(&f, sig, APP_MANIFEST_SIG_LEN);
-		n = (n == APP_MANIFEST_SIG_LEN) ? 0 : -EIO;
-	} else {
-		n = -EIO;
-	}
-	fs_close(&f);
-	return (n == 0) ? 0 : -EIO;
-}
 
 static int cmd_install(const struct shell *sh, size_t argc, char **argv)
 {
@@ -83,21 +46,21 @@ static int cmd_install(const struct shell *sh, size_t argc, char **argv)
 	struct app_manifest mf;
 	uint8_t sig[APP_MANIFEST_SIG_LEN];
 
-	if (read_uploaded_manifest(name, &mf, sig, sizeof(sig)) != 0) {
+	if (app_registry_load_staged_manifest(name, &mf, sig, sizeof(sig)) != 0) {
 		shell_error(sh, "no uploaded manifest for '%s' "
-			    "(upload /lfs/%s.manifest first)", name, name);
+			    "(upload /lfs/%s.manifest.new first)", name, name);
 		return -ENOENT;
 	}
 	if (strncmp(mf.name, name, APP_MANIFEST_NAME_MAX) != 0) {
 		shell_error(sh, "manifest names '%s', not '%s' - refused",
 			    mf.name, name);
+		app_registry_discard(name);
 		return -EPERM;
 	}
 
-	/* The module file uploaded as /lfs/<name>.llext. */
 	char path[64];
 
-	if (app_registry_blob_path(name, path, sizeof(path)) != 0) {
+	if (app_registry_staged_blob_path(name, path, sizeof(path)) != 0) {
 		shell_error(sh, "bad path");
 		return -EINVAL;
 	}
@@ -112,12 +75,15 @@ static int cmd_install(const struct shell *sh, size_t argc, char **argv)
 
 	if (rc != 0) {
 		shell_error(sh, "verify/load failed (%d) - install rejected", rc);
+		app_registry_discard(name);
 		return rc;
 	}
 
-	rc = app_registry_install_versioned(name, true, mf.version);
+	rc = app_registry_commit(name, true, &mf);
 	if (rc != 0) {
-		shell_error(sh, "registry install failed (%d)", rc);
+		shell_error(sh, "install refused (%d)", rc);
+		app_loader_forget(ext);
+		llext_unload(&ext);
 		return rc;
 	}
 

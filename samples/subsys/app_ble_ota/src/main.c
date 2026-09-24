@@ -50,27 +50,19 @@ static const uint8_t fetcher_hash[32] = {
 
 #define APP_NAME "weather"
 
-static int read_manifest(const char *name, struct app_manifest *mf,
-			 uint8_t *sig, size_t sig_cap)
-{
-	if (sig_cap < APP_MANIFEST_SIG_LEN) {
-		return -EINVAL;
-	}
-	return app_registry_load_manifest(name, mf, sig, sig_cap);
-}
-
-/* Verify what the transport left on flash, then install and launch it. */
+/* Verify what the transport staged, then install and launch it. */
 static int install_fetched(const char *name)
 {
 	struct app_manifest mf;
 	uint8_t sig[APP_MANIFEST_SIG_LEN];
 	char path[64];
 
-	if (read_manifest(name, &mf, sig, sizeof(sig)) != 0) {
-		printk("no manifest stored for '%s'\n", name);
+	if (app_registry_load_staged_manifest(name, &mf, sig, sizeof(sig)) != 0) {
+		printk("no manifest staged for '%s'\n", name);
+		app_registry_discard(name);
 		return -ENOENT;
 	}
-	if (app_registry_blob_path(name, path, sizeof(path)) != 0) {
+	if (app_registry_staged_blob_path(name, path, sizeof(path)) != 0) {
 		return -ENAMETOOLONG;
 	}
 
@@ -85,14 +77,17 @@ static int install_fetched(const char *name)
 
 	if (rc != 0) {
 		printk("verify/load failed (%d) - update rejected\n", rc);
+		app_registry_discard(name);
 		return rc;
 	}
 	printk("verified '%s' v%u in %lld ms\n", mf.name, mf.version,
 	       k_uptime_get() - t0);
 
-	rc = app_registry_install_versioned(name, true, mf.version);
+	rc = app_registry_commit(name, true, &mf);
 	if (rc != 0) {
-		printk("registry install failed (%d)\n", rc);
+		printk("install refused (%d)\n", rc);
+		app_loader_forget(ext);
+		llext_unload(&ext);
 		return rc;
 	}
 
@@ -135,18 +130,15 @@ int main(void)
 	printk("fetcher running as app %d; pulling '%s' from the peer...\n",
 	       rc, APP_NAME);
 
-	/*
-	 * Wait for this run's transfer to finish before verifying anything.
-	 * A previous run leaves its image on flash, so the file existing is
-	 * not evidence that this fetch completed, so the stale copy is dropped
-	 * first and the file reappearing is what says the transfer ran.
+	/* Wait for this run's transfer to finish: any staged leftover is
+	 * dropped first, so the staged file reappearing means the fetch ran.
 	 */
 	char path[64];
 
-	if (app_registry_blob_path(APP_NAME, path, sizeof(path)) != 0) {
+	if (app_registry_staged_blob_path(APP_NAME, path, sizeof(path)) != 0) {
 		return 0;
 	}
-	(void)fs_unlink(path);
+	app_registry_discard(APP_NAME);
 
 	for (int i = 0; i < 60; i++) {
 		struct fs_dirent st;

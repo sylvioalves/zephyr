@@ -50,12 +50,10 @@ static const uint8_t persist_pubkey[] = {
 
 #define APP_CAPS (APP_CAP_LOG | APP_CAP_TIME)
 
-static bool is_installed(const char *name)
+static bool find_record(const char *name, struct app_record *out)
 {
 	for (int i = 0; i < app_registry_count(); i++) {
-		struct app_record r;
-
-		if (app_registry_get(i, &r) == 0 && strcmp(r.name, name) == 0) {
+		if (app_registry_get(i, out) == 0 && strcmp(out->name, name) == 0) {
 			return true;
 		}
 	}
@@ -127,7 +125,9 @@ int main(void)
 		return 0;
 	}
 
-	if (!is_installed(APP_NAME)) {
+	struct app_record rec;
+
+	if (!find_record(APP_NAME, &rec)) {
 		printk("first boot: installing signed '%s' to flash\n", APP_NAME);
 		const struct app_manifest *seed =
 			(const struct app_manifest *)persist_manifest;
@@ -190,6 +190,12 @@ int main(void)
 
 	if (load_from_flash(&mf, sig, path, &ext, &entry) != 0) {
 		printk("manifest verify/load of flash binary failed\n");
+		return 0;
+	}
+	if (!find_record(APP_NAME, &rec) || app_registry_check(&rec, &mf) != 0) {
+		printk("'%s' on flash does not match its installed record\n", APP_NAME);
+		app_loader_forget(ext);
+		llext_unload(&ext);
 		return 0;
 	}
 

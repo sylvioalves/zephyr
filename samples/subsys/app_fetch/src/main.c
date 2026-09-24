@@ -8,14 +8,16 @@
  * App store over Wi-Fi: the device pulls a signed application from a server.
  *
  * At boot the device joins Wi-Fi and waits for an address. The shell command
- *   app fetch <name> <server-ip>
- * downloads two files over HTTP into storage:
- *   http://<server-ip>:8000/<name>.llext     -> /lfs/<name>.llext
- *   http://<server-ip>:8000/<name>.manifest  -> /lfs/<name>.manifest
+ *   store fetch <name> <server-ip>
+ * downloads two files over HTTP into the registry's staged paths:
+ *   http://<server-ip>:8000/<name>.llext     -> /lfs/<name>.llext.new
+ *   http://<server-ip>:8000/<name>.manifest  -> /lfs/<name>.manifest.new
  * then verifies the signed manifest against the public key compiled into the
- * firmware, binds the module to it, records it in the registry, and launches it
- * as an isolated user-mode app - streamed from flash. A tampered or unsigned
- * download is rejected. This is the app store pulling a release from a server.
+ * firmware, binds the module to it, moves both over the installed copies
+ * unless that would be a downgrade, records it in the registry, and launches
+ * it as an isolated user-mode app. A tampered, unsigned or older download is
+ * rejected and leaves the installed application untouched. This is the app
+ * store pulling a release from a server.
  */
 
 #include <zephyr/app_platform/app_platform.h>
@@ -192,35 +194,6 @@ static int http_get_to_file(const struct shell *sh, const char *host,
 	return d.err;
 }
 
-static int read_manifest(const char *name, struct app_manifest *mf,
-			 uint8_t *sig, size_t sig_cap)
-{
-	char path[64];
-	int n = snprintk(path, sizeof(path), "%s/%s.manifest", MOUNT_POINT, name);
-
-	if (n <= 0 || (size_t)n >= sizeof(path) || sig_cap < APP_MANIFEST_SIG_LEN) {
-		return -EINVAL;
-	}
-
-	struct fs_file_t f;
-
-	fs_file_t_init(&f);
-	if (fs_open(&f, path, FS_O_READ) != 0) {
-		return -ENOENT;
-	}
-
-	ssize_t r = fs_read(&f, mf, sizeof(*mf));
-
-	if (r == (ssize_t)sizeof(*mf)) {
-		r = fs_read(&f, sig, APP_MANIFEST_SIG_LEN);
-		r = (r == APP_MANIFEST_SIG_LEN) ? 0 : -EIO;
-	} else {
-		r = -EIO;
-	}
-	fs_close(&f);
-	return (r == 0) ? 0 : -EIO;
-}
-
 /*
  * Load and launch one installed application from flash. The manifest and the
  * module are re-verified against the trusted key on every boot, so a record in
@@ -234,7 +207,7 @@ static int autostart_one(const struct app_record *rec, void *user)
 	uint8_t sig[APP_MANIFEST_SIG_LEN];
 	char lpath[64];
 
-	if (read_manifest(rec->name, &mf, sig, sizeof(sig)) != 0) {
+	if (app_registry_load_manifest(rec->name, &mf, sig, sizeof(sig)) != 0) {
 		return -ENOENT;
 	}
 	if (app_registry_blob_path(rec->name, lpath, sizeof(lpath)) != 0) {
@@ -252,7 +225,10 @@ static int autostart_one(const struct app_record *rec, void *user)
 	if (rc != 0) {
 		return rc;
 	}
-	rc = app_platform_launch_llext(mf.name, ext, (app_entry_t)entry, APP_CAPS);
+	rc = app_registry_check(rec, &mf);
+	if (rc == 0) {
+		rc = app_platform_launch_llext(mf.name, ext, (app_entry_t)entry, APP_CAPS);
+	}
 	if (rc < 0) {
 		app_loader_forget(ext);
 		llext_unload(&ext);
@@ -271,19 +247,20 @@ static int cmd_fetch(const struct shell *sh, size_t argc, char **argv)
 
 	shell_print(sh, "fetching '%s' from %s ...", name, host);
 
-	/* Manifest first. */
+	/* Manifest first, then the module, both to the staged paths. */
 	snprintk(rpath, sizeof(rpath), "/%s.manifest", name);
-	snprintk(lpath, sizeof(lpath), "%s/%s.manifest", MOUNT_POINT, name);
-	if (http_get_to_file(sh, host, rpath, lpath) != 0) {
+	if (app_registry_staged_manifest_path(name, lpath, sizeof(lpath)) != 0 ||
+	    http_get_to_file(sh, host, rpath, lpath) != 0) {
 		shell_error(sh, "manifest download failed");
+		app_registry_discard(name);
 		return -EIO;
 	}
 
-	/* Then the module. */
 	snprintk(rpath, sizeof(rpath), "/%s.llext", name);
-	if (app_registry_blob_path(name, lpath, sizeof(lpath)) != 0 ||
+	if (app_registry_staged_blob_path(name, lpath, sizeof(lpath)) != 0 ||
 	    http_get_to_file(sh, host, rpath, lpath) != 0) {
 		shell_error(sh, "module download failed");
+		app_registry_discard(name);
 		return -EIO;
 	}
 	shell_print(sh, "downloaded; verifying signature ...");
@@ -291,13 +268,15 @@ static int cmd_fetch(const struct shell *sh, size_t argc, char **argv)
 	struct app_manifest mf;
 	uint8_t sig[APP_MANIFEST_SIG_LEN];
 
-	if (read_manifest(name, &mf, sig, sizeof(sig)) != 0) {
+	if (app_registry_load_staged_manifest(name, &mf, sig, sizeof(sig)) != 0) {
 		shell_error(sh, "manifest unreadable");
+		app_registry_discard(name);
 		return -EIO;
 	}
 	if (strncmp(mf.name, name, APP_MANIFEST_NAME_MAX) != 0) {
 		shell_error(sh, "manifest names '%s', not '%s' - refused",
 			    mf.name, name);
+		app_registry_discard(name);
 		return -EPERM;
 	}
 
@@ -311,16 +290,22 @@ static int cmd_fetch(const struct shell *sh, size_t argc, char **argv)
 
 	if (rc != 0) {
 		shell_error(sh, "verify/load failed (%d) - rejected", rc);
+		app_registry_discard(name);
 		return rc;
 	}
-	if (app_registry_install_versioned(name, true, mf.version) != 0) {
-		shell_error(sh, "registry install failed");
-		return -EIO;
+	rc = app_registry_commit(name, true, &mf);
+	if (rc != 0) {
+		shell_error(sh, "install refused (%d)", rc);
+		app_loader_forget(ext);
+		llext_unload(&ext);
+		return rc;
 	}
 
 	rc = app_platform_launch_llext(mf.name, ext, (app_entry_t)entry, APP_CAPS);
 	if (rc < 0) {
 		shell_error(sh, "launch refused (%d)", rc);
+		app_loader_forget(ext);
+		llext_unload(&ext);
 		return rc;
 	}
 	shell_print(sh, "fetched, verified and launched '%s' v%u (isolated app %d)",
@@ -328,9 +313,32 @@ static int cmd_fetch(const struct shell *sh, size_t argc, char **argv)
 	return 0;
 }
 
+static int cmd_list(const struct shell *sh, size_t argc, char **argv)
+{
+	ARG_UNUSED(argc);
+	ARG_UNUSED(argv);
+
+	for (int i = 0; i < app_registry_count(); i++) {
+		struct app_record r;
+		struct app_manifest mf;
+		uint8_t sig[APP_MANIFEST_SIG_LEN];
+
+		if (app_registry_get(i, &r) != 0) {
+			continue;
+		}
+		if (app_registry_load_manifest(r.name, &mf, sig, sizeof(sig)) != 0) {
+			mf.version = 0U;
+		}
+		shell_print(sh, "%s: record v%u, manifest on flash v%u, bound=%u, autostart=%u",
+			    r.name, r.version, mf.version, r.bound, r.autostart);
+	}
+	return 0;
+}
+
 SHELL_STATIC_SUBCMD_SET_CREATE(store_cmds,
 	SHELL_CMD_ARG(fetch, NULL, "fetch <name> <server-ip>: download+verify+launch",
 		      cmd_fetch, 3, 0),
+	SHELL_CMD(list, NULL, "list installed applications", cmd_list),
 	SHELL_SUBCMD_SET_END);
 SHELL_CMD_REGISTER(store, &store_cmds, "App store: fetch apps over the network",
 		   NULL);
@@ -371,7 +379,7 @@ int main(void)
 
 	wifi_connect();
 	if (k_sem_take(&got_ip, K_SECONDS(45)) == 0) {
-		printk("online. fetch an app with: app fetch <name> "
+		printk("online. fetch an app with: store fetch <name> "
 		       "<server-ip>\n");
 		return 0;
 	}

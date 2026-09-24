@@ -15,12 +15,13 @@ The application is signed on the build host. Only the public key is compiled
 into the firmware, so the device accepts only an app signed by the matching
 private key. The upload lands two files in the device's storage:
 
-* ``/lfs/<name>.llext``     - the module
-* ``/lfs/<name>.manifest``  - the signed manifest (name, version, module hash)
-                              followed by its signature
+* ``/lfs/<name>.llext.new``     - the module
+* ``/lfs/<name>.manifest.new``  - the signed manifest (name, version, module
+                                  hash) followed by its signature
 
 The shell command ``app install <name>`` then verifies the manifest, binds the
-module to it, records it in the registry, and launches it - streamed from
+module to it, moves both over the installed copies (refusing a version older
+than the installed one), records it in the registry, and launches it - streamed from
 flash, never held whole in RAM.
 
 Building and running
@@ -39,8 +40,8 @@ upload and install. ``smpmgr`` drives the SMP transport over serial:
 
 .. code-block:: console
 
-   smpmgr --port /dev/ttyUSB1 file upload app.manifest /lfs/myapp.manifest
-   smpmgr --port /dev/ttyUSB1 file upload app.llext    /lfs/myapp.llext
+   smpmgr --port /dev/ttyUSB1 file upload app.manifest /lfs/myapp.manifest.new
+   smpmgr --port /dev/ttyUSB1 file upload app.llext    /lfs/myapp.llext.new
 
 On the device shell:
 
