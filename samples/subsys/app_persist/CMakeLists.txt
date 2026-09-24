@@ -38,7 +38,7 @@ add_custom_command(
 		-DOUT_SIG_INC=${sig}
 		-DOUT_PUB_INC=${pub}
 		-DPYTHON_EXECUTABLE=${PYTHON_EXECUTABLE}
-		-P ${CMAKE_CURRENT_SOURCE_DIR}/cmake/sign_module.cmake
+		-P ${ZEPHYR_BASE}/subsys/app_platform/cmake/sign_module.cmake
 	DEPENDS ${bin}
 )
 add_custom_target(persist_sign DEPENDS ${mf} ${sig} ${pub})

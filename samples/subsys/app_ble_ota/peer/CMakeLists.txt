@@ -53,7 +53,7 @@ add_custom_command(
 		-DOUT_SIG_INC=${o_sig}
 		-DOUT_PUB_INC=${o_pub}
 		-DPYTHON_EXECUTABLE=${PYTHON_EXECUTABLE}
-		-P ${CMAKE_CURRENT_SOURCE_DIR}/../cmake/sign_module.cmake
+		-P ${ZEPHYR_BASE}/subsys/app_platform/cmake/sign_module.cmake
 	DEPENDS ${OTA_MODULE}
 )
 add_custom_target(ota_sign DEPENDS ${o_mf} ${o_sig} ${o_pub})

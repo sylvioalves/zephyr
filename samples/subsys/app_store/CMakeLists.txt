@@ -36,7 +36,7 @@ add_custom_command(
           -DOUT_SIG_INC=${ext_sig}
           -DOUT_PUB_INC=${ext_pub}
           -DPYTHON_EXECUTABLE=${PYTHON_EXECUTABLE}
-          -P ${CMAKE_CURRENT_SOURCE_DIR}/cmake/sign_module.cmake
+          -P ${ZEPHYR_BASE}/subsys/app_platform/cmake/sign_module.cmake
   DEPENDS ${ext_bin}
 )
 add_custom_target(${ext_name}_sign DEPENDS ${ext_mf} ${ext_sig} ${ext_pub})
