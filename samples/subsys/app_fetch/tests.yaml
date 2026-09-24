@@ -1,0 +1,18 @@
+sample:
+  name: App store over Wi-Fi
+  description: >
+    Fetch a signed application over Wi-Fi, verify it and launch it as an
+    isolated user-mode application.
+common:
+  tags: app_platform
+  build_only: true
+tests:
+  sample.subsys.app_fetch:
+    platform_allow:
+      - esp32c5_devkitc/esp32c5/hpcore
+      - esp32c6_devkitc/esp32c6/hpcore
+  sample.subsys.app_fetch.psram:
+    platform_allow:
+      - esp32c5_devkitc/esp32c5/hpcore
+    extra_args:
+      - EXTRA_CONF_FILE=overlay-psram.conf

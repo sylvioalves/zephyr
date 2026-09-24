@@ -37,6 +37,14 @@ Build and run
    west build -b esp32c5_devkitc/esp32c5/hpcore samples/subsys/app_fetch
    west flash
 
+On a board with external RAM (PSRAM), such as the ESP32-C5-DevKitC, the Wi-Fi
+driver heap can be placed in PSRAM to free internal SRAM:
+
+.. code-block:: console
+
+   west build -b esp32c5_devkitc/esp32c5/hpcore samples/subsys/app_fetch -- \
+      -DEXTRA_CONF_FILE=overlay-psram.conf
+
 Host the app
 ************
 
