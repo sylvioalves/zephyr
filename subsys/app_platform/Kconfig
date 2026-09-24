@@ -273,13 +273,6 @@ config APP_PLATFORM_FS_PATH_MAX
 	  Bound on the absolute path built from an application's root and the
 	  relative name it supplied. A longer path is refused.
 
-config APP_PLATFORM_FS_INIT_PRIORITY
-	int "File service init priority"
-	default 99
-	help
-	  Application-level priority at which the per-application directories are
-	  created. It must run after whatever mounts the filesystem.
-
 # A file call runs on the privileged stack, not the application's own, so a
 # deep filesystem chain is bounded by CONFIG_PRIVILEGED_STACK_SIZE. The default
 # 1024 is not enough to reach a flash driver through littlefs.
