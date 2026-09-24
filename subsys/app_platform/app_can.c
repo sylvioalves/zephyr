@@ -20,6 +20,7 @@
 #include <zephyr/drivers/can.h>
 #include <string.h>
 #include <errno.h>
+#include "app_grants.h"
 
 #define CAN_PAYLOAD_MAX 8
 
@@ -49,7 +50,7 @@ static int can_ensure_up(void)
 	if (can_ready) {
 		return 0;
 	}
-	if (k_mutex_lock(&can_lock, SVC_LOCK_TIMEOUT) != 0) {
+	if (app_svc_lock(&can_lock, SVC_LOCK_TIMEOUT) != 0) {
 		return -EBUSY;
 	}
 	int rc = 0;
@@ -75,7 +76,7 @@ static int can_ensure_up(void)
 		can_ready = true;
 	}
 out:
-	k_mutex_unlock(&can_lock);
+	app_svc_unlock(&can_lock);
 	return rc;
 }
 #endif

@@ -106,6 +106,10 @@ void app_platform_heartbeat(void);
  * started again with @ref app_platform_start. Use @ref app_platform_remove to
  * fully reclaim it.
  *
+ * A group stopped inside a platform service keeps running until it releases
+ * its service locks, for at most @kconfig{CONFIG_APP_PLATFORM_STOP_WAIT_MS}, so
+ * no lock is left held by a dead thread. Its resources are released after that.
+ *
  * @param id Group id returned by a launch call.
  * @retval 0 on success, -EINVAL if @p id is not a running group.
  */
@@ -119,7 +123,8 @@ int app_platform_stop(int id);
  *
  * @param id Group id.
  * @retval 0 on success (returns the id), -EALREADY if already running,
- *         -EINVAL if not a loaded group, -ENOTSUP if it cannot be restarted.
+ *         -EINVAL if not a loaded group, -ENOTSUP if it cannot be restarted,
+ *         -EBUSY if the previous stop has not completed.
  */
 int app_platform_start(int id);
 
@@ -136,7 +141,8 @@ int app_platform_restart(int id);
  *
  * Stops the group if running, unloads its module, and frees the slot. Unlike
  * @ref app_platform_stop this releases the module memory, so the group cannot
- * be started again without loading it anew.
+ * be started again without loading it anew. A group inside a platform service
+ * is stopped as described for @ref app_platform_stop.
  *
  * @param id Group id.
  * @retval 0 on success, -EINVAL if @p id is not a loaded group.

@@ -68,6 +68,8 @@ struct running_app {
 	bool                faulted;   /* reclaimed due to a crash or hang */
 	uint32_t            restarts;  /* relaunches after a fault, for statistics */
 	bool                cleaning;  /* reaper is releasing this slot's resources */
+	bool                stopping;  /* stop requested, deferred while svc_holds > 0 */
+	uint8_t             svc_holds; /* service locks the app thread holds */
 	bool                domain_ready; /* memory domain initialized once per slot */
 	app_entry_t         entry;
 	app_caps_t          caps;
@@ -100,12 +102,14 @@ static K_THREAD_STACK_DEFINE(sup_stack, CONFIG_APP_PLATFORM_SUPERVISOR_STACK_SIZ
 struct cleanup_req {
 	int   id;        /* application slot to release service resources for */
 	bool  full;      /* also unload the module captured in ext */
+	bool  deferred;  /* the app thread still holds a service lock */
 #ifdef CONFIG_LLEXT
 	struct llext *ext;
 #endif
 };
 
 static struct k_msgq cleanup_q;
+static struct k_spinlock hold_lock;
 static char cleanup_buf[MAX_APPS * sizeof(struct cleanup_req)];
 static struct k_thread reaper_thread;
 static K_THREAD_STACK_DEFINE(reaper_stack, CONFIG_APP_PLATFORM_REAPER_STACK_SIZE);
@@ -127,6 +131,65 @@ static struct running_app *app_of_thread(k_tid_t t)
  * there could be rewritten by the app to borrow another app's capabilities.
  * The thread pointer is owned by the kernel, so it is the identity.
  */
+static struct running_app *app_of_self(void)
+{
+	k_tid_t self = k_current_get();
+
+	for (int i = 0; i < MAX_APPS; i++) {
+		if (apps[i].active && &apps[i].thread == self) {
+			return &apps[i];
+		}
+	}
+	return NULL;
+}
+
+static void drop_hold(struct running_app *a)
+{
+	k_spinlock_key_t key = k_spin_lock(&hold_lock);
+	bool stop;
+
+	a->svc_holds--;
+	stop = a->stopping && a->svc_holds == 0U;
+	k_spin_unlock(&hold_lock, key);
+	if (stop) {
+		k_thread_abort(k_current_get());
+	}
+}
+
+int app_svc_lock(struct k_mutex *lock, k_timeout_t timeout)
+{
+	struct running_app *a = app_of_self();
+	int rc;
+
+	if (a != NULL) {
+		k_spinlock_key_t key = k_spin_lock(&hold_lock);
+
+		if (a->stopping && a->svc_holds == 0U) {
+			k_spin_unlock(&hold_lock, key);
+			k_thread_abort(k_current_get());
+		}
+		a->svc_holds++;
+		k_spin_unlock(&hold_lock, key);
+	}
+
+	rc = k_mutex_lock(lock, timeout);
+	if (rc != 0 && a != NULL) {
+		drop_hold(a);
+	}
+	return rc;
+}
+
+int app_svc_unlock(struct k_mutex *lock)
+{
+	struct running_app *a = app_of_self();
+	int rc = k_mutex_unlock(lock);
+
+	if (a != NULL) {
+		drop_hold(a);
+	}
+	return rc;
+}
+
 int app_platform_id_current(void)
 {
 	struct running_app *a = app_of_thread(k_current_get());
@@ -417,6 +480,29 @@ static void reaper(void *p1, void *p2, void *p3)
 		if (k_msgq_get(&cleanup_q, &req, K_FOREVER) != 0) {
 			continue;
 		}
+
+		struct running_app *a = &apps[req.id];
+		k_spinlock_key_t key;
+		uint8_t holds;
+
+		/* A stopped app inside a service ends itself when it releases its
+		 * last service lock, so no lock is left owned by a dead thread.
+		 */
+		if (req.deferred) {
+			(void)k_thread_join(&a->thread, K_MSEC(CONFIG_APP_PLATFORM_STOP_WAIT_MS));
+		}
+		key = k_spin_lock(&hold_lock);
+		holds = a->svc_holds;
+		k_spin_unlock(&hold_lock, key);
+		if (holds != 0U) {
+			LOG_ERR("app '%s' stopped holding %u service lock(s)", a->name, holds);
+		}
+		k_thread_abort(&a->thread);
+		key = k_spin_lock(&hold_lock);
+		a->stopping = false;
+		a->svc_holds = 0U;
+		k_spin_unlock(&hold_lock, key);
+
 #ifdef CONFIG_LLEXT
 		run_cleanup(req.id, req.full, req.ext);
 #else
@@ -438,6 +524,7 @@ static void reclaim_ex(struct running_app *a, bool full)
 {
 	int id = a - apps;
 	struct cleanup_req req = { .id = id, .full = full };
+	k_spinlock_key_t key;
 
 	if (!a->running) {
 		goto release_slot;
@@ -456,8 +543,17 @@ static void reclaim_ex(struct running_app *a, bool full)
 		a->wdt_chan = -1;
 	}
 
-	/* Aborting the app makes its death-watcher's join return; reap it too. */
-	k_thread_abort(&a->thread);
+	/* An app inside a service keeps running until it releases its last
+	 * service lock, and ends itself there.
+	 */
+	key = k_spin_lock(&hold_lock);
+	a->stopping = true;
+	req.deferred = a->svc_holds != 0U;
+	k_spin_unlock(&hold_lock, key);
+
+	if (!req.deferred) {
+		k_thread_abort(&a->thread);
+	}
 	k_thread_abort(&watchers[id]);
 	LOG_DBG("app '%s' stopped; system + other apps alive", a->name);
 

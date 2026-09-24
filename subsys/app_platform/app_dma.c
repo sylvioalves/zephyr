@@ -21,6 +21,7 @@
 #include <zephyr/cache.h>
 #include <string.h>
 #include <errno.h>
+#include "app_grants.h"
 
 #define DMA_MAX  256
 
@@ -63,7 +64,7 @@ int z_impl_svc_dma_copy(const uint8_t *src, uint8_t *dst, size_t len)
 		return -ENODEV;
 	}
 
-	if (k_mutex_lock(&dma_lock, SVC_LOCK_TIMEOUT) != 0) {
+	if (app_svc_lock(&dma_lock, SVC_LOCK_TIMEOUT) != 0) {
 		return -EBUSY;
 	}
 
@@ -97,7 +98,7 @@ int z_impl_svc_dma_copy(const uint8_t *src, uint8_t *dst, size_t len)
 			rc = -EIO;
 		}
 	}
-	k_mutex_unlock(&dma_lock);
+	app_svc_unlock(&dma_lock);
 	return rc;
 #else
 	ARG_UNUSED(src);

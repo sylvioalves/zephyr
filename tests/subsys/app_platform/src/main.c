@@ -16,6 +16,7 @@
 #include <zephyr/app_platform/app_manifest.h>
 #include <zephyr/app_platform/app_platform.h>
 #include <zephyr/app_platform/app_caps.h>
+#include <zephyr/app_platform/app_services.h>
 #include <zephyr/kernel.h>
 #include <zephyr/fs/fs.h>
 #include <errno.h>
@@ -600,8 +601,59 @@ ZTEST(lifecycle, test_slot_reusable_after_reclaim)
 	}
 }
 
+static void file_writer_app(void *arg)
+{
+	uint8_t buf[256];
+
+	ARG_UNUSED(arg);
+	for (size_t i = 0; i < sizeof(buf); i++) {
+		buf[i] = (uint8_t)i;
+	}
+	for (;;) {
+		int h = svc_file_open("churn.bin", 1);
+
+		if (h < 0) {
+			continue;
+		}
+		for (int i = 0; i < 8; i++) {
+			(void)svc_file_write(h, buf, sizeof(buf));
+		}
+		(void)svc_file_close(h);
+	}
+}
+
+ZTEST(lifecycle, test_remove_during_service_call)
+{
+	struct app_def def = {
+		.name = "fswriter",
+		.source = APP_BUILTIN,
+		.entry = file_writer_app,
+		.caps = APP_CAP_FS,
+	};
+
+	/* The writer spends most of its time inside the file service, so the
+	 * removals land in the middle of service calls.
+	 */
+	for (int round = 0; round < 20; round++) {
+		int id = app_platform_launch(&def);
+
+		zassert_true(id >= 0, "round %d launch failed (%d)", round, id);
+		k_msleep(20 + round * 13);
+		zassert_equal(app_platform_remove(id), 0);
+		zassert_true(wait_slot_free("fswriter", 3000),
+			     "round %d slot not reclaimed", round);
+	}
+
+	struct fs_dirent st;
+
+	zassert_equal(fs_stat("/lfs/apps/fswriter/churn.bin", &st), 0,
+		      "the writer never reached the file service");
+	zassert_true(st.size > 0U);
+}
+
 static void *lifecycle_setup(void)
 {
+	zassert_equal(app_registry_load(), 0, "registry load failed");
 	zassert_equal(app_platform_init(), 0, "platform init failed");
 	return NULL;
 }

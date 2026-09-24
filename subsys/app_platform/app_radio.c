@@ -21,6 +21,7 @@
 #include <zephyr/net/socket.h>
 #include <string.h>
 #include <errno.h>
+#include "app_grants.h"
 
 #define PEER_ADDR CONFIG_APP_PLATFORM_RADIO_PEER
 #define PEER_PORT 4242
@@ -122,7 +123,7 @@ static int radio_ensure_up(void)
 {
 	int rc = 0;
 
-	if (k_mutex_lock(&radio_lock, SVC_LOCK_TIMEOUT) != 0) {
+	if (app_svc_lock(&radio_lock, SVC_LOCK_TIMEOUT) != 0) {
 		return -EBUSY;
 	}
 	if (!radio_ready) {
@@ -133,7 +134,7 @@ static int radio_ensure_up(void)
 			k_sem_give(&radio_up);
 		}
 	}
-	k_mutex_unlock(&radio_lock);
+	app_svc_unlock(&radio_lock);
 	return rc;
 }
 

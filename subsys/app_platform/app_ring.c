@@ -26,6 +26,7 @@
 #include <zephyr/drivers/uart.h>
 #include <string.h>
 #include <errno.h>
+#include "app_grants.h"
 
 #define MAX_APPS CONFIG_APP_PLATFORM_MAX_APPS
 #define SVC_LOCK_TIMEOUT K_SECONDS(2)
@@ -103,7 +104,7 @@ static void ring_release(int id)
 	if (id < 0 || id >= MAX_APPS) {
 		return;
 	}
-	if (k_mutex_lock(&ring_lock, SVC_LOCK_TIMEOUT) != 0) {
+	if (app_svc_lock(&ring_lock, SVC_LOCK_TIMEOUT) != 0) {
 		return;
 	}
 	if (rings[id].used) {
@@ -116,7 +117,7 @@ static void ring_release(int id)
 		k_free(rings[id].base);
 		rings[id] = (struct ring_region){0};
 	}
-	k_mutex_unlock(&ring_lock);
+	app_svc_unlock(&ring_lock);
 }
 
 int z_impl_svc_ring_bind(size_t bytes, uintptr_t *out_addr, size_t *out_cap)
@@ -135,25 +136,25 @@ int z_impl_svc_ring_bind(size_t bytes, uintptr_t *out_addr, size_t *out_cap)
 		return -EINVAL;
 	}
 
-	if (k_mutex_lock(&ring_lock, SVC_LOCK_TIMEOUT) != 0) {
+	if (app_svc_lock(&ring_lock, SVC_LOCK_TIMEOUT) != 0) {
 		return -EBUSY;
 	}
 	if (rings[id].used) {
-		k_mutex_unlock(&ring_lock);
+		app_svc_unlock(&ring_lock);
 		return -EEXIST;
 	}
 
 	size_t want = round_pow2(bytes + sizeof(struct app_ring_hdr));
 
 	if (want > RING_MAX_BYTES) {
-		k_mutex_unlock(&ring_lock);
+		app_svc_unlock(&ring_lock);
 		return -EINVAL;
 	}
 
 	uint8_t *base = k_aligned_alloc(want, want);
 
 	if (base == NULL) {
-		k_mutex_unlock(&ring_lock);
+		app_svc_unlock(&ring_lock);
 		return -ENOMEM;
 	}
 	(void)memset(base, 0, want);
@@ -172,11 +173,11 @@ int z_impl_svc_ring_bind(size_t bytes, uintptr_t *out_addr, size_t *out_cap)
 	if (rc != 0) {
 		k_free(base);
 		rings[id] = (struct ring_region){0};
-		k_mutex_unlock(&ring_lock);
+		app_svc_unlock(&ring_lock);
 		return rc;
 	}
 	rings[id].used = true;
-	k_mutex_unlock(&ring_lock);
+	app_svc_unlock(&ring_lock);
 
 	*out_addr = (uintptr_t)base;
 	*out_cap = rings[id].cap;

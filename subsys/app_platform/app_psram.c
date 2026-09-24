@@ -21,6 +21,7 @@
 #include <zephyr/multi_heap/shared_multi_heap.h>
 #include <zephyr/init.h>
 #include <errno.h>
+#include "app_grants.h"
 
 #define MAX_APPS  CONFIG_APP_PLATFORM_MAX_APPS
 #define PSRAM_MIN 1024U
@@ -64,7 +65,7 @@ static void psram_release(int id)
 		return;
 	}
 
-	k_mutex_lock(&psram_lock, K_FOREVER);
+	app_svc_lock(&psram_lock, K_FOREVER);
 	if (regions[id].used) {
 		struct k_mem_domain *dom = app_platform_domain(id);
 
@@ -74,7 +75,7 @@ static void psram_release(int id)
 		shared_multi_heap_free(regions[id].base);
 		regions[id] = (struct psram_region){0};
 	}
-	k_mutex_unlock(&psram_lock);
+	app_svc_unlock(&psram_lock);
 }
 
 int z_impl_svc_psram_map(size_t size, uintptr_t *out_addr, size_t *out_size)
@@ -96,11 +97,11 @@ int z_impl_svc_psram_map(size_t size, uintptr_t *out_addr, size_t *out_size)
 		return -EINVAL;
 	}
 
-	if (k_mutex_lock(&psram_lock, SVC_LOCK_TIMEOUT) != 0) {
+	if (app_svc_lock(&psram_lock, SVC_LOCK_TIMEOUT) != 0) {
 		return -EBUSY;
 	}
 	if (regions[id].used) {
-		k_mutex_unlock(&psram_lock);
+		app_svc_unlock(&psram_lock);
 		return -EEXIST;
 	}
 
@@ -109,7 +110,7 @@ int z_impl_svc_psram_map(size_t size, uintptr_t *out_addr, size_t *out_size)
 						     want, want);
 
 	if (base == NULL) {
-		k_mutex_unlock(&psram_lock);
+		app_svc_unlock(&psram_lock);
 		return -ENOMEM;
 	}
 
@@ -126,11 +127,11 @@ int z_impl_svc_psram_map(size_t size, uintptr_t *out_addr, size_t *out_size)
 	if (rc != 0) {
 		shared_multi_heap_free(base);
 		regions[id] = (struct psram_region){0};
-		k_mutex_unlock(&psram_lock);
+		app_svc_unlock(&psram_lock);
 		return rc;
 	}
 	regions[id].used = true;
-	k_mutex_unlock(&psram_lock);
+	app_svc_unlock(&psram_lock);
 
 	*out_addr = (uintptr_t)base;
 	*out_size = want;

@@ -82,6 +82,14 @@ config APP_PLATFORM_REAPER_STACK_SIZE
 	int "Reaper-helper thread stack size"
 	default 2048
 
+config APP_PLATFORM_STOP_WAIT_MS
+	int "Wait for a stopped application to leave a service (ms)"
+	default 5000
+	help
+	  An application stopped while it holds a service lock keeps running
+	  until it releases the last one, so no lock is left owned by a dead
+	  thread. After this long it is stopped anyway.
+
 config APP_PLATFORM_WDT_TIMEOUT_MS
 	int "Application liveness watchdog timeout (ms)"
 	default 2000

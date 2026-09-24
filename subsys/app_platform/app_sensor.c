@@ -22,6 +22,7 @@
 #include <zephyr/internal/syscall_handler.h>
 #include <string.h>
 #include <errno.h>
+#include "app_grants.h"
 
 /* The board's die-temperature device. The node has to be enabled, not merely
  * present: several SoC files declare the alias while leaving the device
@@ -144,7 +145,7 @@ int z_impl_svc_sensor_read(int idx, int32_t *milli_value)
 	if (!device_is_ready(die_temp)) {
 		return -ENODEV;
 	}
-	if (k_mutex_lock(&sensor_lock, K_SECONDS(2)) != 0) {
+	if (app_svc_lock(&sensor_lock, K_SECONDS(2)) != 0) {
 		return -EBUSY;
 	}
 
@@ -158,7 +159,7 @@ int z_impl_svc_sensor_read(int idx, int32_t *milli_value)
 			*milli_value = val.val1 * 1000 + val.val2 / 1000;
 		}
 	}
-	k_mutex_unlock(&sensor_lock);
+	app_svc_unlock(&sensor_lock);
 	return rc;
 #else
 	return -ENODEV;

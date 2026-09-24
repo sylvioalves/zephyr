@@ -11,6 +11,12 @@
 
 #define APP_PLATFORM_NAME_LEN 24
 
+/* Service lock operations. A stop of an application that holds a service lock
+ * takes effect once it releases the last one.
+ */
+int app_svc_lock(struct k_mutex *lock, k_timeout_t timeout);
+int app_svc_unlock(struct k_mutex *lock);
+
 /*
  * Per-resource grants live in the service that owns the resource, indexed by
  * application slot. A slot is reused once its previous tenant is reclaimed, so

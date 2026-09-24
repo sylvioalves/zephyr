@@ -27,6 +27,7 @@
 #include <zephyr/net/socket.h>
 #include <zephyr/posix/fcntl.h>
 #include <zephyr/net/mqtt.h>
+#include "app_grants.h"
 #ifdef CONFIG_SETTINGS
 #include <zephyr/settings/settings.h>
 #endif
@@ -533,10 +534,10 @@ static void net_thread(void *a, void *b, void *c)
 			p.message.payload.data = (uint8_t *)req.payload;
 			p.message.payload.len = strlen(req.payload);
 
-			k_mutex_lock(&net_lock, K_FOREVER);
+			app_svc_lock(&net_lock, K_FOREVER);
 			int rc = mqtt_publish(&s->client, &p);
 
-			k_mutex_unlock(&net_lock);
+			app_svc_unlock(&net_lock);
 			printk("mqtt: '%s' published '%s' rc=%d\n",
 			       s->client_id, req.payload, rc);
 		}
@@ -550,7 +551,7 @@ static void net_thread(void *a, void *b, void *c)
 		for (int i = 0; i < MAX_SESSIONS; i++) {
 			struct session *s = &sessions[i];
 
-			k_mutex_lock(&net_lock, K_FOREVER);
+			app_svc_lock(&net_lock, K_FOREVER);
 			if (s->connected) {
 				struct zsock_pollfd fd = {
 					.fd = s->client.transport.tcp.sock,
@@ -561,7 +562,7 @@ static void net_thread(void *a, void *b, void *c)
 				}
 				mqtt_live(&s->client);
 			}
-			k_mutex_unlock(&net_lock);
+			app_svc_unlock(&net_lock);
 		}
 
 		/* Pump each open raw socket: drain ready bytes into its inbox.
@@ -572,16 +573,16 @@ static void net_thread(void *a, void *b, void *c)
 		for (int i = 0; i < MAX_SESSIONS; i++) {
 			struct app_sock *sk = &socks[i];
 
-			k_mutex_lock(&net_lock, K_FOREVER);
+			app_svc_lock(&net_lock, K_FOREVER);
 			if (!sk->used || sk->fd < 0) {
-				k_mutex_unlock(&net_lock);
+				app_svc_unlock(&net_lock);
 				continue;
 			}
 			struct zsock_pollfd fd = { .fd = sk->fd,
 						   .events = ZSOCK_POLLIN };
 
 			if (zsock_poll(&fd, 1, 0) <= 0) {
-				k_mutex_unlock(&net_lock);
+				app_svc_unlock(&net_lock);
 				continue;
 			}
 			struct sock_msg m = { 0 };
@@ -592,7 +593,7 @@ static void net_thread(void *a, void *b, void *c)
 			bool is_tcp = sk->is_tcp;
 			struct k_msgq *inbox = &sk->inbox;
 
-			k_mutex_unlock(&net_lock);
+			app_svc_unlock(&net_lock);
 
 			if (n > 0) {
 				m.len = (uint16_t)n;
@@ -642,11 +643,11 @@ int z_impl_svc_net_ready(void)
 	/* Ask the supervisor net thread to bring the shared link up, then wait
 	 * for the result. The connect itself must not run on this app thread.
 	 */
-	if (k_mutex_lock(&net_lock, NET_LOCK_TIMEOUT) != 0) {
+	if (app_svc_lock(&net_lock, NET_LOCK_TIMEOUT) != 0) {
 		return -EBUSY;
 	}
 	link_started = true;
-	k_mutex_unlock(&net_lock);
+	app_svc_unlock(&net_lock);
 
 	/*
 	 * Wait for the net thread's own budget to run out, not less: it makes
@@ -688,12 +689,12 @@ int z_impl_svc_mqtt_open(const char *client_id, const char *pub_topic,
 	strncpy(s->sub_topic, sub_topic, sizeof(s->sub_topic) - 1);
 	k_msgq_init(&s->inbox, s->inbox_buf, sizeof(struct inbox_msg), 4);
 
-	if (k_mutex_lock(&net_lock, NET_LOCK_TIMEOUT) != 0) {
+	if (app_svc_lock(&net_lock, NET_LOCK_TIMEOUT) != 0) {
 		return -EBUSY;
 	}
 	int rc = session_connect(s);
 
-	k_mutex_unlock(&net_lock);
+	app_svc_unlock(&net_lock);
 	return rc;
 }
 
@@ -785,7 +786,7 @@ int z_impl_svc_wifi_connect(const char *ssid, const char *psk)
 		return -EINVAL;
 	}
 
-	if (k_mutex_lock(&net_lock, NET_LOCK_TIMEOUT) != 0) {
+	if (app_svc_lock(&net_lock, NET_LOCK_TIMEOUT) != 0) {
 		return -EBUSY;
 	}
 	strncpy(wifi_ssid, ssid, sizeof(wifi_ssid) - 1);
@@ -795,7 +796,7 @@ int z_impl_svc_wifi_connect(const char *ssid, const char *psk)
 	creds_save();
 	k_sem_reset(&link_change_sem);
 	reconnect_req = true;
-	k_mutex_unlock(&net_lock);
+	app_svc_unlock(&net_lock);
 
 	(void)k_sem_take(&link_change_sem, K_SECONDS(90));
 	return link_ready ? 0 : -EIO;
@@ -807,12 +808,12 @@ int z_impl_svc_wifi_disconnect(void)
 		return -EPERM;
 	}
 
-	if (k_mutex_lock(&net_lock, NET_LOCK_TIMEOUT) != 0) {
+	if (app_svc_lock(&net_lock, NET_LOCK_TIMEOUT) != 0) {
 		return -EBUSY;
 	}
 	k_sem_reset(&link_change_sem);
 	disconnect_req = true;
-	k_mutex_unlock(&net_lock);
+	app_svc_unlock(&net_lock);
 
 	(void)k_sem_take(&link_change_sem, K_SECONDS(10));
 	return 0;
@@ -869,14 +870,14 @@ static int sock_open(bool tcp, const char *host, uint16_t port)
 		return rc;
 	}
 
-	if (k_mutex_lock(&net_lock, NET_LOCK_TIMEOUT) != 0) {
+	if (app_svc_lock(&net_lock, NET_LOCK_TIMEOUT) != 0) {
 		return -EBUSY;
 	}
 	int fd = zsock_socket(AF_INET, tcp ? SOCK_STREAM : SOCK_DGRAM,
 			      tcp ? IPPROTO_TCP : IPPROTO_UDP);
 
 	if (fd < 0) {
-		k_mutex_unlock(&net_lock);
+		app_svc_unlock(&net_lock);
 		return -errno;
 	}
 	if (tcp) {
@@ -888,7 +889,7 @@ static int sock_open(bool tcp, const char *host, uint16_t port)
 			 */
 			rc = -errno;
 			zsock_close(fd);
-			k_mutex_unlock(&net_lock);
+			app_svc_unlock(&net_lock);
 			return rc;
 		}
 	}
@@ -901,7 +902,7 @@ static int sock_open(bool tcp, const char *host, uint16_t port)
 	sk->peer = peer;
 	k_msgq_init(&sk->inbox, sk->inbox_buf, sizeof(struct sock_msg), 4);
 	sk->used = true;
-	k_mutex_unlock(&net_lock);
+	app_svc_unlock(&net_lock);
 	return 0;
 }
 
@@ -923,7 +924,7 @@ static int sock_send(bool tcp, const void *buf, size_t len)
 		return -ENOTCONN;
 	}
 
-	if (k_mutex_lock(&net_lock, NET_LOCK_TIMEOUT) != 0) {
+	if (app_svc_lock(&net_lock, NET_LOCK_TIMEOUT) != 0) {
 		return -EBUSY;
 	}
 	ssize_t n;
@@ -934,7 +935,7 @@ static int sock_send(bool tcp, const void *buf, size_t len)
 		n = zsock_sendto(sk->fd, buf, len, 0,
 				 (struct sockaddr *)&sk->peer, sizeof(sk->peer));
 	}
-	k_mutex_unlock(&net_lock);
+	app_svc_unlock(&net_lock);
 	return (n < 0) ? -errno : (int)n;
 }
 
@@ -994,7 +995,7 @@ static int sock_close(bool tcp)
 		return -ENOTCONN;
 	}
 
-	if (k_mutex_lock(&net_lock, NET_LOCK_TIMEOUT) != 0) {
+	if (app_svc_lock(&net_lock, NET_LOCK_TIMEOUT) != 0) {
 		return -EBUSY;
 	}
 	if (sk->fd >= 0) {
@@ -1002,7 +1003,7 @@ static int sock_close(bool tcp)
 		sk->fd = -1;
 	}
 	sk->used = false;
-	k_mutex_unlock(&net_lock);
+	app_svc_unlock(&net_lock);
 	return 0;
 }
 
@@ -1078,7 +1079,7 @@ static void net_release(int id)
 		return;
 	}
 
-	if (k_mutex_lock(&net_lock, NET_LOCK_TIMEOUT) != 0) {
+	if (app_svc_lock(&net_lock, NET_LOCK_TIMEOUT) != 0) {
 		return;
 	}
 	if (sessions[id].used) {
@@ -1094,7 +1095,7 @@ static void net_release(int id)
 		socks[id].used = false;
 		socks[id].fd = -1;
 	}
-	k_mutex_unlock(&net_lock);
+	app_svc_unlock(&net_lock);
 }
 
 static int net_service_init(void)

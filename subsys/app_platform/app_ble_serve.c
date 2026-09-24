@@ -33,6 +33,7 @@
 #include <errno.h>
 
 #include "app_events.h"
+#include "app_grants.h"
 
 #define MAX_APPS   CONFIG_APP_PLATFORM_MAX_APPS
 #define NAME_MAX   24
@@ -254,18 +255,18 @@ int z_impl_svc_ble_serve_start(const char *name, const uint8_t *svc_uuid,
 	if (!app_platform_ble_gatt_granted(id, svc_uuid, uuid_len)) {
 		return -EACCES;
 	}
-	if (k_mutex_lock(&serve_lock, K_SECONDS(2)) != 0) {
+	if (app_svc_lock(&serve_lock, K_SECONDS(2)) != 0) {
 		return -EBUSY;
 	}
 	if (serving) {
-		k_mutex_unlock(&serve_lock);
+		app_svc_unlock(&serve_lock);
 		return -EBUSY;
 	}
 
 	int rc = bt_enable(NULL);
 
 	if (rc != 0 && rc != -EALREADY) {
-		k_mutex_unlock(&serve_lock);
+		app_svc_unlock(&serve_lock);
 		return rc;
 	}
 
@@ -283,7 +284,7 @@ int z_impl_svc_ble_serve_start(const char *name, const uint8_t *svc_uuid,
 
 	for (size_t i = 0; i < n; i++) {
 		if (chrc[i].uuid_len != 2U && chrc[i].uuid_len != 16U) {
-			k_mutex_unlock(&serve_lock);
+			app_svc_unlock(&serve_lock);
 			return -EINVAL;
 		}
 
@@ -353,7 +354,7 @@ int z_impl_svc_ble_serve_start(const char *name, const uint8_t *svc_uuid,
 	svc.attr_count = at;
 	rc = bt_gatt_service_register(&svc);
 	if (rc != 0) {
-		k_mutex_unlock(&serve_lock);
+		app_svc_unlock(&serve_lock);
 		return rc;
 	}
 
@@ -379,14 +380,14 @@ int z_impl_svc_ble_serve_start(const char *name, const uint8_t *svc_uuid,
 			     NULL, 0);
 	if (rc != 0) {
 		(void)bt_gatt_service_unregister(&svc);
-		k_mutex_unlock(&serve_lock);
+		app_svc_unlock(&serve_lock);
 		return rc;
 	}
 
 	serving_id = id;
 	serving = true;
 	advertising = true;
-	k_mutex_unlock(&serve_lock);
+	app_svc_unlock(&serve_lock);
 	return 0;
 }
 
@@ -517,7 +518,7 @@ int z_impl_svc_ble_serve_stop(void)
 	if (!app_has_cap(APP_CAP_BLE)) {
 		return -EPERM;
 	}
-	if (k_mutex_lock(&serve_lock, K_SECONDS(2)) != 0) {
+	if (app_svc_lock(&serve_lock, K_SECONDS(2)) != 0) {
 		return -EBUSY;
 	}
 	if (serving && app_platform_id_current() == serving_id) {
@@ -530,7 +531,7 @@ int z_impl_svc_ble_serve_stop(void)
 		(void)bt_gatt_service_unregister(&svc);
 		serving_id = -1;
 	}
-	k_mutex_unlock(&serve_lock);
+	app_svc_unlock(&serve_lock);
 	return 0;
 }
 

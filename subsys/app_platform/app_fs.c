@@ -128,7 +128,7 @@ static int fs_prepare(const char *name)
  */
 void app_platform_clear_fs_handles(int id)
 {
-	k_mutex_lock(&fs_lock, K_FOREVER);
+	app_svc_lock(&fs_lock, K_FOREVER);
 	for (int i = 0; i < OPEN_FILES; i++) {
 		if (file_used[i] && file_owner[i] == id) {
 			fs_close(&files[i]);
@@ -136,7 +136,7 @@ void app_platform_clear_fs_handles(int id)
 			file_owner[i] = -1;
 		}
 	}
-	k_mutex_unlock(&fs_lock);
+	app_svc_unlock(&fs_lock);
 }
 
 int z_impl_svc_file_open(const char *path, int create)
@@ -163,10 +163,10 @@ int z_impl_svc_file_open(const char *path, int create)
 		return rc;
 	}
 
-	k_mutex_lock(&fs_lock, K_FOREVER);
+	app_svc_lock(&fs_lock, K_FOREVER);
 	rc = fs_prepare(name);
 	if (rc != 0) {
-		k_mutex_unlock(&fs_lock);
+		app_svc_unlock(&fs_lock);
 		return rc;
 	}
 
@@ -179,19 +179,19 @@ int z_impl_svc_file_open(const char *path, int create)
 		}
 	}
 	if (h < 0) {
-		k_mutex_unlock(&fs_lock);
+		app_svc_unlock(&fs_lock);
 		return -EMFILE;
 	}
 
 	fs_file_t_init(&files[h]);
 	rc = fs_open(&files[h], abs, FS_O_RDWR | (create != 0 ? FS_O_CREATE : 0));
 	if (rc != 0) {
-		k_mutex_unlock(&fs_lock);
+		app_svc_unlock(&fs_lock);
 		return rc;
 	}
 	file_used[h] = true;
 	file_owner[h] = id;
-	k_mutex_unlock(&fs_lock);
+	app_svc_unlock(&fs_lock);
 	return h;
 }
 
@@ -227,12 +227,12 @@ int z_impl_svc_file_write(int handle, const void *data, size_t len)
 	struct fs_file_t *f;
 	int rc;
 
-	k_mutex_lock(&fs_lock, K_FOREVER);
+	app_svc_lock(&fs_lock, K_FOREVER);
 	rc = owned_file(handle, &f);
 	if (rc == 0) {
 		rc = (int)fs_write(f, data, len);
 	}
-	k_mutex_unlock(&fs_lock);
+	app_svc_unlock(&fs_lock);
 	return rc;
 }
 
@@ -248,12 +248,12 @@ int z_impl_svc_file_read(int handle, void *buf, size_t len)
 	struct fs_file_t *f;
 	int rc;
 
-	k_mutex_lock(&fs_lock, K_FOREVER);
+	app_svc_lock(&fs_lock, K_FOREVER);
 	rc = owned_file(handle, &f);
 	if (rc == 0) {
 		rc = (int)fs_read(f, buf, len);
 	}
-	k_mutex_unlock(&fs_lock);
+	app_svc_unlock(&fs_lock);
 	return rc;
 }
 
@@ -266,12 +266,12 @@ int z_impl_svc_file_seek(int handle, int32_t off, int whence)
 	struct fs_file_t *f;
 	int rc;
 
-	k_mutex_lock(&fs_lock, K_FOREVER);
+	app_svc_lock(&fs_lock, K_FOREVER);
 	rc = owned_file(handle, &f);
 	if (rc == 0) {
 		rc = fs_seek(f, off, whence);
 	}
-	k_mutex_unlock(&fs_lock);
+	app_svc_unlock(&fs_lock);
 	return rc;
 }
 
@@ -284,14 +284,14 @@ int z_impl_svc_file_close(int handle)
 	struct fs_file_t *f;
 	int rc;
 
-	k_mutex_lock(&fs_lock, K_FOREVER);
+	app_svc_lock(&fs_lock, K_FOREVER);
 	rc = owned_file(handle, &f);
 	if (rc == 0) {
 		fs_close(f);
 		file_used[handle] = false;
 		file_owner[handle] = -1;
 	}
-	k_mutex_unlock(&fs_lock);
+	app_svc_unlock(&fs_lock);
 	return rc;
 }
 
