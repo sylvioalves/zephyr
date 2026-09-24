@@ -509,7 +509,7 @@ static int restart_thread(struct running_app *a)
 
 	k_tid_t t = k_thread_create(&a->thread, app_stacks[id], APP_STACK,
 				    trampoline, (void *)a->entry, NULL, NULL,
-				    APP_PRIO, K_USER | K_INHERIT_PERMS, K_FOREVER);
+				    APP_PRIO, K_USER, K_FOREVER);
 
 	k_thread_name_set(t, a->name);
 	k_mem_domain_add_thread(&a->domain, t);
@@ -725,8 +725,7 @@ static int launch(const char *name, app_entry_t entry, app_caps_t caps,
 
 		k_tid_t t = k_thread_create(&a->thread, app_stacks[i], APP_STACK,
 					    trampoline, (void *)entry, NULL, NULL,
-					    APP_PRIO, K_USER | K_INHERIT_PERMS,
-					    K_FOREVER);
+					    APP_PRIO, K_USER, K_FOREVER);
 		k_thread_name_set(t, name);
 		k_mem_domain_add_thread(&a->domain, t);
 		a->active = true;
