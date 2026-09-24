@@ -63,7 +63,7 @@
 
 &twai0 {
 	status = "okay";
-	bus-speed = <125000>;
+	bitrate = <125000>;
 	pinctrl-0 = <&twai_default>;
 	pinctrl-names = "default";
 
