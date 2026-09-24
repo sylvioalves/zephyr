@@ -37,7 +37,7 @@ typedef uint64_t app_caps_t;
 #define APP_CAP_RANDOM  APP_CAP_BIT(2)   /**< random bytes */
 #define APP_CAP_TIME    APP_CAP_BIT(3)   /**< uptime, cycle count, wall clock */
 #define APP_CAP_SENSOR  APP_CAP_BIT(4)   /**< sensor channels */
-#define APP_CAP_KV      APP_CAP_BIT(5)   /**< persistent key/value */
+#define APP_CAP_KV      APP_CAP_BIT(5)   /**< per-application key/value */
 #define APP_CAP_FLASH   APP_CAP_BIT(6)   /**< raw storage partition */
 #define APP_CAP_GPIO    APP_CAP_BIT(7)   /**< digital input/output */
 #define APP_CAP_PWM     APP_CAP_BIT(8)   /**< pulse-width output */

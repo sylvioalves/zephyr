@@ -20,10 +20,10 @@ The seven shapes
      - Meaning
      - Reference
    * - Open
-     - Read-only, shared; any application may call.
+     - Read-only, shared; gated only by the service's capability.
      - sensor catalog
    * - Scoped
-     - One named instance granted through the manifest, enforced before access.
+     - One named instance granted at launch, enforced before access.
      - scoped I2C
    * - Namespaced-scoped
      - A subtree or keyspace the application cannot escape.
@@ -37,17 +37,22 @@ The seven shapes
        one past the limit.
      - BLE connections
    * - Admin
-     - Device-wide configuration, for an application holding the admin
-       capability.
-     - Wi-Fi credentials
+     - Device-wide configuration. There is no separate admin capability: each
+       such operation is gated by a capability of its own or by its service's.
+     - setting the hardware clock
    * - Never exposed
      - Platform foundation, with no application surface at all.
      - by omission
 
 What an application sees collapses these to three tiers: open, scoped (covering
-scoped, namespaced-scoped, arbitrated pool and brokered connection, all granted
-through the manifest) and admin. A never-exposed subsystem simply has no
-service symbol.
+scoped, namespaced-scoped, arbitrated pool and brokered connection) and admin. A
+never-exposed subsystem simply has no service symbol.
+
+Every service checks the calling application's capability mask first, so even
+an open service is reachable only with its capability. The launcher sets that
+mask when it starts the application and makes the per-instance grants
+(``app_platform_grant_*``). The signed manifest carries the application's
+identity only (name, version, module hash and ABI), not its capabilities.
 
 Classifying a subsystem
 ***********************
@@ -70,7 +75,8 @@ For each subsystem, in order:
 #. Is it a scarce hardware pool? Then it is an arbitrated pool.
 
 One peripheral often splits by operation, reading being open while configuring
-is admin. The real-time clock, Wi-Fi and the ADC reference all divide that way.
+is admin. The hardware real-time clock divides that way: reading it needs
+``APP_CAP_RTC`` and setting it needs ``APP_CAP_RTC_SET``.
 
 Connectivity
 ************
@@ -87,7 +93,8 @@ Connectivity
      - The platform owns the radio; applications get sockets and an address.
    * - Wi-Fi credentials
      - Admin
-     - Refused with ``-EPERM`` for an ordinary application.
+     - Needs only ``APP_CAP_NET``. The credentials are device-wide and saved, so
+       grant the network capability only to trusted applications.
    * - BLE scan
      - Open
      - One shared scan, results fanned out to every scanning application.
@@ -118,11 +125,11 @@ Sensors and analog
      - Scoped
      - Per-application channel grant.
    * - ADC reference
-     - Admin
-     - Affects every reading on the device.
+     - Never exposed
+     - Affects every reading on the device, so the platform keeps it.
    * - Battery status
      - Open
-     - Read-only.
+     - Read-only, with ``APP_CAP_POWER``.
 
 Buses
 *****
@@ -139,13 +146,16 @@ Buses
      - A granted address, never the raw bus.
    * - SPI
      - Scoped
-     - A granted bus and chip select.
+     - The platform's SPI device, allowed per application. Chip selects are not
+       scoped.
    * - UART
-     - Scoped
-     - A granted port.
+     - Capability only
+     - The platform's secondary UART, gated by ``APP_CAP_UART`` with no
+       per-application grant.
    * - CAN
-     - Scoped
-     - A granted bus and identifier filter.
+     - Brokered connection
+     - One bus and one receive queue shared by every application holding
+       ``APP_CAP_CAN``, with no per-application identifier filter.
    * - GPIO
      - Scoped
      - An allowlist of lines, never every pin.
@@ -163,9 +173,10 @@ Storage
    * - Filesystem
      - Namespaced-scoped
      - A per-application subtree, with traversal out of it refused.
-   * - Settings
+   * - Key/value store
      - Namespaced-scoped
-     - A per-application key prefix.
+     - A per-application key space held in RAM and released when the
+       application is reclaimed. It is not persisted.
    * - Flash
      - Namespaced-scoped
      - A granted window into a partition, never the whole device.
@@ -186,9 +197,13 @@ Time
    * - Read the time
      - Open
      - Shared and read-only.
-   * - Set the time
+   * - Set the hardware clock
      - Admin
-     - Affects the whole device.
+     - Needs ``APP_CAP_RTC_SET``, a capability of its own.
+   * - Set the platform wall clock
+     - Admin
+     - ``svc_rtc_set`` needs only ``APP_CAP_TIME``, and moves the clock every
+       application reads.
    * - Software timers
      - Open
      - Expiry delivered to the application's queue.
@@ -213,4 +228,4 @@ device itself, so they are the platform's own responsibility:
 * DMA controllers, applications getting brokered transfers instead
 * interrupt configuration and the scheduler
 * the bootloader and updates of the base image
-* power-management policy, to which applications contribute only hints
+* power-management policy, applications having no power-management surface
