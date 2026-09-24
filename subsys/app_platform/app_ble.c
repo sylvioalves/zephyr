@@ -1057,15 +1057,15 @@ static int ble_do_ota_fetch(const char *name, uint32_t timeout_ms)
 		goto out;
 	}
 
-	rc = app_registry_store_manifest(name, &mf, sig, sizeof(sig));
+	rc = app_registry_store_staged_manifest(name, &mf, sig, sizeof(sig));
 	if (rc != 0) {
 		goto out;
 	}
 
-	/* Then the module, one chunk at a time, straight to flash. */
+	/* Then the module, one chunk at a time, to the staged path. */
 	char path[64];
 
-	rc = app_registry_blob_path(name, path, sizeof(path));
+	rc = app_registry_staged_blob_path(name, path, sizeof(path));
 	if (rc != 0) {
 		goto out;
 	}

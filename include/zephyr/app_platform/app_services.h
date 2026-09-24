@@ -1641,10 +1641,11 @@ __syscall int svc_ble_hr_read(uint32_t timeout_ms, uint8_t *out_bpm);
  * @brief Fetch a signed application from a BLE peer. Needs @ref APP_CAP_BLE.
  *
  * Connects to the peer advertising as @p name, pulls its manifest, signature
- * and module over GATT and leaves all three on flash, keyed by @p name. Nothing
- * is verified or launched here: the transfer is untrusted, and the caller
- * checks the signature and the module hash exactly as it would for a download
- * over any other transport.
+ * and module over GATT and leaves all three in the registry's staged files
+ * for @p name, so the installed image is never overwritten. Nothing is
+ * verified or launched here: the transfer is untrusted, and the caller checks
+ * the staged signature and module hash, then installs them with
+ * app_registry_commit().
  *
  * @param name       Peer's advertised name, which is also the application name
  *                   the manifest must claim.

@@ -26,7 +26,8 @@ LOG_MODULE_DECLARE(app_platform, CONFIG_APP_PLATFORM_LOG_LEVEL);
 #define MOUNT_POINT CONFIG_APP_PLATFORM_REGISTRY_MOUNT_POINT
 #define REG_PATH    MOUNT_POINT "/registry.bin"
 #define REG_TMP_PATH    MOUNT_POINT "/registry.new"
-#define MOUNT_POINT_MAX (sizeof(MOUNT_POINT) + APP_NAME_MAX + 8)
+#define MOUNT_POINT_MAX (sizeof(MOUNT_POINT) + APP_NAME_MAX + 16)
+#define STAGED_SUFFIX   ".new"
 
 /* Build the on-flash path for one of an application's files: <mount>/<name><ext> */
 static int app_path(char *out, size_t cap, const char *name, const char *ext)
@@ -44,6 +45,16 @@ static int blob_path(char *out, size_t cap, const char *name)
 int app_registry_blob_path(const char *name, char *out, size_t cap)
 {
 	return blob_path(out, cap, name);
+}
+
+int app_registry_staged_blob_path(const char *name, char *out, size_t cap)
+{
+	return app_path(out, cap, name, ".llext" STAGED_SUFFIX);
+}
+
+int app_registry_staged_manifest_path(const char *name, char *out, size_t cap)
+{
+	return app_path(out, cap, name, ".manifest" STAGED_SUFFIX);
 }
 
 FS_LITTLEFS_DECLARE_DEFAULT_CONFIG(lfs_cfg);
@@ -64,7 +75,7 @@ struct reg_file {
 /* Bumped when the record layout changes; an older on-flash registry whose
  * magic differs is treated as absent and rebuilt rather than misread.
  */
-#define REG_MAGIC 0x41505073U
+#define REG_MAGIC 0x41505074U
 
 static struct reg_file reg;
 
@@ -93,7 +104,6 @@ static int reg_save(void)
 		(void)fs_unlink(REG_TMP_PATH);
 		return rc;
 	}
-	(void)fs_unlink(REG_PATH);
 	rc = fs_rename(REG_TMP_PATH, REG_PATH);
 	if (rc != 0) {
 		(void)fs_unlink(REG_TMP_PATH);
@@ -179,6 +189,7 @@ int app_registry_install_versioned(const char *name, bool autostart,
 	reg.apps[idx].autostart = autostart ? 1 : 0;
 	reg.apps[idx].install_seq = reg.next_seq++;
 	reg.apps[idx].version = version;
+	reg.apps[idx].bound = 0U;
 	LOG_INF("installed '%s' (seq %u, v%u, autostart=%d)", name,
 		reg.apps[idx].install_seq, version, reg.apps[idx].autostart);
 	return reg_save();
@@ -248,6 +259,7 @@ int app_registry_uninstall(const char *name)
 	if (app_path(path, sizeof(path), name, ".manifest") == 0) {
 		(void)fs_unlink(path);
 	}
+	app_registry_discard(name);
 
 	LOG_INF("uninstalled '%s'", name);
 	return reg_save();
@@ -311,11 +323,11 @@ int app_registry_load_blob(const char *name, uint8_t *buf, size_t cap,
 /* The signed manifest and its signature are stored as one file:
  * the manifest body followed by the 64-byte signature.
  */
-int app_registry_store_manifest(const char *name, const struct app_manifest *mf,
-				const uint8_t *sig, size_t sig_len)
+static int store_manifest_at(const char *name, const char *ext,
+			     const struct app_manifest *mf, const uint8_t *sig, size_t sig_len)
 {
 	char path[MOUNT_POINT_MAX];
-	int rc = app_path(path, sizeof(path), name, ".manifest");
+	int rc = app_path(path, sizeof(path), name, ext);
 
 	if (rc != 0) {
 		return rc;
@@ -348,11 +360,23 @@ int app_registry_store_manifest(const char *name, const struct app_manifest *mf,
 	return 0;
 }
 
-int app_registry_load_manifest(const char *name, struct app_manifest *mf,
-			       uint8_t *sig, size_t sig_cap)
+int app_registry_store_manifest(const char *name, const struct app_manifest *mf,
+				const uint8_t *sig, size_t sig_len)
+{
+	return store_manifest_at(name, ".manifest", mf, sig, sig_len);
+}
+
+int app_registry_store_staged_manifest(const char *name, const struct app_manifest *mf,
+				       const uint8_t *sig, size_t sig_len)
+{
+	return store_manifest_at(name, ".manifest" STAGED_SUFFIX, mf, sig, sig_len);
+}
+
+static int load_manifest_at(const char *name, const char *ext, struct app_manifest *mf,
+			    uint8_t *sig, size_t sig_cap)
 {
 	char path[MOUNT_POINT_MAX];
-	int rc = app_path(path, sizeof(path), name, ".manifest");
+	int rc = app_path(path, sizeof(path), name, ext);
 
 	if (rc != 0) {
 		return rc;
@@ -379,4 +403,111 @@ int app_registry_load_manifest(const char *name, struct app_manifest *mf,
 	}
 	fs_close(&f);
 	return (n == 0) ? 0 : -EIO;
+}
+
+int app_registry_load_manifest(const char *name, struct app_manifest *mf,
+			       uint8_t *sig, size_t sig_cap)
+{
+	return load_manifest_at(name, ".manifest", mf, sig, sig_cap);
+}
+
+int app_registry_load_staged_manifest(const char *name, struct app_manifest *mf,
+				      uint8_t *sig, size_t sig_cap)
+{
+	return load_manifest_at(name, ".manifest" STAGED_SUFFIX, mf, sig, sig_cap);
+}
+
+void app_registry_discard(const char *name)
+{
+	char path[MOUNT_POINT_MAX];
+
+	if (app_registry_staged_blob_path(name, path, sizeof(path)) == 0) {
+		(void)fs_unlink(path);
+	}
+	if (app_registry_staged_manifest_path(name, path, sizeof(path)) == 0) {
+		(void)fs_unlink(path);
+	}
+}
+
+static int promote(const char *name, const char *staged_ext, const char *ext)
+{
+	char from[MOUNT_POINT_MAX];
+	char to[MOUNT_POINT_MAX];
+	int rc = app_path(from, sizeof(from), name, staged_ext);
+
+	if (rc == 0) {
+		rc = app_path(to, sizeof(to), name, ext);
+	}
+	if (rc == 0) {
+		rc = fs_rename(from, to);
+	}
+	return rc;
+}
+
+int app_registry_commit(const char *name, bool autostart, const struct app_manifest *mf)
+{
+	if (strncmp(mf->name, name, APP_MANIFEST_NAME_MAX) != 0) {
+		return -EINVAL;
+	}
+	if (strnlen(name, APP_NAME_MAX) >= APP_NAME_MAX) {
+		app_registry_discard(name);
+		return -ENAMETOOLONG;
+	}
+
+	int idx = find(name);
+
+	if (idx >= 0 && mf->version < reg.apps[idx].version) {
+		LOG_WRN("rejected '%s' v%u: older than installed v%u (rollback)",
+			name, mf->version, reg.apps[idx].version);
+		app_registry_discard(name);
+		return -EACCES;
+	}
+	if (idx < 0 && reg.count >= APP_REG_MAX) {
+		app_registry_discard(name);
+		return -ENOSPC;
+	}
+
+	/* The module moves first: a manifest left behind no longer matches it. */
+	int rc = promote(name, ".llext" STAGED_SUFFIX, ".llext");
+
+	if (rc == 0) {
+		rc = promote(name, ".manifest" STAGED_SUFFIX, ".manifest");
+	}
+	if (rc != 0) {
+		LOG_ERR("could not install staged '%s' (%d)", name, rc);
+		return rc;
+	}
+
+	if (idx < 0) {
+		idx = reg.count++;
+		strncpy(reg.apps[idx].name, name, APP_NAME_MAX - 1);
+		reg.apps[idx].name[APP_NAME_MAX - 1] = '\0';
+	}
+	reg.apps[idx].enabled = 1;
+	reg.apps[idx].autostart = autostart ? 1 : 0;
+	reg.apps[idx].install_seq = reg.next_seq++;
+	reg.apps[idx].version = mf->version;
+	reg.apps[idx].bound = 1U;
+	memcpy(reg.apps[idx].module_sha256, mf->module_sha256,
+	       sizeof(reg.apps[idx].module_sha256));
+	LOG_INF("committed '%s' v%u (seq %u)", name, mf->version, reg.apps[idx].install_seq);
+	return reg_save();
+}
+
+int app_registry_check(const struct app_record *rec, const struct app_manifest *mf)
+{
+	if (strncmp(mf->name, rec->name, APP_NAME_MAX) != 0) {
+		return -EINVAL;
+	}
+	if (mf->version < rec->version) {
+		LOG_WRN("refused '%s' v%u: installed record is v%u", rec->name, mf->version,
+			rec->version);
+		return -EACCES;
+	}
+	if (rec->bound != 0U &&
+	    memcmp(mf->module_sha256, rec->module_sha256, sizeof(rec->module_sha256)) != 0) {
+		LOG_WRN("refused '%s': module is not the committed image", rec->name);
+		return -EBADMSG;
+	}
+	return 0;
 }

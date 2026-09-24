@@ -37,6 +37,8 @@ struct app_record {
 	uint8_t  autostart;           /**< launch at boot */
 	uint32_t install_seq;         /**< bumped on each install */
 	uint32_t version;             /**< signed image version, monotonic */
+	uint8_t  bound;               /**< @p module_sha256 names the committed image */
+	uint8_t  module_sha256[32];   /**< SHA-256 of the committed module */
 };
 
 /**
@@ -207,6 +209,120 @@ int app_registry_store_manifest(const char *name, const struct app_manifest *mf,
  */
 int app_registry_load_manifest(const char *name, struct app_manifest *mf,
 			       uint8_t *sig, size_t sig_cap);
+
+/**
+ * @brief Build the on-flash path of an application's staged binary.
+ *
+ * A download is written to the staged path, verified from there and only
+ * then moved over the installed image by @ref app_registry_commit, so a
+ * transfer that fails or does not verify never replaces a working install.
+ *
+ * @param name Application name.
+ * @param out  Destination buffer for the path.
+ * @param cap  Size of @p out.
+ *
+ * @retval 0 Success.
+ * @retval -ENAMETOOLONG The path does not fit @p out.
+ */
+int app_registry_staged_blob_path(const char *name, char *out, size_t cap);
+
+/**
+ * @brief Build the on-flash path of an application's staged manifest.
+ *
+ * The file holds the manifest body followed by its signature, as written by
+ * @ref app_registry_store_staged_manifest.
+ *
+ * @param name Application name.
+ * @param out  Destination buffer for the path.
+ * @param cap  Size of @p out.
+ *
+ * @retval 0 Success.
+ * @retval -ENAMETOOLONG The path does not fit @p out.
+ */
+int app_registry_staged_manifest_path(const char *name, char *out, size_t cap);
+
+/**
+ * @brief Persist a downloaded manifest and signature to the staged path.
+ *
+ * @param name    Application name (the storage key).
+ * @param mf      Signed manifest body.
+ * @param sig     Signature over @p mf.
+ * @param sig_len Length of @p sig (must be @ref APP_MANIFEST_SIG_LEN).
+ *
+ * @retval 0 Success.
+ * @retval -EINVAL @p sig_len is not @ref APP_MANIFEST_SIG_LEN.
+ * @retval -ENAMETOOLONG The path does not fit.
+ * @retval -EIO The manifest was written only in part.
+ * @retval -errno The file could not be created.
+ */
+int app_registry_store_staged_manifest(const char *name, const struct app_manifest *mf,
+				       const uint8_t *sig, size_t sig_len);
+
+/**
+ * @brief Read back a staged manifest and signature.
+ *
+ * @param name    Application name.
+ * @param[out] mf Receives the manifest body.
+ * @param[out] sig Receives the signature (@ref APP_MANIFEST_SIG_LEN bytes).
+ * @param sig_cap Size of @p sig.
+ *
+ * @retval 0 Success.
+ * @retval -EINVAL @p sig_cap is smaller than @ref APP_MANIFEST_SIG_LEN.
+ * @retval -ENAMETOOLONG The path does not fit.
+ * @retval -EIO The file is shorter than a manifest and signature.
+ * @retval -errno The file could not be opened.
+ */
+int app_registry_load_staged_manifest(const char *name, struct app_manifest *mf,
+				      uint8_t *sig, size_t sig_cap);
+
+/**
+ * @brief Install a verified staged image in place of the current one.
+ *
+ * The caller has verified the staged manifest and module and passes the
+ * verified manifest. The version is checked against the installed record
+ * before anything is moved, so a downgrade leaves the installed image and
+ * record untouched and the staged files are discarded. On success the
+ * staged files replace the installed ones and the record is bound to
+ * @p mf's module hash, which @ref app_registry_check enforces at boot.
+ *
+ * @param name      Application name.
+ * @param autostart Whether the platform launches it at boot.
+ * @param mf        The verified manifest of the staged image.
+ *
+ * @retval 0 Success.
+ * @retval -EINVAL @p mf names a different application.
+ * @retval -ENAMETOOLONG @p name does not fit a record.
+ * @retval -EACCES @p mf is older than the installed version.
+ * @retval -ENOSPC The registry already holds @ref APP_REG_MAX records.
+ * @retval -errno The staged files could not be moved, or the registry
+ *         could not be written back.
+ */
+int app_registry_commit(const char *name, bool autostart, const struct app_manifest *mf);
+
+/**
+ * @brief Remove an application's staged files, if any.
+ *
+ * @param name Application name.
+ */
+void app_registry_discard(const char *name);
+
+/**
+ * @brief Check a verified manifest against its installed record.
+ *
+ * Call after verifying an installed image and before launching it. The
+ * installed files can be replaced by anything with write access to the
+ * storage, including an older image that still carries a valid signature;
+ * this refuses any manifest other than the one that was committed.
+ *
+ * @param rec The installed record.
+ * @param mf  The manifest just verified from storage.
+ *
+ * @retval 0 @p mf is the committed image.
+ * @retval -EINVAL @p mf names a different application.
+ * @retval -EACCES @p mf is older than the recorded version.
+ * @retval -EBADMSG @p mf describes a module other than the committed one.
+ */
+int app_registry_check(const struct app_record *rec, const struct app_manifest *mf);
 
 /** @} */
 

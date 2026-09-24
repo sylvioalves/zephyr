@@ -17,6 +17,7 @@
 #include <zephyr/app_platform/app_platform.h>
 #include <zephyr/app_platform/app_caps.h>
 #include <zephyr/kernel.h>
+#include <zephyr/fs/fs.h>
 #include <errno.h>
 #include <string.h>
 
@@ -135,6 +136,150 @@ ZTEST(registry, test_manifest_roundtrip)
 
 	(void)app_registry_install("mfapp", false);
 	zassert_equal(app_registry_uninstall("mfapp"), 0);
+}
+
+/* Stage a manifest and a one-byte-pattern module, as a transport would. */
+static struct app_manifest stage(const char *name, uint32_t version, uint8_t fill)
+{
+	struct app_manifest mf = manifest_copy();
+	uint8_t blob[32];
+	char path[64];
+	struct fs_file_t f;
+
+	memset(blob, fill, sizeof(blob));
+	memset(mf.name, 0, sizeof(mf.name));
+	strncpy(mf.name, name, sizeof(mf.name) - 1);
+	mf.version = version;
+	mf.module_len = sizeof(blob);
+	memset(mf.module_sha256, fill, sizeof(mf.module_sha256));
+
+	zassert_equal(app_registry_store_staged_manifest(name, &mf, mod_sig,
+							 ARRAY_SIZE(mod_sig)), 0);
+	zassert_equal(app_registry_staged_blob_path(name, path, sizeof(path)), 0);
+	fs_file_t_init(&f);
+	zassert_equal(fs_open(&f, path, FS_O_CREATE | FS_O_WRITE | FS_O_TRUNC), 0);
+	zassert_equal(fs_write(&f, blob, sizeof(blob)), sizeof(blob));
+	fs_close(&f);
+	return mf;
+}
+
+static bool get_record(const char *name, struct app_record *out)
+{
+	for (int i = 0; i < app_registry_count(); i++) {
+		if (app_registry_get(i, out) == 0 && strcmp(out->name, name) == 0) {
+			return true;
+		}
+	}
+	return false;
+}
+
+static bool staged_present(const char *name)
+{
+	char path[64];
+	struct fs_dirent st;
+
+	zassert_equal(app_registry_staged_blob_path(name, path, sizeof(path)), 0);
+	if (fs_stat(path, &st) == 0) {
+		return true;
+	}
+	zassert_equal(app_registry_staged_manifest_path(name, path, sizeof(path)), 0);
+	return fs_stat(path, &st) == 0;
+}
+
+ZTEST(registry, test_commit_installs_staged_image)
+{
+	struct app_manifest mf = stage("stapp", 3, 0xA3);
+	struct app_manifest got;
+	struct app_record rec;
+	uint8_t sig[APP_MANIFEST_SIG_LEN];
+	uint8_t out[64];
+	size_t out_len = 0;
+
+	zassert_equal(app_registry_commit("stapp", false, &mf), 0);
+	zassert_false(staged_present("stapp"), "staged files left behind");
+	zassert_equal(app_registry_load_blob("stapp", out, sizeof(out), &out_len), 0);
+	zassert_equal(out_len, 32U);
+	zassert_equal(out[0], 0xA3, "installed module is not the staged one");
+	zassert_equal(app_registry_load_manifest("stapp", &got, sig, sizeof(sig)), 0);
+	zassert_equal(got.version, 3U);
+	zassert_true(get_record("stapp", &rec));
+	zassert_equal(rec.version, 3U);
+	zassert_equal(rec.bound, 1U, "record not bound to the module hash");
+
+	zassert_equal(app_registry_uninstall("stapp"), 0);
+}
+
+ZTEST(registry, test_commit_downgrade_keeps_installed_image)
+{
+	struct app_manifest mf = stage("dnapp", 5, 0x55);
+	struct app_manifest got;
+	struct app_record rec;
+	uint8_t sig[APP_MANIFEST_SIG_LEN];
+	uint8_t out[64];
+	size_t out_len = 0;
+
+	zassert_equal(app_registry_commit("dnapp", false, &mf), 0);
+
+	mf = stage("dnapp", 4, 0x44);
+	zassert_equal(app_registry_commit("dnapp", false, &mf), -EACCES,
+		      "downgrade should be refused");
+	zassert_false(staged_present("dnapp"), "refused image not discarded");
+	zassert_equal(app_registry_load_blob("dnapp", out, sizeof(out), &out_len), 0);
+	zassert_equal(out[0], 0x55, "refused downgrade replaced the installed module");
+	zassert_equal(app_registry_load_manifest("dnapp", &got, sig, sizeof(sig)), 0);
+	zassert_equal(got.version, 5U, "refused downgrade replaced the manifest");
+	zassert_true(get_record("dnapp", &rec));
+	zassert_equal(rec.version, 5U);
+
+	mf = stage("otherapp", 9, 0x99);
+	zassert_equal(app_registry_commit("dnapp", false, &mf), -EINVAL,
+		      "a manifest for another app was committed");
+	app_registry_discard("otherapp");
+
+	zassert_equal(app_registry_uninstall("dnapp"), 0);
+}
+
+ZTEST(registry, test_check_refuses_other_images)
+{
+	struct app_manifest mf = stage("ckapp", 7, 0x77);
+	struct app_manifest probe;
+	struct app_record rec;
+
+	zassert_equal(app_registry_commit("ckapp", false, &mf), 0);
+	zassert_true(get_record("ckapp", &rec));
+
+	zassert_equal(app_registry_check(&rec, &mf), 0, "committed image refused");
+
+	probe = mf;
+	probe.version = 6;
+	zassert_equal(app_registry_check(&rec, &probe), -EACCES,
+		      "older signed image accepted at boot");
+
+	probe = mf;
+	probe.module_sha256[0] ^= 0xFF;
+	zassert_equal(app_registry_check(&rec, &probe), -EBADMSG,
+		      "image other than the committed one accepted");
+
+	probe = mf;
+	strcpy(probe.name, "someone");
+	zassert_equal(app_registry_check(&rec, &probe), -EINVAL);
+
+	zassert_equal(app_registry_uninstall("ckapp"), 0);
+}
+
+ZTEST(registry, test_commit_survives_reload)
+{
+	struct app_manifest mf = stage("rlapp", 2, 0x22);
+	struct app_record rec;
+
+	zassert_equal(app_registry_commit("rlapp", true, &mf), 0);
+	zassert_equal(app_registry_load(), 0);
+	zassert_true(get_record("rlapp", &rec), "record lost across reload");
+	zassert_equal(rec.version, 2U);
+	zassert_equal(rec.bound, 1U);
+	zassert_mem_equal(rec.module_sha256, mf.module_sha256, sizeof(rec.module_sha256));
+
+	zassert_equal(app_registry_uninstall("rlapp"), 0);
 }
 
 /* ---- loader ---- */
