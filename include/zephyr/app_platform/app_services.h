@@ -53,6 +53,17 @@ __syscall void svc_log(const char *msg);
 __syscall void svc_heartbeat(void);
 
 /**
+ * @brief Report whether the platform asked this application to exit.
+ *
+ * Needs no capability. An application that sees it should release what it
+ * holds and return from its entry point, see @ref app_platform_request_stop.
+ *
+ * @retval 1 A stop was requested.
+ * @retval 0 No stop was requested.
+ */
+__syscall int svc_stop_requested(void);
+
+/**
  * @brief Compute a SHA-256 digest. Needs @ref APP_CAP_CRYPTO.
  *
  * Stateless: safe to call concurrently from any number of applications.
@@ -662,6 +673,7 @@ enum app_event_kind {
 	APP_EVENT_GATT_WRITE, /**< a peer wrote a served characteristic */
 	APP_EVENT_BLE_CONNECTED,    /**< a peer connected to the served app */
 	APP_EVENT_BLE_DISCONNECTED, /**< the connected peer went away */
+	APP_EVENT_STOP,       /**< the platform asked the application to exit */
 };
 
 /**

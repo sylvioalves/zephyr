@@ -123,6 +123,34 @@ void app_platform_heartbeat(void);
 int app_platform_stop(int id);
 
 /**
+ * @brief Ask an application group to exit, then remove it.
+ *
+ * Flags the group (see @ref app_platform_stop_requested), posts
+ * @ref APP_EVENT_STOP to its event queue when the event service is enabled, and
+ * waits up to @p grace_ms for it to return from its entry point. A group still
+ * running then is removed as by @ref app_platform_remove. The caller blocks for
+ * up to @p grace_ms.
+ *
+ * @param id Group id.
+ * @param grace_ms Time the group has to exit on its own.
+ * @retval 0 The group exited on its own.
+ * @retval -ETIMEDOUT The group did not exit in time and was removed.
+ * @retval -EINVAL @p id is not a running group.
+ */
+int app_platform_request_stop(int id, uint32_t grace_ms);
+
+/**
+ * @brief Report whether the calling application was asked to exit.
+ *
+ * Set by @ref app_platform_request_stop. An application that sees it can end
+ * cleanly by returning from its entry point.
+ *
+ * @retval true A stop was requested.
+ * @retval false No stop was requested, or the caller is not an application.
+ */
+bool app_platform_stop_requested(void);
+
+/**
  * @brief Start a previously stopped application group.
  *
  * Re-creates the group's user-mode thread in its existing memory domain from

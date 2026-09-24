@@ -166,6 +166,11 @@ void z_impl_svc_heartbeat(void)
 	app_platform_heartbeat();
 }
 
+int z_impl_svc_stop_requested(void)
+{
+	return app_platform_stop_requested() ? 1 : 0;
+}
+
 int z_impl_svc_sha256(const uint8_t *in, size_t len, uint8_t *out32)
 {
 	if (!app_has_cap(APP_CAP_CRYPTO)) {
@@ -1064,6 +1069,12 @@ static inline void z_vrfy_svc_heartbeat(void)
 	z_impl_svc_heartbeat();
 }
 #include <zephyr/syscalls/svc_heartbeat_mrsh.c>
+
+static inline int z_vrfy_svc_stop_requested(void)
+{
+	return z_impl_svc_stop_requested();
+}
+#include <zephyr/syscalls/svc_stop_requested_mrsh.c>
 
 static inline int z_vrfy_svc_sha256(const uint8_t *in, size_t len,
 				    uint8_t *out32)

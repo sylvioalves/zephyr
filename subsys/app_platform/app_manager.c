@@ -29,6 +29,7 @@
 #include <zephyr/app_platform/app_loader.h>
 #endif
 
+#include "app_events.h"
 #include "app_grants.h"
 #include <zephyr/sys/libc-hooks.h>
 #include <zephyr/logging/log.h>
@@ -68,6 +69,7 @@ struct running_app {
 	bool                faulted;   /* reclaimed due to a crash or hang */
 	uint32_t            restarts;  /* relaunches after a fault, for statistics */
 	bool                cleaning;  /* reaper is releasing this slot's resources */
+	bool                stop_requested; /* asked to exit by app_platform_request_stop */
 	bool                stopping;  /* stop requested, deferred while svc_holds > 0 */
 	uint8_t             svc_holds; /* service locks the app thread holds */
 	bool                domain_ready; /* memory domain initialized once per slot */
@@ -612,6 +614,7 @@ static int restart_thread(struct running_app *a)
 	k_thread_name_set(t, a->name);
 	k_mem_domain_add_thread(&a->domain, t);
 	a->faulted = false;
+	a->stop_requested = false;
 	a->running = true;
 
 	if (a->monitored) {
@@ -652,6 +655,32 @@ int app_platform_restart(int id)
 	return app_platform_start(id);
 }
 #endif /* CONFIG_LLEXT */
+
+int app_platform_request_stop(int id, uint32_t grace_ms)
+{
+	if (id < 0 || id >= MAX_APPS || !apps[id].active || !apps[id].running) {
+		return -EINVAL;
+	}
+
+	struct running_app *a = &apps[id];
+	struct app_event evt = { .kind = APP_EVENT_STOP };
+
+	a->stop_requested = true;
+	app_events_post(id, &evt);
+	if (k_thread_join(&a->thread, K_MSEC(grace_ms)) == 0) {
+		return 0;
+	}
+	LOG_WRN("app '%s' did not exit within %u ms, removing it", a->name, grace_ms);
+	reclaim_ex(a, true);
+	return -ETIMEDOUT;
+}
+
+bool app_platform_stop_requested(void)
+{
+	struct running_app *a = app_of_thread(k_current_get());
+
+	return a != NULL && a->stop_requested;
+}
 
 int app_platform_remove(int id)
 {
@@ -792,6 +821,7 @@ static int launch(const char *name, app_entry_t entry, void *arg, app_caps_t cap
 		a->restart = restart;
 		a->monitored = monitored;
 		a->faulted = false;
+		a->stop_requested = false;
 		a->restarts = 0;
 		a->wdt_chan = -1;
 		a->module_bytes = 0;

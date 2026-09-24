@@ -633,6 +633,46 @@ ZTEST(lifecycle, test_entry_receives_argument)
 	zassert_true(wait_slot_free("argapp", 2000), "the entry ignored its argument");
 }
 
+static void polite_app(void *arg)
+{
+	ARG_UNUSED(arg);
+	while (svc_stop_requested() == 0) {
+		k_msleep(5);
+	}
+}
+
+static void stubborn_app(void *arg)
+{
+	ARG_UNUSED(arg);
+	for (;;) {
+		k_msleep(5);
+	}
+}
+
+ZTEST(lifecycle, test_request_stop)
+{
+	struct app_def def = {
+		.name = "polite",
+		.source = APP_BUILTIN,
+		.entry = polite_app,
+		.caps = APP_CAP_LOG,
+	};
+	int id = app_platform_launch(&def);
+
+	zassert_true(id >= 0, "launch failed (%d)", id);
+	k_msleep(20);
+	zassert_equal(app_platform_request_stop(id, 1000), 0, "a cooperating app was forced");
+	zassert_true(wait_slot_free("polite", 2000));
+
+	def.name = "stubborn";
+	def.entry = stubborn_app;
+	id = app_platform_launch(&def);
+	zassert_true(id >= 0, "launch failed (%d)", id);
+	k_msleep(20);
+	zassert_equal(app_platform_request_stop(id, 100), -ETIMEDOUT);
+	zassert_true(wait_slot_free("stubborn", 2000));
+}
+
 static void file_writer_app(void *arg)
 {
 	uint8_t buf[256];
