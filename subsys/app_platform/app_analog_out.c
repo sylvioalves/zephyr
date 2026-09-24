@@ -46,7 +46,7 @@ static const struct device *const dacs[] = {
 #define DAC_COUNT ARRAY_SIZE(dacs)
 
 static uint32_t dac_grant[MAX_APPS];
-static bool dac_ready[MAX_APPS];
+static bool dac_ready[DAC_COUNT];
 /* Bit N set means this application last wrote a non-zero code to channel N. */
 static uint32_t dac_driven[MAX_APPS];
 static K_MUTEX_DEFINE(dac_lock);
@@ -64,7 +64,6 @@ void app_platform_clear_dac_grants(int id)
 		return;
 	}
 	dac_grant[id] = 0U;
-	dac_ready[id] = false;
 	if (app_svc_lock(&dac_lock, SVC_LOCK_TIMEOUT) != 0) {
 		return;
 	}
@@ -106,24 +105,27 @@ int z_impl_svc_dac_write(int ch, uint32_t value)
 		return -ENODEV;
 	}
 
-	if (!dac_ready[id]) {
+	if (app_svc_lock(&dac_lock, SVC_LOCK_TIMEOUT) != 0) {
+		return -EBUSY;
+	}
+
+	int rc = 0;
+
+	if (!dac_ready[ch]) {
 		const struct dac_channel_cfg cfg = {
 			.channel_id = 0,
 			.resolution = CONFIG_APP_PLATFORM_DAC_RESOLUTION,
 			.buffered = false,
 		};
-		int rc = dac_channel_setup(dacs[ch], &cfg);
 
-		if (rc != 0) {
-			return rc;
+		rc = dac_channel_setup(dacs[ch], &cfg);
+		if (rc == 0) {
+			dac_ready[ch] = true;
 		}
-		dac_ready[id] = true;
 	}
-	if (app_svc_lock(&dac_lock, SVC_LOCK_TIMEOUT) != 0) {
-		return -EBUSY;
+	if (rc == 0) {
+		rc = dac_write_value(dacs[ch], 0, value);
 	}
-
-	int rc = dac_write_value(dacs[ch], 0, value);
 
 	if (rc == 0) {
 		for (int i = 0; i < MAX_APPS; i++) {
