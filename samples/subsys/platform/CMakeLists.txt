@@ -7,10 +7,10 @@ project(platform)
 zephyr_syscall_header(${CMAKE_CURRENT_SOURCE_DIR}/src/svc.h)
 
 target_sources(app PRIVATE
-	src/main.c
-	src/svc.c
-	src/apps.c
-	src/loader.c
+  src/main.c
+  src/svc.c
+  src/apps.c
+  src/loader.c
 )
 
 # The downloadable app, built as an llext. It calls the platform service

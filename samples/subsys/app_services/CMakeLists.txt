@@ -7,9 +7,9 @@ project(app_services)
 zephyr_syscall_header(${CMAKE_CURRENT_SOURCE_DIR}/src/svc_broker.h)
 
 target_sources(app PRIVATE
-	src/main.c
-	src/app_group.c
-	src/svc_registry.c
-	src/svc_broker.c
-	src/net_link.c
+  src/main.c
+  src/app_group.c
+  src/svc_registry.c
+  src/svc_broker.c
+  src/net_link.c
 )

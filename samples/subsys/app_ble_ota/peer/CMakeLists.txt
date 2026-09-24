@@ -25,23 +25,23 @@ set(APP_NAME    "weather")
 set(APP_VERSION 1)
 
 if(NOT DEFINED OTA_MODULE)
-	message(FATAL_ERROR
-		"OTA_MODULE is not set: build the device application first, then "
-		"pass -DOTA_MODULE=<device build>/llext/ota_app.llext")
+  message(FATAL_ERROR
+    "OTA_MODULE is not set: build the device application first, then "
+    "pass -DOTA_MODULE=<device build>/llext/ota_app.llext")
 endif()
 if(NOT EXISTS ${OTA_MODULE})
-	message(FATAL_ERROR "OTA_MODULE does not exist: ${OTA_MODULE}")
+  message(FATAL_ERROR "OTA_MODULE does not exist: ${OTA_MODULE}")
 endif()
 
 # The manifest carries the ABI identifier of the device firmware, which the
 # device build writes to <device build>/zephyr. OTA_ABI overrides it.
 if(NOT DEFINED OTA_ABI)
-	get_filename_component(dev_build ${OTA_MODULE} DIRECTORY)
-	get_filename_component(dev_build ${dev_build} DIRECTORY)
-	set(OTA_ABI ${dev_build}/zephyr/app_platform_abi_id.txt)
+  get_filename_component(dev_build ${OTA_MODULE} DIRECTORY)
+  get_filename_component(dev_build ${dev_build} DIRECTORY)
+  set(OTA_ABI ${dev_build}/zephyr/app_platform_abi_id.txt)
 endif()
 if(NOT EXISTS ${OTA_ABI})
-	message(FATAL_ERROR "OTA_ABI does not exist: ${OTA_ABI}")
+  message(FATAL_ERROR "OTA_ABI does not exist: ${OTA_ABI}")
 endif()
 
 target_sources(app PRIVATE src/main.c)
@@ -54,19 +54,19 @@ set(o_pub ${ZEPHYR_BINARY_DIR}/include/generated/ota_app.pubkey.inc)
 generate_inc_file_for_target(app ${OTA_MODULE} ${o_inc})
 
 add_custom_command(
-	OUTPUT  ${o_mf} ${o_sig} ${o_pub}
-	COMMAND ${CMAKE_COMMAND}
-		-DMODULE_BIN=${OTA_MODULE}
-		-DKEY_DIR=${CMAKE_CURRENT_SOURCE_DIR}/../keys
-		-DAPP_NAME=${APP_NAME}
-		-DAPP_VERSION=${APP_VERSION}
-		-DABI_FILE=${OTA_ABI}
-		-DOUT_MF_INC=${o_mf}
-		-DOUT_SIG_INC=${o_sig}
-		-DOUT_PUB_INC=${o_pub}
-		-DPYTHON_EXECUTABLE=${PYTHON_EXECUTABLE}
-		-P ${ZEPHYR_BASE}/subsys/app_platform/cmake/sign_module.cmake
-	DEPENDS ${OTA_MODULE} ${OTA_ABI}
+  OUTPUT  ${o_mf} ${o_sig} ${o_pub}
+  COMMAND ${CMAKE_COMMAND}
+    -DMODULE_BIN=${OTA_MODULE}
+    -DKEY_DIR=${CMAKE_CURRENT_SOURCE_DIR}/../keys
+    -DAPP_NAME=${APP_NAME}
+    -DAPP_VERSION=${APP_VERSION}
+    -DABI_FILE=${OTA_ABI}
+    -DOUT_MF_INC=${o_mf}
+    -DOUT_SIG_INC=${o_sig}
+    -DOUT_PUB_INC=${o_pub}
+    -DPYTHON_EXECUTABLE=${PYTHON_EXECUTABLE}
+    -P ${ZEPHYR_BASE}/subsys/app_platform/cmake/sign_module.cmake
+  DEPENDS ${OTA_MODULE} ${OTA_ABI}
 )
 add_custom_target(ota_sign DEPENDS ${o_mf} ${o_sig} ${o_pub})
 add_dependencies(app ota_sign)

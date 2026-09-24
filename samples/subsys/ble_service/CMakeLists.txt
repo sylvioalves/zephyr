@@ -7,7 +7,7 @@ project(ble_service)
 zephyr_syscall_header(${CMAKE_CURRENT_SOURCE_DIR}/src/ble_svc.h)
 
 target_sources(app PRIVATE
-	src/main.c
-	src/ble_broker.c
-	src/ble_svc.c
+  src/main.c
+  src/ble_broker.c
+  src/ble_svc.c
 )

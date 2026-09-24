@@ -27,19 +27,19 @@ generate_inc_file_for_target(app ${bin} ${inc})
 # manifest, signature and trusted public key. The same key signs apps uploaded
 # from the host. The private key is generated once and never compiled in.
 add_custom_command(
-	OUTPUT  ${mf} ${sig} ${pub}
-	COMMAND ${CMAKE_COMMAND}
-		-DMODULE_BIN=${bin}
-		-DKEY_DIR=${CMAKE_CURRENT_SOURCE_DIR}/keys
-		-DAPP_NAME=${APP_NAME}
-		-DAPP_VERSION=${APP_VERSION}
-		-DABI_FILE=${APP_PLATFORM_ABI_FILE}
-		-DOUT_MF_INC=${mf}
-		-DOUT_SIG_INC=${sig}
-		-DOUT_PUB_INC=${pub}
-		-DPYTHON_EXECUTABLE=${PYTHON_EXECUTABLE}
-		-P ${ZEPHYR_BASE}/subsys/app_platform/cmake/sign_module.cmake
-	DEPENDS ${bin} ${APP_PLATFORM_ABI_FILE}
+  OUTPUT  ${mf} ${sig} ${pub}
+  COMMAND ${CMAKE_COMMAND}
+    -DMODULE_BIN=${bin}
+    -DKEY_DIR=${CMAKE_CURRENT_SOURCE_DIR}/keys
+    -DAPP_NAME=${APP_NAME}
+    -DAPP_VERSION=${APP_VERSION}
+    -DABI_FILE=${APP_PLATFORM_ABI_FILE}
+    -DOUT_MF_INC=${mf}
+    -DOUT_SIG_INC=${sig}
+    -DOUT_PUB_INC=${pub}
+    -DPYTHON_EXECUTABLE=${PYTHON_EXECUTABLE}
+    -P ${ZEPHYR_BASE}/subsys/app_platform/cmake/sign_module.cmake
+  DEPENDS ${bin} ${APP_PLATFORM_ABI_FILE}
 )
 add_custom_target(install_sign DEPENDS ${mf} ${sig} ${pub})
 add_dependencies(install_sign app_platform_abi)

@@ -7,7 +7,7 @@ project(ble_gatt_client)
 zephyr_syscall_header(${CMAKE_CURRENT_SOURCE_DIR}/src/gatt_svc.h)
 
 target_sources(app PRIVATE
-	src/main.c
-	src/gatt_broker.c
-	src/gatt_svc.c
+  src/main.c
+  src/gatt_broker.c
+  src/gatt_svc.c
 )

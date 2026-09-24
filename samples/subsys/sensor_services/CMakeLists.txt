@@ -7,7 +7,7 @@ project(sensor_services)
 zephyr_syscall_header(${CMAKE_CURRENT_SOURCE_DIR}/src/sensor_broker.h)
 
 target_sources(app PRIVATE
-	src/main.c
-	src/sensor_broker.c
-	src/sensor_catalog.c
+  src/main.c
+  src/sensor_broker.c
+  src/sensor_catalog.c
 )

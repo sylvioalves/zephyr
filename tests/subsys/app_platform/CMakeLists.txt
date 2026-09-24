@@ -21,19 +21,19 @@ llext_include_directories(test_ext ${ZEPHYR_BINARY_DIR}/include/generated)
 generate_inc_file_for_target(app ${bin} ${inc})
 
 add_custom_command(
-	OUTPUT  ${mf} ${sig} ${pub}
-	COMMAND ${CMAKE_COMMAND}
-		-DMODULE_BIN=${bin}
-		-DKEY_DIR=${CMAKE_CURRENT_SOURCE_DIR}/keys
-		-DAPP_NAME=${APP_NAME}
-		-DAPP_VERSION=${APP_VERSION}
-		-DABI_FILE=${APP_PLATFORM_ABI_FILE}
-		-DOUT_MF_INC=${mf}
-		-DOUT_SIG_INC=${sig}
-		-DOUT_PUB_INC=${pub}
-		-DPYTHON_EXECUTABLE=${PYTHON_EXECUTABLE}
-		-P ${ZEPHYR_BASE}/subsys/app_platform/cmake/sign_module.cmake
-	DEPENDS ${bin} ${APP_PLATFORM_ABI_FILE}
+  OUTPUT  ${mf} ${sig} ${pub}
+  COMMAND ${CMAKE_COMMAND}
+    -DMODULE_BIN=${bin}
+    -DKEY_DIR=${CMAKE_CURRENT_SOURCE_DIR}/keys
+    -DAPP_NAME=${APP_NAME}
+    -DAPP_VERSION=${APP_VERSION}
+    -DABI_FILE=${APP_PLATFORM_ABI_FILE}
+    -DOUT_MF_INC=${mf}
+    -DOUT_SIG_INC=${sig}
+    -DOUT_PUB_INC=${pub}
+    -DPYTHON_EXECUTABLE=${PYTHON_EXECUTABLE}
+    -P ${ZEPHYR_BASE}/subsys/app_platform/cmake/sign_module.cmake
+  DEPENDS ${bin} ${APP_PLATFORM_ABI_FILE}
 )
 add_custom_target(test_sign DEPENDS ${mf} ${sig} ${pub})
 add_dependencies(test_sign app_platform_abi)
@@ -45,18 +45,18 @@ set(badabi_mf  ${ZEPHYR_BINARY_DIR}/include/generated/test_mod.badabi.manifest.i
 set(badabi_sig ${ZEPHYR_BINARY_DIR}/include/generated/test_mod.badabi.sig.inc)
 
 add_custom_command(
-	OUTPUT  ${badabi_mf} ${badabi_sig}
-	COMMAND ${CMAKE_COMMAND}
-		-DMODULE_BIN=${bin}
-		-DKEY_DIR=${CMAKE_CURRENT_SOURCE_DIR}/keys
-		-DAPP_NAME=${APP_NAME}
-		-DAPP_VERSION=${APP_VERSION}
-		-DABI_OVERRIDE=00000000000000000000000000000000
-		-DOUT_MF_INC=${badabi_mf}
-		-DOUT_SIG_INC=${badabi_sig}
-		-DPYTHON_EXECUTABLE=${PYTHON_EXECUTABLE}
-		-P ${ZEPHYR_BASE}/subsys/app_platform/cmake/sign_module.cmake
-	DEPENDS ${bin} ${sig}
+  OUTPUT  ${badabi_mf} ${badabi_sig}
+  COMMAND ${CMAKE_COMMAND}
+    -DMODULE_BIN=${bin}
+    -DKEY_DIR=${CMAKE_CURRENT_SOURCE_DIR}/keys
+    -DAPP_NAME=${APP_NAME}
+    -DAPP_VERSION=${APP_VERSION}
+    -DABI_OVERRIDE=00000000000000000000000000000000
+    -DOUT_MF_INC=${badabi_mf}
+    -DOUT_SIG_INC=${badabi_sig}
+    -DPYTHON_EXECUTABLE=${PYTHON_EXECUTABLE}
+    -P ${ZEPHYR_BASE}/subsys/app_platform/cmake/sign_module.cmake
+  DEPENDS ${bin} ${sig}
 )
 add_custom_target(test_badabi DEPENDS ${badabi_mf} ${badabi_sig})
 add_dependencies(app test_badabi)
@@ -68,19 +68,19 @@ set(evil_mf ${ZEPHYR_BINARY_DIR}/include/generated/evil_mod.manifest.inc)
 set(evil_sig ${ZEPHYR_BINARY_DIR}/include/generated/evil_mod.sig.inc)
 
 add_custom_command(
-	OUTPUT  ${evil} ${evil_mf} ${evil_sig}
-	COMMAND ${CMAKE_COMMAND}
-		-DMODULE_BIN=${bin}
-		-DKEY_DIR=${CMAKE_CURRENT_SOURCE_DIR}/keys
-		-DAPP_NAME=evil
-		-DAPP_VERSION=1
-		-DABI_FILE=${APP_PLATFORM_ABI_FILE}
-		-DOUT_INC=${evil}
-		-DOUT_MF_INC=${evil_mf}
-		-DOUT_SIG_INC=${evil_sig}
-		-DPYTHON_EXECUTABLE=${PYTHON_EXECUTABLE}
-		-P ${CMAKE_CURRENT_SOURCE_DIR}/cmake/make_evil.cmake
-	DEPENDS ${bin} ${sig} ${APP_PLATFORM_ABI_FILE}
+  OUTPUT  ${evil} ${evil_mf} ${evil_sig}
+  COMMAND ${CMAKE_COMMAND}
+    -DMODULE_BIN=${bin}
+    -DKEY_DIR=${CMAKE_CURRENT_SOURCE_DIR}/keys
+    -DAPP_NAME=evil
+    -DAPP_VERSION=1
+    -DABI_FILE=${APP_PLATFORM_ABI_FILE}
+    -DOUT_INC=${evil}
+    -DOUT_MF_INC=${evil_mf}
+    -DOUT_SIG_INC=${evil_sig}
+    -DPYTHON_EXECUTABLE=${PYTHON_EXECUTABLE}
+    -P ${CMAKE_CURRENT_SOURCE_DIR}/cmake/make_evil.cmake
+  DEPENDS ${bin} ${sig} ${APP_PLATFORM_ABI_FILE}
 )
 add_custom_target(test_evil DEPENDS ${evil} ${evil_mf} ${evil_sig})
 add_dependencies(test_evil app_platform_abi)

@@ -7,7 +7,7 @@ project(behavior_sandbox)
 zephyr_syscall_header(${CMAKE_CURRENT_SOURCE_DIR}/src/cap_surface.h)
 
 target_sources(app PRIVATE
-	src/main.c
-	src/cap_surface.c
-	src/policy.c
+  src/main.c
+  src/cap_surface.c
+  src/policy.c
 )

@@ -7,7 +7,7 @@ project(mqtt_multi)
 zephyr_syscall_header(${CMAKE_CURRENT_SOURCE_DIR}/src/svc.h)
 
 target_sources(app PRIVATE
-	src/main.c
-	src/net.c
-	src/apps.c
+  src/main.c
+  src/net.c
+  src/apps.c
 )

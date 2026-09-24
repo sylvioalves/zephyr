@@ -16,12 +16,12 @@ llext_include_directories(loop_ext ${ZEPHYR_BINARY_DIR}/include/generated)
 generate_inc_file_for_target(app ${bin} ${inc})
 
 add_custom_command(
-	OUTPUT  ${sha}
-	COMMAND ${CMAKE_COMMAND}
-		-DMODULE_BIN=${bin}
-		-DOUT_INC=${sha}
-		-P ${PROJECT_SOURCE_DIR}/../app_top/cmake/gen_sha256_inc.cmake
-	DEPENDS ${bin}
+  OUTPUT  ${sha}
+  COMMAND ${CMAKE_COMMAND}
+    -DMODULE_BIN=${bin}
+    -DOUT_INC=${sha}
+    -P ${PROJECT_SOURCE_DIR}/../app_top/cmake/gen_sha256_inc.cmake
+  DEPENDS ${bin}
 )
 add_custom_target(loop_sha DEPENDS ${sha})
 add_dependencies(app loop_sha)

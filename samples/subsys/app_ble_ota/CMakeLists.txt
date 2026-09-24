@@ -17,12 +17,12 @@ llext_include_directories(fetcher_ext ${ZEPHYR_BINARY_DIR}/include/generated)
 generate_inc_file_for_target(app ${f_bin} ${f_inc})
 
 add_custom_command(
-	OUTPUT  ${f_sha}
-	COMMAND ${CMAKE_COMMAND}
-		-DMODULE_BIN=${f_bin}
-		-DOUT_INC=${f_sha}
-		-P ${CMAKE_CURRENT_SOURCE_DIR}/cmake/gen_sha256_inc.cmake
-	DEPENDS ${f_bin}
+  OUTPUT  ${f_sha}
+  COMMAND ${CMAKE_COMMAND}
+    -DMODULE_BIN=${f_bin}
+    -DOUT_INC=${f_sha}
+    -P ${CMAKE_CURRENT_SOURCE_DIR}/cmake/gen_sha256_inc.cmake
+  DEPENDS ${f_bin}
 )
 add_custom_target(fetcher_sha DEPENDS ${f_sha})
 add_dependencies(app fetcher_sha)
@@ -49,12 +49,12 @@ add_dependencies(app ota_ext)
 set(o_pub ${ZEPHYR_BINARY_DIR}/include/generated/ota_app.pubkey.inc)
 
 add_custom_command(
-	OUTPUT  ${o_pub}
-	COMMAND ${CMAKE_COMMAND}
-		-DKEY_DIR=${CMAKE_CURRENT_SOURCE_DIR}/keys
-		-DOUT_PUB_INC=${o_pub}
-		-DPYTHON_EXECUTABLE=${PYTHON_EXECUTABLE}
-		-P ${CMAKE_CURRENT_SOURCE_DIR}/cmake/pubkey_only.cmake
+  OUTPUT  ${o_pub}
+  COMMAND ${CMAKE_COMMAND}
+    -DKEY_DIR=${CMAKE_CURRENT_SOURCE_DIR}/keys
+    -DOUT_PUB_INC=${o_pub}
+    -DPYTHON_EXECUTABLE=${PYTHON_EXECUTABLE}
+    -P ${CMAKE_CURRENT_SOURCE_DIR}/cmake/pubkey_only.cmake
 )
 add_custom_target(ota_pubkey DEPENDS ${o_pub})
 add_dependencies(app ota_pubkey)

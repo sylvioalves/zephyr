@@ -10,7 +10,7 @@ set(APP_VERSION 1)
 
 target_sources(app PRIVATE src/main.c)
 target_compile_definitions(app PRIVATE
-	APP_NAME="${APP_NAME}" APP_VERSION=${APP_VERSION})
+  APP_NAME="${APP_NAME}" APP_VERSION=${APP_VERSION})
 
 set(ext_src ${PROJECT_SOURCE_DIR}/module/src/persist_app.c)
 set(bin ${PROJECT_BINARY_DIR}/llext/persist.llext)
@@ -28,19 +28,19 @@ generate_inc_file_for_target(app ${bin} ${inc})
 # trusted public key. The private key is generated once under the source tree
 # and never compiled in.
 add_custom_command(
-	OUTPUT  ${mf} ${sig} ${pub}
-	COMMAND ${CMAKE_COMMAND}
-		-DMODULE_BIN=${bin}
-		-DKEY_DIR=${CMAKE_CURRENT_SOURCE_DIR}/keys
-		-DAPP_NAME=${APP_NAME}
-		-DAPP_VERSION=${APP_VERSION}
-		-DABI_FILE=${APP_PLATFORM_ABI_FILE}
-		-DOUT_MF_INC=${mf}
-		-DOUT_SIG_INC=${sig}
-		-DOUT_PUB_INC=${pub}
-		-DPYTHON_EXECUTABLE=${PYTHON_EXECUTABLE}
-		-P ${ZEPHYR_BASE}/subsys/app_platform/cmake/sign_module.cmake
-	DEPENDS ${bin} ${APP_PLATFORM_ABI_FILE}
+  OUTPUT  ${mf} ${sig} ${pub}
+  COMMAND ${CMAKE_COMMAND}
+    -DMODULE_BIN=${bin}
+    -DKEY_DIR=${CMAKE_CURRENT_SOURCE_DIR}/keys
+    -DAPP_NAME=${APP_NAME}
+    -DAPP_VERSION=${APP_VERSION}
+    -DABI_FILE=${APP_PLATFORM_ABI_FILE}
+    -DOUT_MF_INC=${mf}
+    -DOUT_SIG_INC=${sig}
+    -DOUT_PUB_INC=${pub}
+    -DPYTHON_EXECUTABLE=${PYTHON_EXECUTABLE}
+    -P ${ZEPHYR_BASE}/subsys/app_platform/cmake/sign_module.cmake
+  DEPENDS ${bin} ${APP_PLATFORM_ABI_FILE}
 )
 add_custom_target(persist_sign DEPENDS ${mf} ${sig} ${pub})
 add_dependencies(persist_sign app_platform_abi)

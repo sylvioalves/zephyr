@@ -7,7 +7,7 @@ project(app_platform)
 zephyr_syscall_header(${CMAKE_CURRENT_SOURCE_DIR}/src/app_sdk.h)
 
 target_sources(app PRIVATE
-	src/main.c
-	src/platform.c
-	src/app_rt.c
+  src/main.c
+  src/platform.c
+  src/app_rt.c
 )
