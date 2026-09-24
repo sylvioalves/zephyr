@@ -991,4 +991,61 @@ ZTEST(zhostile, test_4_16_deep_service_calls_do_not_kill_the_system)
 	zassert_true(victim_data != before, "canary stopped running");
 }
 
+/* ---- 4.17 state left behind by a reclaimed application ---- */
+
+static void ipc_claim_name(void *a)
+{
+	ARG_UNUSED(a);
+	report_rc = svc_ipc_register("stale-name");
+	report_done = 1;
+}
+
+static void ipc_send_to_stale(void *a)
+{
+	ARG_UNUSED(a);
+	uint8_t msg = 1;
+
+	report_rc = svc_ipc_send_to("stale-name", &msg, sizeof(msg));
+	report_done = 1;
+}
+
+ZTEST(zhostile, test_4_17_ipc_name_released_on_reclaim)
+{
+	expect_refused("h_ipr", ipc_claim_name, APP_CAP_LOG | APP_CAP_IPC, 0);
+	expect_refused("h_ips", ipc_send_to_stale, APP_CAP_LOG | APP_CAP_IPC, -ENOENT);
+}
+
+static void checkpoint_store(void *a)
+{
+	ARG_UNUSED(a);
+	svc_checkpoint_set(1234U);
+	report_rc = 0;
+	report_done = 1;
+}
+
+static void checkpoint_report(void *a)
+{
+	ARG_UNUSED(a);
+	report_rc = (int)svc_checkpoint_get();
+	report_done = 1;
+}
+
+ZTEST(zhostile, test_4_17_checkpoint_follows_the_name)
+{
+	expect_refused("h_cpa", checkpoint_store, APP_CAP_LOG, 0);
+	expect_refused("h_cpb", checkpoint_report, APP_CAP_LOG, 0);
+	expect_refused("h_cpa", checkpoint_report, APP_CAP_LOG, 1234);
+}
+
+ZTEST(zhostile, test_4_17_running_name_is_unique)
+{
+	const struct app_def def = {
+		.name = "canary", .source = APP_BUILTIN, .entry = canary_app,
+		.caps = APP_CAP_LOG,
+	};
+
+	zassert_equal(app_platform_launch(&def), -EEXIST,
+		      "a second application ran under a running name");
+}
+
 ZTEST_SUITE(zhostile, NULL, hostile_setup, hostile_before, NULL, NULL);

@@ -18,6 +18,7 @@
 #include <zephyr/app_platform/app_platform.h>
 
 #include "app_events.h"
+#include "app_grants.h"
 
 #ifdef CONFIG_APP_PLATFORM_INPUT_KEYS
 #include <zephyr/input/input.h>
@@ -274,27 +275,89 @@ int z_impl_svc_button_wait(int32_t timeout_ms)
 
 /* ---- per-app checkpoint store ---- */
 
-/*
- * One retained value per application slot, kept on the platform side outside any
- * application's memory domain so it survives a crash and restart. Capability:
- * the checkpoint is part of every application's own state, so it needs no grant.
+/* One retained value per application name, kept outside every application's
+ * memory domain so it survives a crash and restart. It needs no capability.
  */
-static uint32_t checkpoints[MAX_APPS];
+struct checkpoint {
+	char name[APP_PLATFORM_NAME_LEN];
+	uint32_t value;
+};
+
+static struct checkpoint checkpoints[MAX_APPS];
+static struct k_spinlock checkpoint_lock;
+
+static bool current_name(char *out)
+{
+	struct app_platform_status st;
+
+	if (app_platform_status(app_platform_id_current(), &st) != 0 || st.name == NULL) {
+		return false;
+	}
+	strncpy(out, st.name, APP_PLATFORM_NAME_LEN - 1);
+	out[APP_PLATFORM_NAME_LEN - 1] = '\0';
+	return true;
+}
+
+static bool name_running(const char *name)
+{
+	struct app_platform_status st;
+
+	for (int i = 0; i < MAX_APPS; i++) {
+		if (app_platform_status(i, &st) == 0 && st.name != NULL &&
+		    strncmp(st.name, name, APP_PLATFORM_NAME_LEN) == 0) {
+			return true;
+		}
+	}
+	return false;
+}
 
 void z_impl_svc_checkpoint_set(uint32_t value)
 {
-	int id = app_platform_id_current();
+	char name[APP_PLATFORM_NAME_LEN];
+	struct checkpoint *slot = NULL;
 
-	if (id >= 0 && id < MAX_APPS) {
-		checkpoints[id] = value;
+	if (!current_name(name)) {
+		return;
 	}
+
+	k_spinlock_key_t key = k_spin_lock(&checkpoint_lock);
+
+	for (int i = 0; i < MAX_APPS && slot == NULL; i++) {
+		if (strncmp(checkpoints[i].name, name, sizeof(name)) == 0) {
+			slot = &checkpoints[i];
+		}
+	}
+	for (int i = 0; i < MAX_APPS && slot == NULL; i++) {
+		if (checkpoints[i].name[0] == '\0' || !name_running(checkpoints[i].name)) {
+			slot = &checkpoints[i];
+		}
+	}
+	if (slot != NULL) {
+		memcpy(slot->name, name, sizeof(name));
+		slot->value = value;
+	}
+	k_spin_unlock(&checkpoint_lock, key);
 }
 
 uint32_t z_impl_svc_checkpoint_get(void)
 {
-	int id = app_platform_id_current();
+	char name[APP_PLATFORM_NAME_LEN];
+	uint32_t value = 0U;
 
-	return (id >= 0 && id < MAX_APPS) ? checkpoints[id] : 0U;
+	if (!current_name(name)) {
+		return 0U;
+	}
+
+	k_spinlock_key_t key = k_spin_lock(&checkpoint_lock);
+
+	for (int i = 0; i < MAX_APPS; i++) {
+		if (strncmp(checkpoints[i].name, name, sizeof(name)) == 0) {
+			value = checkpoints[i].value;
+			break;
+		}
+	}
+	k_spin_unlock(&checkpoint_lock, key);
+	return value;
 }
 
 #ifdef CONFIG_USERSPACE

@@ -1185,7 +1185,8 @@ void app_platform_grant_stepper(int id, uint32_t idx_mask);
  * @brief Open a file under the application's private root. Needs @ref
  *        APP_CAP_FS.
  *
- * @p path is relative to the application's own root, so two applications that
+ * @p path is relative to the application's own root, which is named after the
+ * application, so its files persist across restarts and two applications that
  * open the same name get two different files. A path that is absolute or holds
  * a ".." component is refused: an application cannot name a file outside its
  * root, including another application's.
@@ -1195,7 +1196,8 @@ void app_platform_grant_stepper(int id, uint32_t idx_mask);
  * @retval >=0 An open handle, valid only for the application that opened it.
  * @retval -EPERM The application does not hold @ref APP_CAP_FS.
  * @retval -EACCES The path tries to leave the application's root.
- * @retval -EINVAL The path is empty.
+ * @retval -EINVAL The path is empty, or the application name is not a plain
+ *         directory name (letters, digits, '_', '-', '.', not starting with '.').
  * @retval -ENAMETOOLONG The resolved path does not fit.
  * @retval -EMFILE No free handle is left.
  * @retval -ENODEV The filesystem is not mounted.
@@ -1352,7 +1354,8 @@ __syscall int svc_button_wait(int32_t timeout_ms);
  *
  * The value is kept by the platform outside the application's memory domain, so
  * it survives the application crashing and being restarted. Part of every
- * application's own state, so it needs no capability.
+ * application's own state, so it needs no capability. The value is kept per
+ * application name, so it follows the application across a restart.
  *
  * @param value Value to retain.
  */

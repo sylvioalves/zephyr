@@ -67,6 +67,7 @@ int app_platform_init(void);
  *
  * @param def Catalog entry with a non-NULL @ref app_def.entry.
  * @retval >=0 the application's group id, or negative errno on failure.
+ * @retval -EEXIST An application with this name is already running.
  */
 int app_platform_launch(const struct app_def *def);
 
@@ -80,6 +81,7 @@ int app_platform_launch(const struct app_def *def);
  * @param entry Resolved entry symbol.
  * @param caps Per-app grant mask.
  * @retval >=0 the application's group id, or negative errno on failure.
+ * @retval -EEXIST An application with this name is already running.
  */
 int app_platform_launch_llext(const char *name, struct llext *ext,
 			      app_entry_t entry, app_caps_t caps);

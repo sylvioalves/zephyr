@@ -529,6 +529,26 @@ ZTEST(devices, test_fs_gate_and_confinement)
 	expect_rc("f_rt", fs_roundtrip, APP_CAP_LOG | APP_CAP_FS, 0);
 }
 
+static void fs_probe_note(void *a)
+{
+	ARG_UNUSED(a);
+
+	int h = svc_file_open("note.txt", 0);
+
+	if (h >= 0) {
+		(void)svc_file_close(h);
+	}
+	report_rc = h < 0 ? h : 0;
+	report_done = 1;
+}
+
+ZTEST(devices, test_fs_root_follows_the_name)
+{
+	expect_rc("f_rt", fs_roundtrip, APP_CAP_LOG | APP_CAP_FS, 0);
+	expect_rc("f_rt", fs_probe_note, APP_CAP_LOG | APP_CAP_FS, 0);
+	expect_rc("f_ot", fs_probe_note, APP_CAP_LOG | APP_CAP_FS, -ENOENT);
+}
+
 ZTEST(devices, test_fs_handles_are_not_shared)
 {
 	leaked_handle = -1;

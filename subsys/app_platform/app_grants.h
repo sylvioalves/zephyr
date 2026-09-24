@@ -9,6 +9,8 @@
 
 #include <zephyr/kernel.h>
 
+#define APP_PLATFORM_NAME_LEN 24
+
 /*
  * Per-resource grants live in the service that owns the resource, indexed by
  * application slot. A slot is reused once its previous tenant is reclaimed, so
@@ -59,8 +61,13 @@ static inline void app_platform_clear_bus_grants(int id)
 
 #ifdef CONFIG_APP_PLATFORM_SERVICES
 void app_platform_clear_flash_grants(int id);
+void app_platform_clear_ipc(int id);
 #else
 static inline void app_platform_clear_flash_grants(int id)
+{
+	ARG_UNUSED(id);
+}
+static inline void app_platform_clear_ipc(int id)
 {
 	ARG_UNUSED(id);
 }

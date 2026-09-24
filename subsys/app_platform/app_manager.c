@@ -54,7 +54,7 @@ LOG_MODULE_REGISTER(app_platform, CONFIG_APP_PLATFORM_LOG_LEVEL);
  * thread name all read it), so the slot keeps its own copy rather than the
  * caller's pointer, which is often a stack local.
  */
-#define APP_NAME_LEN 24
+#define APP_NAME_LEN APP_PLATFORM_NAME_LEN
 
 struct running_app {
 	char                name[APP_NAME_LEN];
@@ -327,6 +327,7 @@ static void clear_grants(int id)
 	}
 	if (IS_ENABLED(CONFIG_APP_PLATFORM_SERVICES)) {
 		app_platform_clear_flash_grants(id);
+		app_platform_clear_ipc(id);
 	}
 	if (IS_ENABLED(CONFIG_APP_PLATFORM_COUNTER)) {
 		app_platform_clear_counter_grants(id);
@@ -674,6 +675,12 @@ int app_platform_init(void)
 static int launch(const char *name, app_entry_t entry, app_caps_t caps,
 		  struct llext *ext, bool restart, bool monitored)
 {
+	for (int i = 0; i < MAX_APPS; i++) {
+		if (apps[i].active && strncmp(apps[i].name, name, APP_NAME_LEN) == 0) {
+			return -EEXIST;
+		}
+	}
+
 	for (int i = 0; i < MAX_APPS; i++) {
 		if (apps[i].active || apps[i].cleaning) {
 			continue;   /* in use or pending reaper cleanup */

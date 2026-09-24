@@ -6,7 +6,7 @@
 
 /*
  * Per-application sandboxed files. The platform owns one filesystem mount and
- * confines each application to its own subtree, "/lfs/apps/<id>". An
+ * confines each application to its own subtree, "/lfs/apps/<name>". An
  * application names a file relative to that root and cannot leave it: an
  * absolute path, or one holding a ".." component, is refused before the
  * filesystem is touched.
@@ -24,6 +24,7 @@
 #include <zephyr/app_platform/app_platform.h>
 #include <zephyr/app_platform/app_services.h>
 #include <zephyr/app_platform/app_caps.h>
+#include <ctype.h>
 #include <string.h>
 #include <errno.h>
 
@@ -50,10 +51,34 @@ static inline bool app_has_cap(app_caps_t mask)
 	return (app_platform_caps_current() & mask) == mask;
 }
 
+/* The application's name, which names its root directory. Only names that are
+ * a plain directory component are accepted.
+ */
+static int root_name(int id, char *out)
+{
+	struct app_platform_status st;
+
+	if (app_platform_status(id, &st) != 0 || st.name == NULL || st.name[0] == '\0' ||
+	    st.name[0] == '.') {
+		return -EINVAL;
+	}
+	for (size_t i = 0; st.name[i] != '\0'; i++) {
+		char c = st.name[i];
+
+		if (i + 1U >= APP_PLATFORM_NAME_LEN ||
+		    !(isalnum((unsigned char)c) || c == '_' || c == '-' || c == '.')) {
+			return -EINVAL;
+		}
+		out[i] = c;
+		out[i + 1U] = '\0';
+	}
+	return 0;
+}
+
 /* Build the absolute path of a file inside the calling application's own root,
  * refusing anything that would leave it.
  */
-static int confine_path(int id, const char *rel, char *out, size_t out_sz)
+static int confine_path(const char *name, const char *rel, char *out, size_t out_sz)
 {
 	if (rel == NULL || rel[0] == '\0') {
 		return -EINVAL;
@@ -69,7 +94,7 @@ static int confine_path(int id, const char *rel, char *out, size_t out_sz)
 		}
 	}
 
-	int n = snprintk(out, out_sz, MOUNT_POINT "/apps/%d/%s", id, rel);
+	int n = snprintk(out, out_sz, MOUNT_POINT "/apps/%s/%s", name, rel);
 
 	if (n < 0 || (size_t)n >= out_sz) {
 		return -ENAMETOOLONG;
@@ -77,16 +102,10 @@ static int confine_path(int id, const char *rel, char *out, size_t out_sz)
 	return 0;
 }
 
-/* The mount is made by the system, not here. The directory tree is created at
- * init, from a system thread, because creating it writes to the backing store:
- * on some targets a store write from an application thread runs with the
- * instruction cache disabled and cannot be served. An application's own calls
- * then only open and transfer, never create directories.
- */
 /* The mount is made by the system, not here. Opening a file creates the
  * application's directory on first use.
  */
-static int fs_prepare(int id)
+static int fs_prepare(const char *name)
 {
 	char dir[PATH_MAX_LEN];
 	int n;
@@ -94,7 +113,7 @@ static int fs_prepare(int id)
 	if (fs_mkdir(MOUNT_POINT "/apps") == -ENOENT) {
 		return -ENODEV;
 	}
-	n = snprintk(dir, sizeof(dir), MOUNT_POINT "/apps/%d", id);
+	n = snprintk(dir, sizeof(dir), MOUNT_POINT "/apps/%s", name);
 	if (n < 0 || (size_t)n >= sizeof(dir)) {
 		return -ENAMETOOLONG;
 	}
@@ -132,15 +151,20 @@ int z_impl_svc_file_open(const char *path, int create)
 		return -EPERM;
 	}
 
+	char name[APP_PLATFORM_NAME_LEN];
 	char abs[PATH_MAX_LEN];
-	int rc = confine_path(id, path, abs, sizeof(abs));
+	int rc = root_name(id, name);
+
+	if (rc == 0) {
+		rc = confine_path(name, path, abs, sizeof(abs));
+	}
 
 	if (rc != 0) {
 		return rc;
 	}
 
 	k_mutex_lock(&fs_lock, K_FOREVER);
-	rc = fs_prepare(id);
+	rc = fs_prepare(name);
 	if (rc != 0) {
 		k_mutex_unlock(&fs_lock);
 		return rc;

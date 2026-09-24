@@ -118,6 +118,18 @@ static char ipc_names[MAX_APPS][IPC_NAME_MAX];
 static char ipc_topics[MAX_APPS][IPC_TOPIC_MAX];
 static K_MUTEX_DEFINE(ipc_dir_lock);
 
+void app_platform_clear_ipc(int id)
+{
+	if (id < 0 || id >= MAX_APPS) {
+		return;
+	}
+	k_msgq_purge(&mailbox[id]);
+	k_mutex_lock(&ipc_dir_lock, K_FOREVER);
+	ipc_names[id][0] = '\0';
+	ipc_topics[id][0] = '\0';
+	k_mutex_unlock(&ipc_dir_lock);
+}
+
 /* Copy a message into one application's mailbox. */
 static int mailbox_put(int dest, const void *buf, size_t len)
 {
