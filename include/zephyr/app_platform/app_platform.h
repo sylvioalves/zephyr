@@ -149,11 +149,14 @@ int app_platform_remove(int id);
  * When set, the supervisor relaunches the group (same entry and capabilities)
  * after it is reclaimed for faulting or hanging, so a resilient application can
  * recover. The application is responsible for persisting any state it wants to
- * resume from.
+ * resume from. A loadable application cannot be marked: reclaiming it unloads
+ * the module its entry point lives in.
  *
  * @param id Group id returned by a launch call.
  * @param restart Whether to auto-restart after a fault.
- * @retval 0 on success, -EINVAL if @p id is not an active group.
+ * @retval 0 Success.
+ * @retval -EINVAL @p id is not an active group.
+ * @retval -ENOTSUP @p restart is set and the group is a loadable application.
  */
 int app_platform_set_restart(int id, bool restart);
 

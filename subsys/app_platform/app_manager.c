@@ -784,6 +784,11 @@ int app_platform_set_restart(int id, bool restart)
 	if (id < 0 || id >= MAX_APPS || !apps[id].active) {
 		return -EINVAL;
 	}
+#ifdef CONFIG_LLEXT
+	if (restart && apps[id].ext != NULL) {
+		return -ENOTSUP;
+	}
+#endif
 	apps[id].restart = restart;
 	return 0;
 }

@@ -474,6 +474,27 @@ static bool wait_slot_free(const char *name, int ms)
 	return slot_of(name) < 0;
 }
 
+ZTEST(lifecycle, test_restart_refused_for_loaded_app)
+{
+	struct app_manifest mf = manifest_copy();
+	size_t len = fresh_module();
+	struct llext *ext = NULL;
+	void *entry = NULL;
+
+	zassert_equal(app_loader_verify_load_manifest(&mf, mod_sig, ARRAY_SIZE(mod_sig), work,
+						      len, mod_pubkey, ARRAY_SIZE(mod_pubkey),
+						      "app_main", &ext, &entry), 0);
+
+	int id = app_platform_launch_llext(mf.name, ext, (app_entry_t)entry, APP_CAP_LOG);
+
+	zassert_true(id >= 0, "launch failed (%d)", id);
+	zassert_equal(app_platform_set_restart(id, true), -ENOTSUP,
+		      "a loaded application was marked for restart");
+	zassert_equal(app_platform_set_restart(id, false), 0);
+	zassert_equal(app_platform_remove(id), 0);
+	zassert_true(wait_slot_free(mf.name, 2000), "removed app slot not freed");
+}
+
 ZTEST(lifecycle, test_fault_is_reclaimed)
 {
 	struct app_def def = {
