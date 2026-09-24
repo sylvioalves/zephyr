@@ -455,6 +455,15 @@ def analyze_fn(match_group, fn, userspace_only):
     return (handler, invocation, marshaller, sys_id, table_entry)
 
 
+def syscall_signature(match_group):
+    func, arg_list = match_group
+    if arg_list == "void":
+        arg_types = []
+    else:
+        arg_types = [typename_split(a.strip())[0] for a in arg_list.split(",")]
+    return tuple("".join(t.split()) for t in [typename_split(func)[0], *arg_types])
+
+
 def parse_args():
     global args
     parser = argparse.ArgumentParser(
@@ -521,21 +530,19 @@ def main():
     ids_emit = []
     ids_not_emit = []
     table_entries = []
-    handlers = []
     emit_list = []
     exported = []
 
-    # A syscall may be declared in both a registered header (to_emit=True)
-    # and a merely-scanned header (to_emit=False), e.g. when the same service
-    # is declared in a subsystem header and re-declared in an application
-    # header. Collect the emitted IDs up front so the not-emit copy does not
-    # define the ID a second time: the later definition lands above
-    # K_SYSCALL_LIMIT and wins for every user of the header, so the call is
-    # rejected as out of range. The invocation wrapper is still emitted, as
-    # the scanned header needs it to compile.
-    emitted_ids = {
-        "K_SYSCALL_" + typename_split(mg[0])[1].upper() for mg, _f, emit in syscalls if emit
-    }
+    # Declaration of each syscall in a registered header, by ID
+    emitted = {}
+    for match_group, fn, to_emit in syscalls:
+        if not to_emit:
+            continue
+        name = typename_split(match_group[0])[1]
+        sys_id = "K_SYSCALL_" + name.upper()
+        if sys_id in emitted:
+            sys.exit(f"error: syscall {name} is declared in both {emitted[sys_id][1]} and {fn}")
+        emitted[sys_id] = (match_group, fn)
 
     for match_group, fn, to_emit in syscalls:
         handler, inv, mrsh, sys_id, entry = analyze_fn(match_group, fn, args.userspace_only)
@@ -548,14 +555,19 @@ def main():
         if inv not in invocations[fn]:
             invocations[fn].append(inv)
 
-        handlers.append(handler)
-
         if to_emit:
             ids_emit.append(sys_id)
             table_entries.append(entry)
             emit_list.append(handler)
             exported.append(handler.replace("z_mrsh_", "z_impl_"))
-        elif sys_id not in emitted_ids and sys_id not in ids_not_emit:
+        elif sys_id in emitted:
+            emit_group, emit_fn = emitted[sys_id]
+            if syscall_signature(match_group) != syscall_signature(emit_group):
+                sys.exit(
+                    f"error: syscall declaration '{match_group[0]}({match_group[1]})' in {fn} "
+                    f"does not match '{emit_group[0]}({emit_group[1]})' in {emit_fn}"
+                )
+        elif sys_id not in ids_not_emit:
             ids_not_emit.append(sys_id)
 
         if mrsh and to_emit:
@@ -566,9 +578,7 @@ def main():
     with open(args.syscall_dispatch, "w") as fp:
         table_entries.append("[K_SYSCALL_BAD] = handler_bad_syscall")
 
-        weak_defines = "".join(
-            [weak_template % name for name in handlers if name not in noweak and name in emit_list]
-        )
+        weak_defines = "".join([weak_template % name for name in emit_list if name not in noweak])
 
         # The "noweak" ones just get a regular declaration
         noweak_args = ", ".join([f"uintptr_t arg{i + 1}" for i in range(6)]) + ", void *ssf"
