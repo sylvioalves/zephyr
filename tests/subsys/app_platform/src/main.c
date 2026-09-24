@@ -298,6 +298,27 @@ ZTEST(loader, test_genuine_loads)
 	llext_unload(&ext);
 }
 
+ZTEST(loader, test_same_name_loaded_twice)
+{
+	struct app_manifest mf = manifest_copy();
+	size_t len = fresh_module();
+	struct llext *first = NULL;
+	struct llext *second = NULL;
+
+	zassert_equal(load_with(&mf, mod_sig, ARRAY_SIZE(mod_sig), work, len,
+				&first), 0);
+	len = fresh_module();
+	zassert_equal(load_with(&mf, mod_sig, ARRAY_SIZE(mod_sig), work, len,
+				&second), -EALREADY,
+		      "a second load of a loaded name must be refused");
+	zassert_is_null(second, "the loaded extension was handed back");
+
+	app_loader_forget(first);
+	llext_unload(&first);
+	zassert_is_null(llext_by_name(mf.name),
+			"a reference leaked: the extension outlived its unload");
+}
+
 ZTEST(loader, test_tampered_module_rejected)
 {
 	struct app_manifest mf = manifest_copy();

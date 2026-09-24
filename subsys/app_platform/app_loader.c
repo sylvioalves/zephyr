@@ -214,6 +214,14 @@ static int load_checked(const char *name, const uint8_t *buf, size_t len,
 	struct llext *loaded = NULL;
 	int rc = llext_load(&bl.loader, name, &loaded, &parm);
 
+	if (rc > 0) {
+		/* An extension of this name is already loaded and was handed back
+		 * instead of the verified bytes: drop that reference.
+		 */
+		llext_unload(&loaded);
+		LOG_ERR("'%s' is already loaded", name);
+		return -EALREADY;
+	}
 	if (rc != 0) {
 		LOG_ERR("llext_load failed for '%s': %d", name, rc);
 		return rc;
@@ -411,6 +419,14 @@ static int fs_load_checked(const char *name, const char *path,
 	struct llext *loaded = NULL;
 	int rc = llext_load(&fl.loader, name, &loaded, &parm);
 
+	if (rc > 0) {
+		/* An extension of this name is already loaded and was handed back
+		 * instead of the verified bytes: drop that reference.
+		 */
+		llext_unload(&loaded);
+		LOG_ERR("'%s' is already loaded", name);
+		return -EALREADY;
+	}
 	if (rc != 0) {
 		LOG_ERR("llext_load (file) failed for '%s': %d", name, rc);
 		return rc;

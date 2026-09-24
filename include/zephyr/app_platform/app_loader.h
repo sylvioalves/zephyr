@@ -40,6 +40,7 @@
  * @retval -EPERM if the hash does not match.
  * @retval -ENOENT if the entry symbol is not found.
  * @retval -E2BIG if the module fails a structural bounds check.
+ * @retval -EALREADY if an extension with this name is already loaded.
  * @retval other negative errno from crypto or llext on failure.
  */
 int app_loader_verify_load(const char *name, const uint8_t *buf, size_t len,
@@ -75,6 +76,7 @@ int app_loader_verify_load(const char *name, const uint8_t *buf, size_t len,
  * @retval -EPERM if the signature does not verify.
  * @retval -ENOENT if the entry symbol is not found.
  * @retval -E2BIG if the module fails a structural bounds check.
+ * @retval -EALREADY if an extension with this name is already loaded.
  * @retval other negative errno from crypto or llext on failure.
  */
 int app_loader_verify_load_signed(const char *name, const uint8_t *buf,
@@ -108,6 +110,7 @@ int app_loader_verify_load_signed(const char *name, const uint8_t *buf,
  * @retval -EPERM if the signature, manifest, or module binding does not check.
  * @retval -ENOENT if the entry symbol is not found.
  * @retval -E2BIG if the module fails a structural bounds check.
+ * @retval -EALREADY if an extension with this name is already loaded.
  * @retval other negative errno from crypto or llext on failure.
  */
 int app_loader_verify_load_manifest(const struct app_manifest *mf,
@@ -141,6 +144,7 @@ int app_loader_verify_load_manifest(const struct app_manifest *mf,
  * @retval -EPERM if the signature, manifest, or module binding does not check.
  * @retval -ENOENT if the entry symbol is not found.
  * @retval -E2BIG if the module fails a structural bounds check.
+ * @retval -EALREADY if an extension with this name is already loaded.
  * @retval other negative errno from filesystem, crypto or llext on failure.
  */
 int app_loader_verify_load_manifest_file(const struct app_manifest *mf,
