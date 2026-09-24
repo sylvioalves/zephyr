@@ -7,15 +7,17 @@
 # loader's relocation bounds check rejects an out-of-section relocation even
 # when verification passes.
 #
-# Inputs: MODULE_BIN, KEY_DIR, APP_NAME, APP_VERSION, OUT_INC, OUT_MF_INC,
-#         OUT_SIG_INC, PYTHON_EXECUTABLE.
+# Inputs: MODULE_BIN, KEY_DIR, APP_NAME, APP_VERSION, ABI_FILE, OUT_INC,
+#         OUT_MF_INC, OUT_SIG_INC, PYTHON_EXECUTABLE.
+
+file(STRINGS "${ABI_FILE}" abi LIMIT_COUNT 1)
 
 set(priv "${KEY_DIR}/app_signing_key.pem")
 set(evil_bin "${OUT_INC}.bin")
 
 execute_process(
   COMMAND ${PYTHON_EXECUTABLE} -c
-"import sys,struct,hashlib\nfrom cryptography.hazmat.primitives import hashes, serialization as s\nfrom cryptography.hazmat.primitives.asymmetric import ec, utils\nSHT_RELA=4\nd=bytearray(open(r'${MODULE_BIN}','rb').read())\nshoff=struct.unpack_from('<I',d,32)[0]\nshent=struct.unpack_from('<H',d,46)[0]\nshnum=struct.unpack_from('<H',d,48)[0]\nrela_off=tgt_size=None\nfor i in range(shnum):\n    base=shoff+i*shent\n    typ=struct.unpack_from('<I',d,base+4)[0]\n    if typ==SHT_RELA:\n        rela_off=struct.unpack_from('<I',d,base+16)[0]\n        tgt=struct.unpack_from('<I',d,base+44)[0]\n        tgt_size=struct.unpack_from('<I',d,shoff+tgt*shent+20)[0]\n        break\nassert rela_off is not None,'no RELA section'\nstruct.pack_into('<I',d,rela_off,tgt_size+0x100)\ndata=bytes(d)\nopen(r'${evil_bin}','wb').write(data)\npriv=s.load_pem_private_key(open(r'${priv}','rb').read(),None)\nmod=hashlib.sha256(data).digest()\nname=b'${APP_NAME}'\nassert len(name)<32\nname=name+b'\\x00'*(32-len(name))\nmf=struct.pack('<III',0x31464d41,${APP_VERSION},len(data))+name+mod\nmfd=hashlib.sha256(mf).digest()\nder=priv.sign(mfd,ec.ECDSA(utils.Prehashed(hashes.SHA256())))\nr,ss=utils.decode_dss_signature(der)\nsig=r.to_bytes(32,'big')+ss.to_bytes(32,'big')\ndef emit(b): return ','.join('0x%02x'%x for x in b)\nopen(r'${OUT_INC}','w').write(emit(data)+'\\n')\nopen(r'${OUT_MF_INC}','w').write(emit(mf)+'\\n')\nopen(r'${OUT_SIG_INC}','w').write(emit(sig)+'\\n')"
+"import sys,struct,hashlib\nfrom cryptography.hazmat.primitives import hashes, serialization as s\nfrom cryptography.hazmat.primitives.asymmetric import ec, utils\nSHT_RELA=4\nd=bytearray(open(r'${MODULE_BIN}','rb').read())\nshoff=struct.unpack_from('<I',d,32)[0]\nshent=struct.unpack_from('<H',d,46)[0]\nshnum=struct.unpack_from('<H',d,48)[0]\nrela_off=tgt_size=None\nfor i in range(shnum):\n    base=shoff+i*shent\n    typ=struct.unpack_from('<I',d,base+4)[0]\n    if typ==SHT_RELA:\n        rela_off=struct.unpack_from('<I',d,base+16)[0]\n        tgt=struct.unpack_from('<I',d,base+44)[0]\n        tgt_size=struct.unpack_from('<I',d,shoff+tgt*shent+20)[0]\n        break\nassert rela_off is not None,'no RELA section'\nstruct.pack_into('<I',d,rela_off,tgt_size+0x100)\ndata=bytes(d)\nopen(r'${evil_bin}','wb').write(data)\npriv=s.load_pem_private_key(open(r'${priv}','rb').read(),None)\nmod=hashlib.sha256(data).digest()\nname=b'${APP_NAME}'\nassert len(name)<32\nname=name+b'\\x00'*(32-len(name))\nmf=struct.pack('<III',0x32464d41,${APP_VERSION},len(data))+name+mod+bytes.fromhex('${abi}')\nmfd=hashlib.sha256(mf).digest()\nder=priv.sign(mfd,ec.ECDSA(utils.Prehashed(hashes.SHA256())))\nr,ss=utils.decode_dss_signature(der)\nsig=r.to_bytes(32,'big')+ss.to_bytes(32,'big')\ndef emit(b): return ','.join('0x%02x'%x for x in b)\nopen(r'${OUT_INC}','w').write(emit(data)+'\\n')\nopen(r'${OUT_MF_INC}','w').write(emit(mf)+'\\n')\nopen(r'${OUT_SIG_INC}','w').write(emit(sig)+'\\n')"
   RESULT_VARIABLE rc)
 if(NOT rc EQUAL 0)
   message(FATAL_ERROR "failed to build evil module")

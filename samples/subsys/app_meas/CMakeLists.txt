@@ -26,14 +26,16 @@ function(add_sized_module name pad)
 			-DKEY_DIR=${CMAKE_CURRENT_SOURCE_DIR}/keys
 			-DAPP_NAME=${name}
 			-DAPP_VERSION=1
+			-DABI_FILE=${APP_PLATFORM_ABI_FILE}
 			-DOUT_MF_INC=${mf}
 			-DOUT_SIG_INC=${sig}
 			-DOUT_PUB_INC=${pub}
 			-DPYTHON_EXECUTABLE=${PYTHON_EXECUTABLE}
 			-P ${ZEPHYR_BASE}/subsys/app_platform/cmake/sign_module.cmake
-		DEPENDS ${bin}
+		DEPENDS ${bin} ${APP_PLATFORM_ABI_FILE}
 	)
 	add_custom_target(${name}_sign DEPENDS ${mf} ${sig} ${pub})
+	add_dependencies(${name}_sign app_platform_abi)
 	add_dependencies(app ${name}_sign)
 
 	set(sha ${ZEPHYR_BINARY_DIR}/include/generated/${name}.sha256.inc)

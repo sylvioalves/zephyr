@@ -15,6 +15,7 @@
 
 #include <zephyr/app_platform/app_loader.h>
 #include <zephyr/app_platform/app_manifest.h>
+#include <zephyr/app_platform_abi.h>
 
 #include <zephyr/kernel.h>
 #include <zephyr/llext/llext.h>
@@ -35,6 +36,8 @@ LOG_MODULE_DECLARE(app_platform, CONFIG_APP_PLATFORM_LOG_LEVEL);
 #define ELF_E_TYPE_OFF 16
 #define ELF_E_SHOFF_OFF 32
 #define ELF_E_SHNUM_OFF 48
+
+static const uint8_t abi_id[APP_MANIFEST_ABI_ID_LEN] = APP_PLATFORM_ABI_ID;
 
 static int sha256(const uint8_t *buf, size_t len, uint8_t out[32])
 {
@@ -324,6 +327,10 @@ int app_loader_verify_load_manifest(const struct app_manifest *mf,
 		LOG_WRN("manifest name not terminated, rejected");
 		return -EPERM;
 	}
+	if (memcmp(mf->abi_id, abi_id, sizeof(abi_id)) != 0) {
+		LOG_WRN("'%s' built for another firmware ABI, rejected", mf->name);
+		return -ENOEXEC;
+	}
 	if (mf->module_len != len) {
 		LOG_WRN("'%s' module length %u != signed %u, rejected",
 			mf->name, (unsigned int)len, mf->module_len);
@@ -537,6 +544,10 @@ int app_loader_verify_load_manifest_file(const struct app_manifest *mf,
 	    mf->name[APP_MANIFEST_NAME_MAX - 1] != '\0') {
 		LOG_WRN("malformed manifest, rejected");
 		return -EPERM;
+	}
+	if (memcmp(mf->abi_id, abi_id, sizeof(abi_id)) != 0) {
+		LOG_WRN("'%s' built for another firmware ABI, rejected", mf->name);
+		return -ENOEXEC;
 	}
 
 	if (IS_ENABLED(CONFIG_APP_PLATFORM_LOADER_FILE_IN_RAM)) {

@@ -27,15 +27,39 @@ add_custom_command(
 		-DKEY_DIR=${CMAKE_CURRENT_SOURCE_DIR}/keys
 		-DAPP_NAME=${APP_NAME}
 		-DAPP_VERSION=${APP_VERSION}
+		-DABI_FILE=${APP_PLATFORM_ABI_FILE}
 		-DOUT_MF_INC=${mf}
 		-DOUT_SIG_INC=${sig}
 		-DOUT_PUB_INC=${pub}
 		-DPYTHON_EXECUTABLE=${PYTHON_EXECUTABLE}
 		-P ${ZEPHYR_BASE}/subsys/app_platform/cmake/sign_module.cmake
-	DEPENDS ${bin}
+	DEPENDS ${bin} ${APP_PLATFORM_ABI_FILE}
 )
 add_custom_target(test_sign DEPENDS ${mf} ${sig} ${pub})
+add_dependencies(test_sign app_platform_abi)
 add_dependencies(app test_sign)
+
+# The same module signed for a foreign ABI, for the loader's ABI check. Reuses
+# the key generated above.
+set(badabi_mf  ${ZEPHYR_BINARY_DIR}/include/generated/test_mod.badabi.manifest.inc)
+set(badabi_sig ${ZEPHYR_BINARY_DIR}/include/generated/test_mod.badabi.sig.inc)
+
+add_custom_command(
+	OUTPUT  ${badabi_mf} ${badabi_sig}
+	COMMAND ${CMAKE_COMMAND}
+		-DMODULE_BIN=${bin}
+		-DKEY_DIR=${CMAKE_CURRENT_SOURCE_DIR}/keys
+		-DAPP_NAME=${APP_NAME}
+		-DAPP_VERSION=${APP_VERSION}
+		-DABI_OVERRIDE=00000000000000000000000000000000
+		-DOUT_MF_INC=${badabi_mf}
+		-DOUT_SIG_INC=${badabi_sig}
+		-DPYTHON_EXECUTABLE=${PYTHON_EXECUTABLE}
+		-P ${ZEPHYR_BASE}/subsys/app_platform/cmake/sign_module.cmake
+	DEPENDS ${bin} ${sig}
+)
+add_custom_target(test_badabi DEPENDS ${badabi_mf} ${badabi_sig})
+add_dependencies(app test_badabi)
 
 # A signed-but-malformed module (out-of-section relocation) for the loader's
 # relocation bounds-check test. Reuses the key generated above.
@@ -50,12 +74,14 @@ add_custom_command(
 		-DKEY_DIR=${CMAKE_CURRENT_SOURCE_DIR}/keys
 		-DAPP_NAME=evil
 		-DAPP_VERSION=1
+		-DABI_FILE=${APP_PLATFORM_ABI_FILE}
 		-DOUT_INC=${evil}
 		-DOUT_MF_INC=${evil_mf}
 		-DOUT_SIG_INC=${evil_sig}
 		-DPYTHON_EXECUTABLE=${PYTHON_EXECUTABLE}
 		-P ${CMAKE_CURRENT_SOURCE_DIR}/cmake/make_evil.cmake
-	DEPENDS ${bin} ${sig}
+	DEPENDS ${bin} ${sig} ${APP_PLATFORM_ABI_FILE}
 )
 add_custom_target(test_evil DEPENDS ${evil} ${evil_mf} ${evil_sig})
+add_dependencies(test_evil app_platform_abi)
 add_dependencies(app test_evil)

@@ -32,14 +32,16 @@ add_custom_command(
           -DKEY_DIR=${CMAKE_CURRENT_SOURCE_DIR}/keys
           -DAPP_NAME=${APP_NAME}
           -DAPP_VERSION=${APP_VERSION}
+          -DABI_FILE=${APP_PLATFORM_ABI_FILE}
           -DOUT_MF_INC=${ext_mf}
           -DOUT_SIG_INC=${ext_sig}
           -DOUT_PUB_INC=${ext_pub}
           -DPYTHON_EXECUTABLE=${PYTHON_EXECUTABLE}
           -P ${ZEPHYR_BASE}/subsys/app_platform/cmake/sign_module.cmake
-  DEPENDS ${ext_bin}
+  DEPENDS ${ext_bin} ${APP_PLATFORM_ABI_FILE}
 )
 add_custom_target(${ext_name}_sign DEPENDS ${ext_mf} ${ext_sig} ${ext_pub})
+add_dependencies(${ext_name}_sign app_platform_abi)
 add_dependencies(app ${ext_name}_sign)
 
 target_sources(app PRIVATE src/main.c)

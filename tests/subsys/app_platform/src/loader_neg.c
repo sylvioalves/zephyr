@@ -4,12 +4,16 @@
  * SPDX-License-Identifier: Apache-2.0
  */
 
-/* Additional loader negatives: wrong key, truncated, padded, name mismatch. */
+/* Additional loader negatives: wrong key, truncated, padded, name mismatch,
+ * foreign ABI.
+ */
 
 #include <zephyr/ztest.h>
 #include <zephyr/app_platform/app_loader.h>
 #include <zephyr/app_platform/app_manifest.h>
+#include <zephyr/app_platform/app_registry.h>
 #include <zephyr/kernel.h>
+#include <zephyr/fs/fs.h>
 #include <string.h>
 
 static const uint8_t mod_bytes[] = {
@@ -23,6 +27,12 @@ static const uint8_t mod_sig[] = {
 };
 static const uint8_t mod_pubkey[] = {
 #include "test_mod.pubkey.inc"
+};
+static const uint8_t badabi_manifest[] = {
+#include "test_mod.badabi.manifest.inc"
+};
+static const uint8_t badabi_sig[] = {
+#include "test_mod.badabi.sig.inc"
 };
 
 static uint8_t work[8192 + 256];
@@ -109,6 +119,41 @@ ZTEST(loader_neg, test_version_field_tamper_rejected)
 			  ARRAY_SIZE(mod_bytes), &ext);
 
 	zassert_equal(rc, -EPERM, "version tamper must be rejected (%d)", rc);
+	zassert_is_null(ext);
+}
+
+ZTEST(loader_neg, test_foreign_abi_rejected)
+{
+	struct app_manifest mf;
+	struct llext *ext = NULL;
+	void *entry = NULL;
+
+	memcpy(&mf, badabi_manifest, sizeof(mf));
+	memcpy(work, mod_bytes, ARRAY_SIZE(mod_bytes));
+	int rc = app_loader_verify_load_manifest(&mf, badabi_sig, ARRAY_SIZE(badabi_sig), work,
+						 ARRAY_SIZE(mod_bytes), mod_pubkey,
+						 ARRAY_SIZE(mod_pubkey), "app_main", &ext, &entry);
+
+	zassert_equal(rc, -ENOEXEC, "foreign ABI must be rejected (%d)", rc);
+	zassert_is_null(ext);
+}
+
+ZTEST(loader_neg, test_file_foreign_abi_rejected)
+{
+	struct app_manifest mf;
+	struct llext *ext = NULL;
+	void *entry = NULL;
+	char path[64];
+
+	memcpy(&mf, badabi_manifest, sizeof(mf));
+	zassert_equal(app_registry_store_blob("abiapp", mod_bytes, ARRAY_SIZE(mod_bytes)), 0);
+	zassert_equal(app_registry_blob_path("abiapp", path, sizeof(path)), 0);
+	int rc = app_loader_verify_load_manifest_file(&mf, badabi_sig, ARRAY_SIZE(badabi_sig), path,
+						      mod_pubkey, ARRAY_SIZE(mod_pubkey),
+						      "app_main", &ext, &entry);
+
+	(void)fs_unlink(path);
+	zassert_equal(rc, -ENOEXEC, "foreign ABI must be rejected (%d)", rc);
 	zassert_is_null(ext);
 }
 

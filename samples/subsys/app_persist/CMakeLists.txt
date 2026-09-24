@@ -34,12 +34,14 @@ add_custom_command(
 		-DKEY_DIR=${CMAKE_CURRENT_SOURCE_DIR}/keys
 		-DAPP_NAME=${APP_NAME}
 		-DAPP_VERSION=${APP_VERSION}
+		-DABI_FILE=${APP_PLATFORM_ABI_FILE}
 		-DOUT_MF_INC=${mf}
 		-DOUT_SIG_INC=${sig}
 		-DOUT_PUB_INC=${pub}
 		-DPYTHON_EXECUTABLE=${PYTHON_EXECUTABLE}
 		-P ${ZEPHYR_BASE}/subsys/app_platform/cmake/sign_module.cmake
-	DEPENDS ${bin}
+	DEPENDS ${bin} ${APP_PLATFORM_ABI_FILE}
 )
 add_custom_target(persist_sign DEPENDS ${mf} ${sig} ${pub})
+add_dependencies(persist_sign app_platform_abi)
 add_dependencies(app persist_sign)

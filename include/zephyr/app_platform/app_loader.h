@@ -108,6 +108,7 @@ int app_loader_verify_load_signed(const char *name, const uint8_t *buf,
  *
  * @retval 0 on success.
  * @retval -EPERM if the signature, manifest, or module binding does not check.
+ * @retval -ENOEXEC if the manifest names a different firmware ABI.
  * @retval -ENOENT if the entry symbol is not found.
  * @retval -E2BIG if the module fails a structural bounds check.
  * @retval -EALREADY if an extension with this name is already loaded.
@@ -142,6 +143,7 @@ int app_loader_verify_load_manifest(const struct app_manifest *mf,
  *
  * @retval 0 on success.
  * @retval -EPERM if the signature, manifest, or module binding does not check.
+ * @retval -ENOEXEC if the manifest names a different firmware ABI.
  * @retval -ENOENT if the entry symbol is not found.
  * @retval -E2BIG if the module fails a structural bounds check.
  * @retval -EALREADY if an extension with this name is already loaded.

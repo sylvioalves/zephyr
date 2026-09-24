@@ -13,7 +13,7 @@
  * reads the data characteristic to get the bytes at that offset. Served image
  * is the manifest, its signature, then the module:
  *
- *   [ manifest (76 B) ][ signature (64 B) ][ module ... ]
+ *   [ manifest (92 B) ][ signature (64 B) ][ module ... ]
  *
  * This peer signs nothing at runtime: the manifest and signature were produced
  * on the build host and are compiled in, so the private key never reaches

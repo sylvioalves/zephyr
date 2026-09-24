@@ -21,6 +21,12 @@
  * So the name and version are authenticated, not asserted by the caller, and a
  * valid signature cannot be moved onto different bytes or relabelled.
  *
+ * The manifest also carries the ABI identifier of the firmware the module was
+ * built against, derived at build time from the syscall numbering and the
+ * application interface headers. A module is loaded only by a firmware with the
+ * same identifier, since a module built for another numbering would invoke the
+ * wrong system calls.
+ *
  * The layout is a fixed binary struct with explicit-width fields and no
  * padding, so the bytes signed on the build host are the bytes verified on the
  * device regardless of build configuration.
@@ -29,8 +35,11 @@
 /** Fixed name field width, independent of the registry's runtime maximum. */
 #define APP_MANIFEST_NAME_MAX 32
 
-/** Manifest magic: 'A' 'M' 'F' '1', little-endian. */
-#define APP_MANIFEST_MAGIC 0x31464d41U
+/** Manifest magic: 'A' 'M' 'F' '2', little-endian. */
+#define APP_MANIFEST_MAGIC 0x32464d41U
+
+/** ABI identifier length. */
+#define APP_MANIFEST_ABI_ID_LEN 16
 
 /** Raw ECDSA P-256 signature length (r || s). */
 #define APP_MANIFEST_SIG_LEN 64
@@ -42,9 +51,11 @@ struct app_manifest {
 	uint32_t module_len;                     /**< expected module size */
 	char     name[APP_MANIFEST_NAME_MAX];    /**< authenticated app name */
 	uint8_t  module_sha256[32];              /**< SHA-256 of the module */
+	uint8_t  abi_id[APP_MANIFEST_ABI_ID_LEN]; /**< ABI the module was built for */
 } __packed;
 
-BUILD_ASSERT(sizeof(struct app_manifest) == 4 + 4 + 4 + APP_MANIFEST_NAME_MAX + 32,
+BUILD_ASSERT(sizeof(struct app_manifest) ==
+	     4 + 4 + 4 + APP_MANIFEST_NAME_MAX + 32 + APP_MANIFEST_ABI_ID_LEN,
 	     "app_manifest must be tightly packed with no padding");
 
 /** @} */

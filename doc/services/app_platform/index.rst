@@ -65,6 +65,13 @@ authenticated manifest. A valid signature therefore cannot be moved onto
 different bytes or relabelled, and the registry refuses to install a version
 older than the one already recorded.
 
+The manifest also names the ABI the module was built for. The build derives an
+ABI identifier from the syscall numbering and the application interface
+headers, the signer writes it into the manifest, and the loader rejects a
+module whose identifier differs from the running firmware's with ``-ENOEXEC``.
+A module built for another firmware configuration therefore fails to load
+instead of invoking the wrong system calls.
+
 Configuration
 *************
 
