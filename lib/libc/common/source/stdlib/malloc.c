@@ -144,11 +144,13 @@ malloc_unlock(void)
 
 void *malloc(size_t size)
 {
+	void *ret = NULL;
+
 	malloc_lock();
 
-	void *ret = sys_heap_aligned_alloc(&z_malloc_heap,
-					   __alignof__(z_max_align_t),
-					   size);
+	if (z_malloc_heap.heap != NULL) {
+		ret = sys_heap_aligned_alloc(&z_malloc_heap, __alignof__(z_max_align_t), size);
+	}
 	if (ret == NULL && size != 0) {
 		errno = ENOMEM;
 	}
@@ -160,11 +162,13 @@ void *malloc(size_t size)
 
 void *aligned_alloc(size_t alignment, size_t size)
 {
+	void *ret = NULL;
+
 	malloc_lock();
 
-	void *ret = sys_heap_aligned_alloc(&z_malloc_heap,
-					   alignment,
-					   size);
+	if (z_malloc_heap.heap != NULL) {
+		ret = sys_heap_aligned_alloc(&z_malloc_heap, alignment, size);
+	}
 	if (ret == NULL && size != 0) {
 		errno = ENOMEM;
 	}
@@ -238,6 +242,11 @@ static int malloc_prepare(void)
 	z_malloc_partition.attr = K_MEM_PARTITION_P_RW_U_RW;
 #endif
 
+	/* Too small for a heap: leave it uninitialized so allocations fail */
+	if (heap_size < Z_HEAP_MIN_SIZE) {
+		return 0;
+	}
+
 	sys_heap_init(&z_malloc_heap, heap_base, heap_size);
 
 	return 0;
@@ -245,11 +254,14 @@ static int malloc_prepare(void)
 
 void *realloc(void *ptr, size_t requested_size)
 {
+	void *ret = NULL;
+
 	malloc_lock();
 
-	void *ret = sys_heap_aligned_realloc(&z_malloc_heap, ptr,
-					     __alignof__(z_max_align_t),
-					     requested_size);
+	if (z_malloc_heap.heap != NULL) {
+		ret = sys_heap_aligned_realloc(&z_malloc_heap, ptr, __alignof__(z_max_align_t),
+					       requested_size);
+	}
 
 	if (ret == NULL && requested_size != 0) {
 		errno = ENOMEM;
