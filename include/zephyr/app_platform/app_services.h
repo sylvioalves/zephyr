@@ -630,13 +630,15 @@ __syscall int svc_gpio_count(void);
  *
  * Per-line grant: holding @ref APP_CAP_GPIO is not enough; the application is
  * granted a specific set of lines (see @ref app_platform_grant_gpio) and a call
- * to an ungranted line is refused. Stateless beyond that check.
+ * to an ungranted line is refused. A line the application last drove high is
+ * driven low when the application is reclaimed.
  *
  * @param line Line index in [0, @ref svc_gpio_count).
  * @param on   Non-zero to drive high.
  * @retval 0 on success.
  * @retval -EPERM without @ref APP_CAP_GPIO.
  * @retval -EACCES with the capability but without a grant for this line.
+ * @retval -EBUSY The service stayed locked by another caller.
  */
 __syscall int svc_gpio_set(int line, int on);
 
@@ -902,12 +904,16 @@ __syscall int svc_counter_count(void);
  * @brief Start a granted hardware counter. Needs @ref APP_CAP_COUNTER_DEV and a
  *        per-instance grant (@ref app_platform_grant_counter).
  *
+ * A counter the application last started is stopped when the application is
+ * reclaimed.
+ *
  * @param idx Counter index.
  * @retval 0 on success.
  * @retval -EPERM without @ref APP_CAP_COUNTER_DEV.
  * @retval -EACCES with the capability but without a grant for this instance.
  * @retval -EINVAL @p idx is out of range.
  * @retval -ENODEV The instance is not ready.
+ * @retval -EBUSY The service stayed locked by another caller.
  */
 __syscall int svc_counter_start(int idx);
 
@@ -921,6 +927,7 @@ __syscall int svc_counter_start(int idx);
  * @retval -EACCES with the capability but without a grant for this instance.
  * @retval -EINVAL @p idx is out of range.
  * @retval -ENODEV The instance is not ready.
+ * @retval -EBUSY The service stayed locked by another caller.
  */
 __syscall int svc_counter_stop(int idx);
 
@@ -970,6 +977,9 @@ __syscall int svc_dac_count(void);
  * @brief Drive a granted analog output channel. Needs @ref APP_CAP_DAC and a
  *        per-channel grant (@ref app_platform_grant_dac).
  *
+ * A channel the application last set to a non-zero code is written 0 when the
+ * application is reclaimed.
+ *
  * @param ch    Channel index.
  * @param value Raw code, bounded by the configured resolution.
  * @retval 0 on success.
@@ -977,6 +987,7 @@ __syscall int svc_dac_count(void);
  * @retval -EACCES with the capability but without a grant for this channel.
  * @retval -EINVAL @p ch is out of range.
  * @retval -ENODEV The channel is not ready.
+ * @retval -EBUSY The service stayed locked by another caller.
  */
 __syscall int svc_dac_write(int ch, uint32_t value);
 
@@ -1124,6 +1135,10 @@ __syscall int svc_regulator_count(void);
  * @brief Enable or disable a granted regulator. Needs @ref APP_CAP_REGULATOR
  *        and a per-instance grant (@ref app_platform_grant_regulator).
  *
+ * Enables are counted per application. A disable releases one of the calling
+ * application's own enables, and the enables it still holds are released when
+ * it is reclaimed.
+ *
  * @param idx Regulator index.
  * @param on  Non-zero to enable, zero to disable.
  * @retval 0 on success.
@@ -1131,6 +1146,9 @@ __syscall int svc_regulator_count(void);
  * @retval -EACCES with the capability but without a grant for this instance.
  * @retval -EINVAL @p idx is out of range.
  * @retval -ENODEV The instance is not ready.
+ * @retval -EALREADY Disable while the application holds no enable.
+ * @retval -EOVERFLOW Enable while the application's enable count is saturated.
+ * @retval -EBUSY The service stayed locked by another caller.
  */
 __syscall int svc_regulator_enable(int idx, int on);
 
@@ -1155,6 +1173,7 @@ __syscall int svc_stepper_count(void);
  * @retval -EACCES with the capability but without a grant for this instance.
  * @retval -EINVAL @p idx is out of range.
  * @retval -ENODEV The instance is not ready.
+ * @retval -EBUSY The service stayed locked by another caller.
  */
 __syscall int svc_stepper_stop(int idx);
 
@@ -1164,7 +1183,8 @@ __syscall int svc_stepper_stop(int idx);
  *
  * The move is not awaited: completion is reported through a driver callback,
  * which cannot cross into user mode, so an application polls
- * @ref svc_stepper_position instead.
+ * @ref svc_stepper_position instead. A stepper the application last moved is
+ * stopped when the application is reclaimed.
  *
  * @param idx         Stepper index.
  * @param micro_steps Signed micro-step count.
@@ -1173,6 +1193,7 @@ __syscall int svc_stepper_stop(int idx);
  * @retval -EACCES with the capability but without a grant for this instance.
  * @retval -EINVAL @p idx is out of range.
  * @retval -ENODEV The instance is not ready.
+ * @retval -EBUSY The service stayed locked by another caller.
  */
 __syscall int svc_stepper_move_by(int idx, int32_t micro_steps);
 
@@ -1274,11 +1295,15 @@ __syscall int svc_file_close(int handle);
  * @brief Set a PWM channel duty cycle in per-mille. Needs @ref APP_CAP_PWM and a
  *        per-channel grant (@ref app_platform_grant_pwm).
  *
+ * A channel the application last set to a non-zero duty is set to zero duty
+ * when the application is reclaimed.
+ *
  * @param ch       Channel index.
  * @param permille Duty cycle in tenths of a percent (0..1000).
  * @retval 0 on success.
  * @retval -EPERM without @ref APP_CAP_PWM.
  * @retval -EACCES with the capability but without a grant for this channel.
+ * @retval -EBUSY The service stayed locked by another caller.
  */
 __syscall int svc_pwm_set(int ch, uint32_t permille);
 
@@ -1312,12 +1337,15 @@ void app_platform_grant_adc(int id, uint32_t ch_mask);
  * @brief Drive a granted status LED. Needs @ref APP_CAP_LED and a per-pin grant
  *        (@ref app_platform_grant_led).
  *
+ * A LED the application last lit is cleared when the application is reclaimed.
+ *
  * @param pin LED index in the range [0, @ref svc_led_count).
  * @param on Non-zero to light the LED, zero to clear it.
  * @retval 0 on success.
  * @retval -EPERM without @ref APP_CAP_LED.
  * @retval -EACCES with the capability but without a grant for this pin.
  * @retval -ENODEV if the board has no such LED.
+ * @retval -EBUSY The service stayed locked by another caller.
  */
 __syscall int svc_led_set(int pin, int on);
 
@@ -1402,9 +1430,13 @@ __syscall int svc_pulse_count(int32_t *count);
 /**
  * @brief Drive a motor-control PWM channel. Needs @ref APP_CAP_MOTOR.
  *
+ * A channel the application last set to a non-zero duty is set to zero duty
+ * when the application is reclaimed.
+ *
  * @param channel MCPWM output channel.
  * @param duty_pct Duty cycle, 0..100 percent.
- * @retval 0 on success, -EPERM without the capability, -EINVAL/-ENODEV otherwise.
+ * @retval 0 on success, -EPERM without the capability, -EBUSY if the service
+ *         stayed locked, -EINVAL/-ENODEV otherwise.
  */
 __syscall int svc_motor_set(uint32_t channel, uint32_t duty_pct);
 

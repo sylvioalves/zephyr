@@ -28,6 +28,7 @@
 #include "app_grants.h"
 
 #define MAX_APPS CONFIG_APP_PLATFORM_MAX_APPS
+#define SVC_LOCK_TIMEOUT K_SECONDS(2)
 
 static inline bool app_has_cap(app_caps_t mask)
 {
@@ -44,6 +45,9 @@ static const struct device *const counters[] = {
 #define COUNTER_COUNT ARRAY_SIZE(counters)
 
 static uint32_t counter_grant[MAX_APPS];
+/* Bit N set means this application issued the last start of counter N. */
+static uint32_t counter_started[MAX_APPS];
+static K_MUTEX_DEFINE(counter_lock);
 
 void app_platform_grant_counter(int id, uint32_t idx_mask)
 {
@@ -54,9 +58,20 @@ void app_platform_grant_counter(int id, uint32_t idx_mask)
 
 void app_platform_clear_counter_grants(int id)
 {
-	if (id >= 0 && id < MAX_APPS) {
-		counter_grant[id] = 0U;
+	if (id < 0 || id >= MAX_APPS) {
+		return;
 	}
+	counter_grant[id] = 0U;
+	if (app_svc_lock(&counter_lock, SVC_LOCK_TIMEOUT) != 0) {
+		return;
+	}
+	for (int i = 0; i < (int)COUNTER_COUNT; i++) {
+		if ((counter_started[id] & BIT(i)) != 0U) {
+			(void)counter_stop(counters[i]);
+		}
+	}
+	counter_started[id] = 0U;
+	(void)app_svc_unlock(&counter_lock);
 }
 
 /* Resolve a granted counter index to its device, separating "no capability"
@@ -96,7 +111,21 @@ int z_impl_svc_counter_start(int idx)
 	const struct device *dev;
 	int rc = granted_counter(idx, &dev);
 
-	return rc != 0 ? rc : counter_start(dev);
+	if (rc != 0) {
+		return rc;
+	}
+	if (app_svc_lock(&counter_lock, SVC_LOCK_TIMEOUT) != 0) {
+		return -EBUSY;
+	}
+	rc = counter_start(dev);
+	if (rc == 0) {
+		for (int i = 0; i < MAX_APPS; i++) {
+			counter_started[i] &= ~BIT(idx);
+		}
+		counter_started[app_platform_id_current()] |= BIT(idx);
+	}
+	(void)app_svc_unlock(&counter_lock);
+	return rc;
 }
 
 int z_impl_svc_counter_stop(int idx)
@@ -104,7 +133,20 @@ int z_impl_svc_counter_stop(int idx)
 	const struct device *dev;
 	int rc = granted_counter(idx, &dev);
 
-	return rc != 0 ? rc : counter_stop(dev);
+	if (rc != 0) {
+		return rc;
+	}
+	if (app_svc_lock(&counter_lock, SVC_LOCK_TIMEOUT) != 0) {
+		return -EBUSY;
+	}
+	rc = counter_stop(dev);
+	if (rc == 0) {
+		for (int i = 0; i < MAX_APPS; i++) {
+			counter_started[i] &= ~BIT(idx);
+		}
+	}
+	(void)app_svc_unlock(&counter_lock);
+	return rc;
 }
 
 int z_impl_svc_counter_read(int idx, uint32_t *ticks)

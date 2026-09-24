@@ -30,6 +30,7 @@
 #include "app_grants.h"
 
 #define MAX_APPS CONFIG_APP_PLATFORM_MAX_APPS
+#define SVC_LOCK_TIMEOUT K_SECONDS(2)
 
 static inline bool app_has_cap(app_caps_t mask)
 {
@@ -208,6 +209,9 @@ static const struct device *const regulators[] = {
 #define REG_COUNT ARRAY_SIZE(regulators)
 
 static uint32_t reg_grant[MAX_APPS];
+/* Outstanding enables each application holds on each regulator. */
+static uint16_t reg_enables[MAX_APPS][REG_COUNT];
+static K_MUTEX_DEFINE(reg_lock);
 
 void app_platform_grant_regulator(int id, uint32_t idx_mask)
 {
@@ -218,9 +222,19 @@ void app_platform_grant_regulator(int id, uint32_t idx_mask)
 
 void app_platform_clear_regulator_grants(int id)
 {
-	if (id >= 0 && id < MAX_APPS) {
-		reg_grant[id] = 0U;
+	if (id < 0 || id >= MAX_APPS) {
+		return;
 	}
+	reg_grant[id] = 0U;
+	if (app_svc_lock(&reg_lock, SVC_LOCK_TIMEOUT) != 0) {
+		return;
+	}
+	for (int i = 0; i < (int)REG_COUNT; i++) {
+		for (; reg_enables[id][i] > 0U; reg_enables[id][i]--) {
+			(void)regulator_disable(regulators[i]);
+		}
+	}
+	(void)app_svc_unlock(&reg_lock);
 }
 
 static int granted_regulator(int idx, const struct device **out)
@@ -252,15 +266,39 @@ int z_impl_svc_regulator_count(void)
 	return (int)REG_COUNT;
 }
 
+/* A disable only releases an enable this application holds. */
 int z_impl_svc_regulator_enable(int idx, int on)
 {
 	const struct device *dev;
+	uint16_t *count;
 	int rc = granted_regulator(idx, &dev);
 
 	if (rc != 0) {
 		return rc;
 	}
-	return on != 0 ? regulator_enable(dev) : regulator_disable(dev);
+	count = &reg_enables[app_platform_id_current()][idx];
+	if (app_svc_lock(&reg_lock, SVC_LOCK_TIMEOUT) != 0) {
+		return -EBUSY;
+	}
+	if (on != 0) {
+		if (*count == UINT16_MAX) {
+			rc = -EOVERFLOW;
+		} else {
+			rc = regulator_enable(dev);
+			if (rc == 0) {
+				(*count)++;
+			}
+		}
+	} else if (*count == 0U) {
+		rc = -EALREADY;
+	} else {
+		rc = regulator_disable(dev);
+		if (rc == 0) {
+			(*count)--;
+		}
+	}
+	(void)app_svc_unlock(&reg_lock);
+	return rc;
 }
 #endif /* CONFIG_APP_PLATFORM_REGULATOR */
 
@@ -278,6 +316,9 @@ static const struct device *const steppers[] = {
 #define STEP_COUNT ARRAY_SIZE(steppers)
 
 static uint32_t step_grant[MAX_APPS];
+/* Bit N set means this application issued the last move of stepper N. */
+static uint32_t step_moved[MAX_APPS];
+static K_MUTEX_DEFINE(step_lock);
 
 void app_platform_grant_stepper(int id, uint32_t idx_mask)
 {
@@ -288,9 +329,20 @@ void app_platform_grant_stepper(int id, uint32_t idx_mask)
 
 void app_platform_clear_stepper_grants(int id)
 {
-	if (id >= 0 && id < MAX_APPS) {
-		step_grant[id] = 0U;
+	if (id < 0 || id >= MAX_APPS) {
+		return;
 	}
+	step_grant[id] = 0U;
+	if (app_svc_lock(&step_lock, SVC_LOCK_TIMEOUT) != 0) {
+		return;
+	}
+	for (int i = 0; i < (int)STEP_COUNT; i++) {
+		if ((step_moved[id] & BIT(i)) != 0U) {
+			(void)stepper_ctrl_stop(steppers[i]);
+		}
+	}
+	step_moved[id] = 0U;
+	(void)app_svc_unlock(&step_lock);
 }
 
 static int granted_stepper(int idx, const struct device **out)
@@ -334,7 +386,17 @@ int z_impl_svc_stepper_stop(int idx)
 	if (rc != 0) {
 		return rc;
 	}
-	return stepper_ctrl_stop(dev);
+	if (app_svc_lock(&step_lock, SVC_LOCK_TIMEOUT) != 0) {
+		return -EBUSY;
+	}
+	rc = stepper_ctrl_stop(dev);
+	if (rc == 0) {
+		for (int i = 0; i < MAX_APPS; i++) {
+			step_moved[i] &= ~BIT(idx);
+		}
+	}
+	(void)app_svc_unlock(&step_lock);
+	return rc;
 }
 
 /* Movement is fire-and-forget: completion is reported through a callback, and
@@ -349,7 +411,18 @@ int z_impl_svc_stepper_move_by(int idx, int32_t micro_steps)
 	if (rc != 0) {
 		return rc;
 	}
-	return stepper_ctrl_move_by(dev, micro_steps);
+	if (app_svc_lock(&step_lock, SVC_LOCK_TIMEOUT) != 0) {
+		return -EBUSY;
+	}
+	rc = stepper_ctrl_move_by(dev, micro_steps);
+	if (rc == 0) {
+		for (int i = 0; i < MAX_APPS; i++) {
+			step_moved[i] &= ~BIT(idx);
+		}
+		step_moved[app_platform_id_current()] |= BIT(idx);
+	}
+	(void)app_svc_unlock(&step_lock);
+	return rc;
 }
 
 int z_impl_svc_stepper_position(int idx, int32_t *pos)

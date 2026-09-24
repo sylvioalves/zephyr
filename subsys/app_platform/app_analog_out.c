@@ -25,6 +25,7 @@
 #include "app_grants.h"
 
 #define MAX_APPS CONFIG_APP_PLATFORM_MAX_APPS
+#define SVC_LOCK_TIMEOUT K_SECONDS(2)
 
 static inline bool app_has_cap(app_caps_t mask)
 {
@@ -46,6 +47,9 @@ static const struct device *const dacs[] = {
 
 static uint32_t dac_grant[MAX_APPS];
 static bool dac_ready[MAX_APPS];
+/* Bit N set means this application last wrote a non-zero code to channel N. */
+static uint32_t dac_driven[MAX_APPS];
+static K_MUTEX_DEFINE(dac_lock);
 
 void app_platform_grant_dac(int id, uint32_t ch_mask)
 {
@@ -56,10 +60,21 @@ void app_platform_grant_dac(int id, uint32_t ch_mask)
 
 void app_platform_clear_dac_grants(int id)
 {
-	if (id >= 0 && id < MAX_APPS) {
-		dac_grant[id] = 0U;
-		dac_ready[id] = false;
+	if (id < 0 || id >= MAX_APPS) {
+		return;
 	}
+	dac_grant[id] = 0U;
+	dac_ready[id] = false;
+	if (app_svc_lock(&dac_lock, SVC_LOCK_TIMEOUT) != 0) {
+		return;
+	}
+	for (int i = 0; i < (int)DAC_COUNT; i++) {
+		if ((dac_driven[id] & BIT(i)) != 0U) {
+			(void)dac_write_value(dacs[i], 0, 0U);
+		}
+	}
+	dac_driven[id] = 0U;
+	(void)app_svc_unlock(&dac_lock);
 }
 
 int z_impl_svc_dac_count(void)
@@ -104,7 +119,22 @@ int z_impl_svc_dac_write(int ch, uint32_t value)
 		}
 		dac_ready[id] = true;
 	}
-	return dac_write_value(dacs[ch], 0, value);
+	if (app_svc_lock(&dac_lock, SVC_LOCK_TIMEOUT) != 0) {
+		return -EBUSY;
+	}
+
+	int rc = dac_write_value(dacs[ch], 0, value);
+
+	if (rc == 0) {
+		for (int i = 0; i < MAX_APPS; i++) {
+			dac_driven[i] &= ~BIT(ch);
+		}
+		if (value != 0U) {
+			dac_driven[id] |= BIT(ch);
+		}
+	}
+	(void)app_svc_unlock(&dac_lock);
+	return rc;
 }
 #endif /* CONFIG_APP_PLATFORM_DAC */
 

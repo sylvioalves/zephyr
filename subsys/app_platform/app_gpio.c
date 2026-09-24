@@ -9,13 +9,15 @@
  * the board's "leds" devicetree node. An application that holds APP_CAP_GPIO may
  * drive only the lines it was granted (see app_platform_grant_gpio), so the
  * capability admits the service and a per-line mask scopes it to specific pins -
- * the second-level grant pattern. Driving a line is stateless beyond that check.
+ * the second-level grant pattern. A line an application last drove active is
+ * driven inactive when that application is reclaimed.
  */
 
 #include <zephyr/app_platform/app_services.h>
 #include <zephyr/app_platform/app_platform.h>
 
 #include "app_events.h"
+#include "app_grants.h"
 
 #include <zephyr/kernel.h>
 #include <zephyr/internal/syscall_handler.h>
@@ -44,15 +46,34 @@ static const char *const line_name[] = {
 
 #define MAX_APPS CONFIG_APP_PLATFORM_MAX_APPS
 #define IO_NAME_MAX 24
+#define SVC_LOCK_TIMEOUT K_SECONDS(2)
 
 static uint32_t line_grant[MAX_APPS];
+/* Bit N set means this application last drove line N active. */
+static uint32_t line_active[MAX_APPS];
+static K_MUTEX_DEFINE(line_lock);
 
-/* Drop every line grant of a slot that is being handed to a new application. */
+/* Drop every line grant of a slot that is being handed to a new application
+ * and drive the lines it last set active back to inactive.
+ */
 void app_platform_clear_gpio_grants(int id)
 {
-	if (id >= 0 && id < MAX_APPS) {
-		line_grant[id] = 0U;
+	if (id < 0 || id >= MAX_APPS) {
+		return;
 	}
+	line_grant[id] = 0U;
+	if (app_svc_lock(&line_lock, SVC_LOCK_TIMEOUT) != 0) {
+		return;
+	}
+#if DT_NODE_EXISTS(LEDS_NODE)
+	for (int i = 0; i < (int)LINE_COUNT; i++) {
+		if ((line_active[id] & BIT(i)) != 0U) {
+			(void)gpio_pin_set_dt(&lines[i], 0);
+		}
+	}
+#endif
+	line_active[id] = 0U;
+	(void)app_svc_unlock(&line_lock);
 }
 static bool gpio_ready;
 
@@ -156,8 +177,23 @@ int z_impl_svc_gpio_set(int line, int on)
 		return -EACCES;
 	}
 #if DT_NODE_EXISTS(LEDS_NODE)
+	int rc;
+
+	if (app_svc_lock(&line_lock, SVC_LOCK_TIMEOUT) != 0) {
+		return -EBUSY;
+	}
 	gpio_ready_init();
-	return gpio_pin_set_dt(&lines[line], on ? 1 : 0);
+	rc = gpio_pin_set_dt(&lines[line], on ? 1 : 0);
+	if (rc == 0) {
+		for (int i = 0; i < MAX_APPS; i++) {
+			line_active[i] &= ~BIT(line);
+		}
+		if (on != 0) {
+			line_active[id] |= BIT(line);
+		}
+	}
+	(void)app_svc_unlock(&line_lock);
+	return rc;
 #else
 	ARG_UNUSED(on);
 	return -ENODEV;

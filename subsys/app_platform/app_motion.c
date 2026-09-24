@@ -23,6 +23,11 @@
 #include <zephyr/internal/syscall_handler.h>
 #include <errno.h>
 
+#include "app_grants.h"
+
+#define MAX_APPS CONFIG_APP_PLATFORM_MAX_APPS
+#define SVC_LOCK_TIMEOUT K_SECONDS(2)
+
 static inline bool app_has_cap(app_caps_t mask)
 {
 	return (app_platform_caps_current() & mask) == mask;
@@ -119,20 +124,63 @@ int z_impl_svc_pulse_count(int32_t *count)
 
 static const struct device *const mcpwm = DEVICE_DT_GET(DT_NODELABEL(mcpwm0));
 static const uint32_t channel_map[MOTOR_CHANNELS] = { 0U, 1U };
+/* Bit N set means this application last drove channel N to a non-zero duty. */
+static uint32_t motor_driven[MAX_APPS];
+static K_MUTEX_DEFINE(motor_lock);
+
+static void motor_release(int id)
+{
+	if (id < 0 || id >= MAX_APPS) {
+		return;
+	}
+	if (app_svc_lock(&motor_lock, SVC_LOCK_TIMEOUT) != 0) {
+		return;
+	}
+	for (uint32_t ch = 0U; ch < MOTOR_CHANNELS; ch++) {
+		if ((motor_driven[id] & BIT(ch)) != 0U) {
+			(void)pwm_set(mcpwm, channel_map[ch], MOTOR_PERIOD, 0U, 0);
+		}
+	}
+	motor_driven[id] = 0U;
+	(void)app_svc_unlock(&motor_lock);
+}
+
+static int motor_init(void)
+{
+	return app_platform_on_reclaim(motor_release);
+}
+SYS_INIT(motor_init, APPLICATION, 99);
 
 int z_impl_svc_motor_set(uint32_t channel, uint32_t duty_pct)
 {
 	if (!app_has_cap(APP_CAP_MOTOR)) {
 		return -EPERM;
 	}
-	if (!device_is_ready(mcpwm) || channel >= MOTOR_CHANNELS ||
-	    duty_pct > 100U) {
+
+	int id = app_platform_id_current();
+
+	if (id < 0 || id >= MAX_APPS || !device_is_ready(mcpwm) ||
+	    channel >= MOTOR_CHANNELS || duty_pct > 100U) {
 		return -EINVAL;
 	}
 
 	uint32_t pulse = (uint32_t)(((uint64_t)MOTOR_PERIOD * duty_pct) / 100U);
+	int rc;
 
-	return pwm_set(mcpwm, channel_map[channel], MOTOR_PERIOD, pulse, 0);
+	if (app_svc_lock(&motor_lock, SVC_LOCK_TIMEOUT) != 0) {
+		return -EBUSY;
+	}
+	rc = pwm_set(mcpwm, channel_map[channel], MOTOR_PERIOD, pulse, 0);
+	if (rc == 0) {
+		for (int i = 0; i < MAX_APPS; i++) {
+			motor_driven[i] &= ~BIT(channel);
+		}
+		if (duty_pct != 0U) {
+			motor_driven[id] |= BIT(channel);
+		}
+	}
+	(void)app_svc_unlock(&motor_lock);
+	return rc;
 }
 #else  /* no mcpwm0 node */
 int z_impl_svc_motor_set(uint32_t channel, uint32_t duty_pct)

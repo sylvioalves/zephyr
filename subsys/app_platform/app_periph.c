@@ -22,7 +22,10 @@
 #include <zephyr/drivers/adc.h>
 #include <errno.h>
 
+#include "app_grants.h"
+
 #define MAX_APPS CONFIG_APP_PLATFORM_MAX_APPS
+#define SVC_LOCK_TIMEOUT K_SECONDS(2)
 
 static inline bool app_has_cap(app_caps_t mask)
 {
@@ -54,6 +57,9 @@ static const char *const pwm_name[] = {
 #endif
 
 static uint32_t pwm_grant[MAX_APPS];
+/* Bit N set means this application last drove channel N to a non-zero duty. */
+static uint32_t pwm_driven[MAX_APPS];
+static K_MUTEX_DEFINE(pwm_lock);
 
 void app_platform_grant_pwm(int id, uint32_t ch_mask)
 {
@@ -81,8 +87,22 @@ int z_impl_svc_pwm_set(int ch, uint32_t permille)
 		return -ENODEV;
 	}
 	uint32_t period = pwm_ch[ch].period;
+	int rc;
 
-	return pwm_set_dt(&pwm_ch[ch], period, (period * permille) / 1000U);
+	if (app_svc_lock(&pwm_lock, SVC_LOCK_TIMEOUT) != 0) {
+		return -EBUSY;
+	}
+	rc = pwm_set_dt(&pwm_ch[ch], period, (period * permille) / 1000U);
+	if (rc == 0) {
+		for (int i = 0; i < MAX_APPS; i++) {
+			pwm_driven[i] &= ~BIT(ch);
+		}
+		if (permille != 0U) {
+			pwm_driven[id] |= BIT(ch);
+		}
+	}
+	(void)app_svc_unlock(&pwm_lock);
+	return rc;
 #else
 	ARG_UNUSED(permille);
 	return -ENODEV;
@@ -125,13 +145,28 @@ static const struct adc_dt_spec adc_ch[] = {
 
 static uint32_t adc_grant[MAX_APPS];
 
-/* Drop the channel grants of a slot being handed to a new application. */
+/* Drop the channel grants of a slot being handed to a new application and
+ * return the PWM channels it last drove to a zero duty.
+ */
 void app_platform_clear_periph_grants(int id)
 {
-	if (id >= 0 && id < MAX_APPS) {
-		pwm_grant[id] = 0U;
-		adc_grant[id] = 0U;
+	if (id < 0 || id >= MAX_APPS) {
+		return;
 	}
+	pwm_grant[id] = 0U;
+	adc_grant[id] = 0U;
+	if (app_svc_lock(&pwm_lock, SVC_LOCK_TIMEOUT) != 0) {
+		return;
+	}
+#if DT_HAS_ALIAS(app_pwm0)
+	for (int i = 0; i < (int)PWM_COUNT; i++) {
+		if ((pwm_driven[id] & BIT(i)) != 0U) {
+			(void)pwm_set_dt(&pwm_ch[i], pwm_ch[i].period, 0U);
+		}
+	}
+#endif
+	pwm_driven[id] = 0U;
+	(void)app_svc_unlock(&pwm_lock);
 }
 static bool adc_ready;
 

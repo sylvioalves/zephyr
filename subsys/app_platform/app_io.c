@@ -34,6 +34,7 @@
 
 #define MAX_APPS CONFIG_APP_PLATFORM_MAX_APPS
 #define IO_NAME_MAX 24
+#define SVC_LOCK_TIMEOUT K_SECONDS(2)
 
 static inline bool app_has_cap(app_caps_t mask)
 {
@@ -53,13 +54,9 @@ static inline bool app_has_cap(app_caps_t mask)
  * even on a board that wires no LED at all.
  */
 static uint32_t led_grant[MAX_APPS];
-
-void app_platform_clear_led_grants(int id)
-{
-	if (id >= 0 && id < MAX_APPS) {
-		led_grant[id] = 0U;
-	}
-}
+/* Bit N set means this application last drove LED pin N on. */
+static uint32_t led_on[MAX_APPS];
+static K_MUTEX_DEFINE(led_lock);
 
 #if DT_HAS_ALIAS(led0)
 static const struct gpio_dt_spec led[] = {
@@ -120,7 +117,22 @@ int z_impl_svc_led_set(int pin, int on)
 	if (!gpio_is_ready_dt(&led[pin])) {
 		return -ENODEV;
 	}
-	return gpio_pin_set_dt(&led[pin], on ? 1 : 0);
+	if (app_svc_lock(&led_lock, SVC_LOCK_TIMEOUT) != 0) {
+		return -EBUSY;
+	}
+
+	int rc = gpio_pin_set_dt(&led[pin], on ? 1 : 0);
+
+	if (rc == 0) {
+		for (int i = 0; i < MAX_APPS; i++) {
+			led_on[i] &= ~BIT(pin);
+		}
+		if (on != 0) {
+			led_on[id] |= BIT(pin);
+		}
+	}
+	(void)app_svc_unlock(&led_lock);
+	return rc;
 }
 
 int z_impl_svc_led_count(void)
@@ -171,6 +183,26 @@ int z_impl_svc_led_find(const char *name)
 	return -ENOENT;
 }
 #endif /* DT_HAS_ALIAS(led0) */
+
+void app_platform_clear_led_grants(int id)
+{
+	if (id < 0 || id >= MAX_APPS) {
+		return;
+	}
+	led_grant[id] = 0U;
+	if (app_svc_lock(&led_lock, SVC_LOCK_TIMEOUT) != 0) {
+		return;
+	}
+#if DT_HAS_ALIAS(led0)
+	for (int i = 0; i < (int)LED_COUNT; i++) {
+		if ((led_on[id] & BIT(i)) != 0U) {
+			(void)gpio_pin_set_dt(&led[i], 0);
+		}
+	}
+#endif
+	led_on[id] = 0U;
+	(void)app_svc_unlock(&led_lock);
+}
 
 /* ---- button / input events ---- */
 

@@ -53,8 +53,14 @@ A supervisor launches applications and acts on faults. An application marked
 resilient is relaunched after a fault, up to
 :kconfig:option:`CONFIG_APP_PLATFORM_MAX_RESTARTS` times; one that keeps
 faulting is left stopped rather than respawning without end. Applications that
-opt into monitoring also get a watchdog channel, and a reaper releases the
-services a reclaimed application was holding.
+opt into monitoring also get a watchdog channel.
+
+When an application stops or is reclaimed, a reaper drops its resource grants
+and returns the hardware it drove to idle: regulator enables it holds are
+released, counters and steppers it started are stopped, and PWM, motor, DAC,
+GPIO and LED outputs it last set are driven back to zero. An output another
+application set more recently is left as it is. Other device state an
+application changed, such as the real-time clock or EEPROM contents, is kept.
 
 Loading and verification
 ========================
