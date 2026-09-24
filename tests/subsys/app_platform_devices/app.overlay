@@ -11,6 +11,8 @@
  */
 
 #include <zephyr/dt-bindings/i2c/i2c.h>
+#include <zephyr/dt-bindings/gpio/gpio.h>
+#include <zephyr/dt-bindings/pwm/pwm.h>
 
 / {
 	dac_emul: dac_emul {
@@ -34,6 +36,65 @@
 	fake_stepper: fake-stepper-controller {
 		compatible = "zephyr,fake-stepper-ctrl";
 		status = "okay";
+	};
+
+	test_gpio: test_gpio {
+		compatible = "zephyr,gpio-emul";
+		gpio-controller;
+		#gpio-cells = <2>;
+		ngpios = <4>;
+		status = "okay";
+	};
+
+	leds {
+		compatible = "gpio-leds";
+
+		test_line: test_line {
+			gpios = <&test_gpio 0 GPIO_ACTIVE_HIGH>;
+		};
+
+		test_led: test_led {
+			gpios = <&test_gpio 1 GPIO_ACTIVE_HIGH>;
+		};
+	};
+
+	fake_pwm: fake_pwm {
+		compatible = "zephyr,fake-pwm";
+		#pwm-cells = <2>;
+		frequency = <1000000>;
+		status = "okay";
+	};
+
+	/* Stands in for the motor-control PWM the motor service looks up. */
+	mcpwm0: fake_mcpwm {
+		compatible = "zephyr,fake-pwm";
+		#pwm-cells = <2>;
+		frequency = <1000000>;
+		status = "okay";
+	};
+
+	pwmleds {
+		compatible = "pwm-leds";
+
+		test_pwm: test_pwm {
+			pwms = <&fake_pwm 0 PWM_MSEC(1)>;
+		};
+	};
+
+	adc_emul: adc_emul {
+		compatible = "zephyr,adc-emul";
+		nchannels = <1>;
+		#io-channel-cells = <1>;
+		status = "okay";
+	};
+
+	zephyr,user {
+		io-channels = <&adc_emul 0>;
+	};
+
+	aliases {
+		led0 = &test_led;
+		app-pwm0 = &test_pwm;
 	};
 
 	fake_i2c_bus: i2c@100 {

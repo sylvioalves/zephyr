@@ -18,6 +18,10 @@
 #include <zephyr/app_platform/app_platform.h>
 #include <zephyr/app_platform/app_services.h>
 #include <zephyr/app_platform/app_caps.h>
+#include <zephyr/drivers/dac/dac_emul.h>
+#include <zephyr/drivers/gpio/gpio_emul.h>
+#include <zephyr/drivers/pwm/pwm_fake.h>
+#include <zephyr/drivers/regulator.h>
 #include <zephyr/fs/fs.h>
 #include <zephyr/fs/littlefs.h>
 #include <zephyr/storage/flash_map.h>
@@ -29,6 +33,8 @@
  * the framework's globals.
  */
 DEFINE_FFF_GLOBALS;
+
+DECLARE_FAKE_VALUE_FUNC(int, fake_stepper_ctrl_stop, const struct device *);
 
 K_APPMEM_PARTITION_DEFINE(report_part);
 
@@ -442,6 +448,268 @@ ZTEST(devices, test_capability_above_bit31_reaches_service)
 	/* Held: answers. Not held: -EPERM. Truncation would break the first. */
 	expect_rc("w_ok", power_read, APP_CAP_LOG | APP_CAP_POWER, 0);
 	expect_rc("w_no", power_ungranted, APP_CAP_LOG | APP_CAP_STEPPER, -EPERM);
+}
+
+/* ---- reclaim returns hardware to idle ---- */
+
+K_APP_DMEM(report_part) volatile int holding;
+K_APP_DMEM(report_part) volatile int release;
+
+/* Launch an application that reports, then keeps running until released, so
+ * the hardware it drove can be inspected before and after its reclaim.
+ */
+static void launch_held(const char *name, app_entry_t entry, app_caps_t caps)
+{
+	const struct app_def def = {
+		.name = name, .source = APP_BUILTIN, .entry = entry, .caps = caps,
+	};
+	int id;
+
+	report_rc = -9999;
+	report_done = 0;
+	holding = 0;
+	release = 0;
+
+	id = app_platform_launch(&def);
+	zassert_true(id >= 0, "%s launch failed", name);
+	k_mem_domain_add_partition(app_platform_domain(id), &report_part);
+	for (int i = 0; i < 400 && holding == 0; i++) {
+		k_msleep(5);
+	}
+	zassert_equal(holding, 1, "%s never reported", name);
+	zassert_equal(report_rc, 0, "%s rc %d", name, report_rc);
+}
+
+static void release_held(const char *name)
+{
+	release = 1;
+	zassert_true(wait_slot_free(name, 2000), "%s never exited", name);
+}
+
+static void hold_until_released(int rc)
+{
+	report_rc = rc;
+	report_done = 1;
+	holding = 1;
+	while (release == 0) {
+		k_msleep(1);
+	}
+}
+
+static void reg_enable_twice(void *a)
+{
+	ARG_UNUSED(a);
+
+	int rc = svc_regulator_enable(0, 1);
+
+	if (rc == 0) {
+		rc = svc_regulator_enable(0, 1);
+	}
+	hold_until_released(rc);
+}
+
+ZTEST(devices, test_regulator_released_on_reclaim)
+{
+	const struct device *reg = DEVICE_DT_GET(DT_NODELABEL(fake_reg0));
+
+	for (int i = 0; i < CONFIG_APP_PLATFORM_MAX_APPS; i++) {
+		app_platform_grant_regulator(i, BIT(0));
+	}
+	launch_held("g_rc", reg_enable_twice, APP_CAP_LOG | APP_CAP_REGULATOR);
+	zassert_true(regulator_is_enabled(reg), "enable did not reach the regulator");
+	release_held("g_rc");
+	zassert_false(regulator_is_enabled(reg), "reclaim left the regulator enabled");
+}
+
+static void reg_disable_only(void *a)
+{
+	ARG_UNUSED(a);
+	report_rc = svc_regulator_enable(0, 0);
+	report_done = 1;
+}
+
+static void reg_disable_twice(void *a)
+{
+	ARG_UNUSED(a);
+
+	int rc = svc_regulator_enable(0, 1);
+
+	if (rc == 0) {
+		rc = svc_regulator_enable(0, 0);
+	}
+	if (rc == 0) {
+		rc = svc_regulator_enable(0, 0);
+	}
+	report_rc = rc;
+	report_done = 1;
+}
+
+/* A reference the system holds must survive an application's unmatched
+ * disables.
+ */
+ZTEST(devices, test_regulator_disable_needs_own_enable)
+{
+	const struct device *reg = DEVICE_DT_GET(DT_NODELABEL(fake_reg0));
+
+	zassert_ok(regulator_enable(reg));
+
+	for (int i = 0; i < CONFIG_APP_PLATFORM_MAX_APPS; i++) {
+		app_platform_grant_regulator(i, BIT(0));
+	}
+	expect_rc("g_do", reg_disable_only, APP_CAP_LOG | APP_CAP_REGULATOR, -EALREADY);
+	zassert_true(regulator_is_enabled(reg), "system reference was dropped");
+
+	for (int i = 0; i < CONFIG_APP_PLATFORM_MAX_APPS; i++) {
+		app_platform_grant_regulator(i, BIT(0));
+	}
+	expect_rc("g_dt", reg_disable_twice, APP_CAP_LOG | APP_CAP_REGULATOR, -EALREADY);
+	zassert_true(regulator_is_enabled(reg), "system reference was dropped");
+
+	zassert_ok(regulator_disable(reg));
+	zassert_false(regulator_is_enabled(reg));
+}
+
+static void step_move_only(void *a)
+{
+	ARG_UNUSED(a);
+	report_rc = svc_stepper_move_by(0, 100);
+	report_done = 1;
+}
+
+ZTEST(devices, test_stepper_stopped_on_reclaim)
+{
+	const struct device *step = DEVICE_DT_GET(DT_NODELABEL(fake_stepper));
+	unsigned int stops = fake_stepper_ctrl_stop_fake.call_count;
+
+	for (int i = 0; i < CONFIG_APP_PLATFORM_MAX_APPS; i++) {
+		app_platform_grant_stepper(i, BIT(0));
+	}
+	expect_rc("s_rc", step_move_only, APP_CAP_LOG | APP_CAP_STEPPER, 0);
+	zassert_equal(fake_stepper_ctrl_stop_fake.call_count, stops + 1U,
+		      "reclaim did not stop the stepper");
+	zassert_equal_ptr(fake_stepper_ctrl_stop_fake.arg0_val, step);
+}
+
+static void dac_write_held(void *a)
+{
+	ARG_UNUSED(a);
+	hold_until_released(svc_dac_write(0, 128));
+}
+
+ZTEST(devices, test_dac_idle_on_reclaim)
+{
+	const struct device *dac = DEVICE_DT_GET(DT_NODELABEL(dac_emul));
+	uint32_t val = 0U;
+
+	for (int i = 0; i < CONFIG_APP_PLATFORM_MAX_APPS; i++) {
+		app_platform_grant_dac(i, BIT(0));
+	}
+	launch_held("d_rc", dac_write_held, APP_CAP_LOG | APP_CAP_DAC);
+	zassert_ok(dac_emul_value_get(dac, 0, &val));
+	zassert_equal(val, 128U, "write did not reach the DAC");
+	release_held("d_rc");
+	zassert_ok(dac_emul_value_get(dac, 0, &val));
+	zassert_equal(val, 0U, "reclaim left the DAC driven");
+}
+
+static void pwm_set_half(void *a)
+{
+	ARG_UNUSED(a);
+	report_rc = svc_pwm_set(0, 500U);
+	report_done = 1;
+}
+
+static void pwm_set_then_idle(void *a)
+{
+	ARG_UNUSED(a);
+
+	int rc = svc_pwm_set(0, 500U);
+
+	if (rc == 0) {
+		rc = svc_pwm_set(0, 0U);
+	}
+	report_rc = rc;
+	report_done = 1;
+}
+
+ZTEST(devices, test_pwm_idle_on_reclaim)
+{
+	const struct device *pwm = DEVICE_DT_GET(DT_NODELABEL(fake_pwm));
+
+	for (int i = 0; i < CONFIG_APP_PLATFORM_MAX_APPS; i++) {
+		app_platform_grant_pwm(i, BIT(0));
+	}
+	expect_rc("w_rc", pwm_set_half, APP_CAP_LOG | APP_CAP_PWM, 0);
+	zassert_equal(fake_pwm_set_cycles_fake.call_count, 2U,
+		      "reclaim did not reset the channel");
+	zassert_equal_ptr(fake_pwm_set_cycles_fake.arg0_val, pwm);
+	zassert_equal(fake_pwm_set_cycles_fake.arg1_val, 0U);
+	zassert_equal(fake_pwm_set_cycles_fake.arg2_val, 1000U);
+	zassert_equal(fake_pwm_set_cycles_fake.arg3_val, 0U);
+
+	/* A channel the application already returned to idle is left alone. */
+	for (int i = 0; i < CONFIG_APP_PLATFORM_MAX_APPS; i++) {
+		app_platform_grant_pwm(i, BIT(0));
+	}
+	expect_rc("w_id", pwm_set_then_idle, APP_CAP_LOG | APP_CAP_PWM, 0);
+	zassert_equal(fake_pwm_set_cycles_fake.call_count, 4U);
+}
+
+static void motor_set_half(void *a)
+{
+	ARG_UNUSED(a);
+	report_rc = svc_motor_set(1U, 50U);
+	report_done = 1;
+}
+
+ZTEST(devices, test_motor_idle_on_reclaim)
+{
+	const struct device *mcpwm = DEVICE_DT_GET(DT_NODELABEL(mcpwm0));
+
+	expect_rc("m_rc", motor_set_half, APP_CAP_LOG | APP_CAP_MOTOR, 0);
+	zassert_equal(fake_pwm_set_cycles_fake.call_count, 2U,
+		      "reclaim did not reset the channel");
+	zassert_equal_ptr(fake_pwm_set_cycles_fake.arg0_val, mcpwm);
+	zassert_equal(fake_pwm_set_cycles_fake.arg1_val, 1U);
+	zassert_equal(fake_pwm_set_cycles_fake.arg3_val, 0U);
+}
+
+static void gpio_set_held(void *a)
+{
+	ARG_UNUSED(a);
+	hold_until_released(svc_gpio_set(0, 1));
+}
+
+ZTEST(devices, test_gpio_inactive_on_reclaim)
+{
+	const struct gpio_dt_spec line = GPIO_DT_SPEC_GET(DT_NODELABEL(test_line), gpios);
+
+	for (int i = 0; i < CONFIG_APP_PLATFORM_MAX_APPS; i++) {
+		app_platform_grant_gpio(i, BIT(0));
+	}
+	launch_held("l_rc", gpio_set_held, APP_CAP_LOG | APP_CAP_GPIO);
+	zassert_equal(gpio_emul_output_get_dt(&line), 1, "line was not driven");
+	release_held("l_rc");
+	zassert_equal(gpio_emul_output_get_dt(&line), 0, "reclaim left the line active");
+}
+
+static void led_set_held(void *a)
+{
+	ARG_UNUSED(a);
+	hold_until_released(svc_led_set(0, 1));
+}
+
+ZTEST(devices, test_led_off_on_reclaim)
+{
+	const struct gpio_dt_spec led = GPIO_DT_SPEC_GET(DT_NODELABEL(test_led), gpios);
+
+	for (int i = 0; i < CONFIG_APP_PLATFORM_MAX_APPS; i++) {
+		app_platform_grant_led(i, BIT(0));
+	}
+	launch_held("o_rc", led_set_held, APP_CAP_LOG | APP_CAP_LED);
+	zassert_equal(gpio_emul_output_get_dt(&led), 1, "LED was not lit");
+	release_held("o_rc");
+	zassert_equal(gpio_emul_output_get_dt(&led), 0, "reclaim left the LED lit");
 }
 
 /* ---- the per-application file sandbox ---- */
