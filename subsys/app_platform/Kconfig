@@ -438,6 +438,18 @@ config APP_PLATFORM_EVENT_QUEUE_LEN
 	  How many events one application may fall behind before the oldest
 	  are dropped.
 
+config APP_PLATFORM_RGB
+	bool "Addressable RGB LED service"
+	depends on APP_PLATFORM_SERVICES
+	depends on LED_STRIP
+	depends on $(dt_alias_enabled,led-strip)
+	default y
+	help
+	  Expose the pixels of the LED strip on the led-strip devicetree alias
+	  as a capability-gated service with a per-application pixel grant.
+	  The platform keeps the colors and refreshes the whole strip on every
+	  change. At most the first 32 pixels of the strip are exposed.
+
 config APP_PLATFORM_MOTION
 	bool "Shared pulse-counter and motor-control PWM services"
 	depends on APP_PLATFORM_SERVICES

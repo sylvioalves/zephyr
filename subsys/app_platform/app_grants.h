@@ -61,6 +61,15 @@ static inline void app_platform_clear_led_grants(int id)
 }
 #endif
 
+#ifdef CONFIG_APP_PLATFORM_RGB
+void app_platform_clear_rgb_grants(int id);
+#else
+static inline void app_platform_clear_rgb_grants(int id)
+{
+	ARG_UNUSED(id);
+}
+#endif
+
 #ifdef CONFIG_APP_PLATFORM_PERIPH
 void app_platform_clear_periph_grants(int id);
 #else

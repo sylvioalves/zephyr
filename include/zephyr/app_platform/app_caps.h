@@ -69,9 +69,10 @@ typedef uint64_t app_caps_t;
 #define APP_CAP_REGULATOR APP_CAP_BIT(34) /**< granted regulator instances */
 #define APP_CAP_STEPPER APP_CAP_BIT(35)  /**< granted stepper motor instances */
 #define APP_CAP_FS      APP_CAP_BIT(36)  /**< files under the app's private root */
+#define APP_CAP_RGB     APP_CAP_BIT(37)  /**< set granted addressable RGB LED pixels */
 
 /** Highest capability bit currently allocated. */
-#define APP_CAP_LAST    APP_CAP_FS
+#define APP_CAP_LAST    APP_CAP_RGB
 
 /**
  * @brief Grant every defined capability (for a fully trusted application).

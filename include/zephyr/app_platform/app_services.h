@@ -1374,6 +1374,40 @@ __syscall int svc_led_find(const char *name);
 void app_platform_grant_led(int id, uint32_t pin_mask);
 
 /**
+ * @brief Set one granted pixel of the addressable RGB LED strip and refresh the
+ *        strip. Needs @ref APP_CAP_RGB and a per-pixel grant
+ *        (@ref app_platform_grant_rgb).
+ *
+ * A pixel the application last set to a color other than black is turned off
+ * when the application is reclaimed.
+ *
+ * @param pixel Pixel index in the range [0, @ref svc_rgb_count).
+ * @param r Red intensity.
+ * @param g Green intensity.
+ * @param b Blue intensity.
+ * @retval 0 on success.
+ * @retval -EPERM without @ref APP_CAP_RGB.
+ * @retval -EACCES with the capability but without a grant for this pixel.
+ * @retval -ENODEV The LED strip is not ready.
+ * @retval -EBUSY The service stayed locked by another caller.
+ * @retval -errno Other negative errno code from the LED strip driver.
+ */
+__syscall int svc_rgb_set(int pixel, uint8_t r, uint8_t g, uint8_t b);
+
+/**
+ * @brief Number of addressable RGB LED pixels the platform exposes.
+ *
+ * Topology, so it is deliberately ungated: an application may ask how many
+ * pixels exist without holding @ref APP_CAP_RGB.
+ *
+ * @return The number of pixels.
+ */
+__syscall int svc_rgb_count(void);
+
+/** @brief Grant an application a set of RGB LED pixels (bit N = pixel N). */
+void app_platform_grant_rgb(int id, uint32_t pixel_mask);
+
+/**
  * @brief Wait for the next button press. Needs @ref APP_CAP_INPUT.
  *
  * Blocks until the platform's button is pressed, then returns the running press
