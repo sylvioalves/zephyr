@@ -483,6 +483,36 @@ config APP_PLATFORM_DISPLAY_XFER_MAX
 	  time, and written to the panel under the display lock. The cost
 	  is this size times APP_PLATFORM_MAX_APPS.
 
+config APP_PLATFORM_DISPLAY_CANVAS_MAX
+	int "Largest application canvas in bytes"
+	default 2097152
+	depends on APP_PLATFORM_DISPLAY
+	help
+	  Upper bound on the canvas svc_display_canvas() maps for an
+	  application. A canvas covers the application's viewport and is
+	  rounded up to a power of two. Zero disables canvases.
+
+config APP_PLATFORM_DISPLAY_CANVAS_POOL
+	int "Internal RAM reserved for canvases in bytes"
+	default 0
+	depends on APP_PLATFORM_DISPLAY
+	help
+	  Canvases come from external RAM when the shared multi-heap
+	  provides it. Without it they come from a pool of this size in
+	  internal RAM. A canvas is aligned to its own size, so the pool
+	  needs about twice the largest canvas.
+
+config APP_PLATFORM_DISPLAY_PRESENT_BAND
+	int "Bytes presented per display lock hold"
+	default 65536
+	range 256 16777216
+	depends on APP_PLATFORM_DISPLAY
+	help
+	  svc_display_present() copies a canvas rectangle to the panel in
+	  bands of whole rows of at most this many bytes, and releases the
+	  display lock between bands so other applications are not held
+	  off for a whole frame. A row larger than this is one band.
+
 config APP_PLATFORM_DISPLAY_CLEAR_COLOR
 	hex "Color written over a reclaimed application's viewport"
 	default 0x0

@@ -1509,6 +1509,59 @@ __syscall int svc_display_write(uint16_t x, uint16_t y, uint16_t w, uint16_t h, 
  */
 __syscall int svc_display_fill(uint16_t x, uint16_t y, uint16_t w, uint16_t h, uint32_t color);
 
+/** An application's canvas: memory it draws frames into. */
+struct svc_display_canvas {
+	uintptr_t base;          /**< address of the top left pixel */
+	size_t   size;           /**< mapped bytes, at least pitch * height * bpp */
+	uint16_t width;          /**< width in pixels */
+	uint16_t height;         /**< height in pixels */
+	uint16_t pitch;          /**< pixels from one row to the next */
+	uint32_t pixel_format;   /**< PIXEL_FORMAT_* value of the panel */
+	uint8_t  bytes_per_pixel; /**< bytes per pixel */
+};
+
+/**
+ * @brief Map a canvas the size of the calling application's viewport into its
+ *        memory. Needs @ref APP_CAP_DISPLAY and a viewport grant.
+ *
+ * The application draws into the canvas directly, in the panel pixel format,
+ * and shows a part of it with @ref svc_display_present. The canvas starts out
+ * zeroed and is released when the application is reclaimed. A second call
+ * returns the same canvas, which keeps the viewport size it was mapped with.
+ *
+ * @param out Filled with the canvas address and layout.
+ * @retval 0 on success.
+ * @retval -EPERM without @ref APP_CAP_DISPLAY.
+ * @retval -EACCES with the capability but without a viewport grant.
+ * @retval -ENODEV The display is not ready.
+ * @retval -ENOTSUP The panel uses a format smaller than one byte per pixel.
+ * @retval -ENOMEM No memory for a canvas of this size.
+ * @retval -EBUSY The service stayed locked by another caller.
+ * @retval -errno Other negative errno code from the memory domain.
+ */
+__syscall int svc_display_canvas(struct svc_display_canvas *out);
+
+/**
+ * @brief Show a rectangle of the calling application's canvas at the same
+ *        place in its viewport. Needs @ref APP_CAP_DISPLAY, a viewport grant and
+ *        a canvas (@ref svc_display_canvas).
+ *
+ * @param x Left column in the canvas and viewport.
+ * @param y Top row in the canvas and viewport.
+ * @param w Width in pixels.
+ * @param h Height in pixels.
+ * @retval 0 on success.
+ * @retval -EPERM without @ref APP_CAP_DISPLAY.
+ * @retval -EACCES with the capability but without a viewport grant.
+ * @retval -ENOENT No canvas is mapped.
+ * @retval -ERANGE The rectangle is empty or not fully inside the canvas and
+ *         the viewport.
+ * @retval -ENODEV The display is not ready.
+ * @retval -EBUSY The display stayed locked by another caller.
+ * @retval -EIO The display driver failed.
+ */
+__syscall int svc_display_present(uint16_t x, uint16_t y, uint16_t w, uint16_t h);
+
 /**
  * @brief Grant an application a viewport on the display.
  *

@@ -7,7 +7,9 @@
 /* Shared display service. The platform owns the zephyr,display panel; an
  * application draws only inside the viewport it was granted. Panel drivers are
  * not reentrant, so every panel access goes through one lock, and application
- * pixels are staged in supervisor memory before that lock is taken.
+ * pixels are staged in supervisor memory before that lock is taken. An
+ * application may instead draw into a canvas the platform maps into its memory
+ * and present parts of it, which the panel reads without staging.
  */
 
 #include <zephyr/app_platform/app_services.h>
@@ -20,6 +22,7 @@
 #include <zephyr/init.h>
 #include <zephyr/drivers/display.h>
 #include <zephyr/internal/syscall_handler.h>
+#include <zephyr/multi_heap/shared_multi_heap.h>
 #include <zephyr/sys/byteorder.h>
 #include <errno.h>
 #include <string.h>
@@ -29,12 +32,24 @@
 #define VSYNC_EVENT   BIT(0)
 #define VSYNC_TIMEOUT K_MSEC(100)
 
+#define CANVAS_MIN 4096U
+#define CANVAS_MAX ((size_t)CONFIG_APP_PLATFORM_DISPLAY_CANVAS_MAX)
+
 static const struct device *const panel = DEVICE_DT_GET(DT_CHOSEN(zephyr_display));
+
+struct display_canvas {
+	uint8_t *base;
+	size_t size;
+	uint16_t width;
+	uint16_t height;
+	struct k_mem_partition part;
+};
 
 struct display_slot {
 	struct app_display_rect vp;
 	bool drew;
 	struct k_mutex stage_lock;
+	struct display_canvas canvas;
 };
 
 static struct display_slot slots[MAX_APPS];
@@ -43,6 +58,34 @@ static struct k_spinlock vp_lock;
 static K_MUTEX_DEFINE(display_lock);
 static K_EVENT_DEFINE(vsync_event);
 static bool vsync_ok;
+static K_MUTEX_DEFINE(canvas_lock);
+
+#if !defined(CONFIG_SHARED_MULTI_HEAP) && CONFIG_APP_PLATFORM_DISPLAY_CANVAS_POOL > 0
+static K_HEAP_DEFINE(canvas_pool, CONFIG_APP_PLATFORM_DISPLAY_CANVAS_POOL);
+#endif
+
+static void *canvas_alloc(size_t size)
+{
+#if defined(CONFIG_SHARED_MULTI_HEAP)
+	return shared_multi_heap_aligned_alloc(SMH_REG_ATTR_EXTERNAL, size, size);
+#elif CONFIG_APP_PLATFORM_DISPLAY_CANVAS_POOL > 0
+	return k_heap_aligned_alloc(&canvas_pool, size, size, K_NO_WAIT);
+#else
+	ARG_UNUSED(size);
+	return NULL;
+#endif
+}
+
+static void canvas_free(void *base)
+{
+#if defined(CONFIG_SHARED_MULTI_HEAP)
+	shared_multi_heap_free(base);
+#elif CONFIG_APP_PLATFORM_DISPLAY_CANVAS_POOL > 0
+	k_heap_free(&canvas_pool, base);
+#else
+	ARG_UNUSED(base);
+#endif
+}
 
 static int display_slots_init(void)
 {
@@ -259,6 +302,148 @@ int z_impl_svc_display_vsync(void)
 	return k_event_wait(&vsync_event, VSYNC_EVENT, true, VSYNC_TIMEOUT) != 0U ? 0 : -EAGAIN;
 }
 
+static int canvas_map(struct display_canvas *cv, struct k_mem_domain *dom, uint16_t w,
+		      uint16_t h, size_t need)
+{
+	size_t size = CANVAS_MIN;
+	int rc;
+
+	if (need > CANVAS_MAX) {
+		return -ENOMEM;
+	}
+	while (size < need) {
+		size <<= 1;
+	}
+
+	cv->base = canvas_alloc(size);
+	if (cv->base == NULL) {
+		return -ENOMEM;
+	}
+	memset(cv->base, 0, size);
+	cv->part = (struct k_mem_partition){
+		.start = (uintptr_t)cv->base,
+		.size = size,
+		.attr = K_MEM_PARTITION_P_RW_U_RW,
+	};
+	rc = k_mem_domain_add_partition(dom, &cv->part);
+	if (rc != 0) {
+		canvas_free(cv->base);
+		*cv = (struct display_canvas){ 0 };
+		return rc;
+	}
+	cv->size = size;
+	cv->width = w;
+	cv->height = h;
+	return 0;
+}
+
+static void canvas_release(int id)
+{
+	struct display_canvas *cv = &slots[id].canvas;
+	struct k_mem_domain *dom;
+
+	if (app_svc_lock(&canvas_lock, K_FOREVER) != 0) {
+		return;
+	}
+	if (cv->base != NULL) {
+		dom = app_platform_domain(id);
+		if (dom != NULL) {
+			(void)k_mem_domain_remove_partition(dom, &cv->part);
+		}
+		canvas_free(cv->base);
+		*cv = (struct display_canvas){ 0 };
+	}
+	(void)app_svc_unlock(&canvas_lock);
+}
+
+int z_impl_svc_display_canvas(struct svc_display_canvas *out)
+{
+	struct display_capabilities caps;
+	struct app_display_rect vp;
+	struct display_canvas *cv;
+	struct k_mem_domain *dom;
+	uint8_t bpp;
+	int id;
+	int rc = display_access(&id, &vp, &caps, &bpp);
+
+	if (rc != 0) {
+		return rc;
+	}
+	dom = app_platform_domain(id);
+	if (dom == NULL) {
+		return -EACCES;
+	}
+
+	if (app_svc_lock(&canvas_lock, SVC_LOCK_TIMEOUT) != 0) {
+		return -EBUSY;
+	}
+	cv = &slots[id].canvas;
+	if (cv->base == NULL) {
+		rc = canvas_map(cv, dom, vp.width, vp.height, (size_t)vp.width * vp.height * bpp);
+	}
+	if (rc == 0) {
+		*out = (struct svc_display_canvas){
+			.base = (uintptr_t)cv->base,
+			.size = cv->size,
+			.width = cv->width,
+			.height = cv->height,
+			.pitch = cv->width,
+			.pixel_format = caps.current_pixel_format,
+			.bytes_per_pixel = bpp,
+		};
+	}
+	(void)app_svc_unlock(&canvas_lock);
+	return rc;
+}
+
+int z_impl_svc_display_present(uint16_t x, uint16_t y, uint16_t w, uint16_t h)
+{
+	struct display_buffer_descriptor desc;
+	struct display_capabilities caps;
+	struct app_display_rect vp;
+	struct display_canvas *cv;
+	uint32_t band;
+	uint32_t rows;
+	uint8_t bpp;
+	int id;
+	int rc = display_access(&id, &vp, &caps, &bpp);
+
+	if (rc != 0) {
+		return rc;
+	}
+	cv = &slots[id].canvas;
+	if (cv->base == NULL) {
+		return -ENOENT;
+	}
+	if (check_rect(&vp, x, y, w, h) != 0 || (uint32_t)x + w > cv->width ||
+	    (uint32_t)y + h > cv->height) {
+		return -ERANGE;
+	}
+
+	band = MAX(CONFIG_APP_PLATFORM_DISPLAY_PRESENT_BAND / ((uint32_t)cv->width * bpp), 1U);
+	for (uint32_t r = 0U; r < h; r += rows) {
+		rows = MIN(band, (uint32_t)h - r);
+		desc = (struct display_buffer_descriptor){
+			.buf_size = (uint32_t)cv->width * rows * bpp,
+			.width = w,
+			.height = (uint16_t)rows,
+			.pitch = cv->width,
+			.frame_incomplete = r + rows < h,
+		};
+		if (app_svc_lock(&display_lock, SVC_LOCK_TIMEOUT) != 0) {
+			return -EBUSY;
+		}
+		slots[id].drew = true;
+		rc = display_write(panel, vp.x + x, vp.y + y + r, &desc,
+				   &cv->base[(((size_t)y + r) * cv->width + x) * bpp]);
+		(void)app_svc_unlock(&display_lock);
+		if (rc != 0) {
+			return -EIO;
+		}
+	}
+	return 0;
+}
+
 int z_impl_svc_display_write(uint16_t x, uint16_t y, uint16_t w, uint16_t h, const void *buf,
 			     size_t len)
 {
@@ -329,6 +514,7 @@ void app_platform_clear_display_grants(int id)
 			   CONFIG_APP_PLATFORM_DISPLAY_CLEAR_COLOR, bpp);
 	}
 	slots[id].drew = false;
+	canvas_release(id);
 }
 
 #ifdef CONFIG_USERSPACE
@@ -349,6 +535,24 @@ static inline int z_vrfy_svc_display_vsync(void)
 	return z_impl_svc_display_vsync();
 }
 #include <zephyr/syscalls/svc_display_vsync_mrsh.c>
+
+static inline int z_vrfy_svc_display_canvas(struct svc_display_canvas *out)
+{
+	struct svc_display_canvas tmp;
+	int rc = z_impl_svc_display_canvas(&tmp);
+
+	if (rc == 0 && k_usermode_to_copy(out, &tmp, sizeof(tmp)) != 0) {
+		return -EFAULT;
+	}
+	return rc;
+}
+#include <zephyr/syscalls/svc_display_canvas_mrsh.c>
+
+static inline int z_vrfy_svc_display_present(uint16_t x, uint16_t y, uint16_t w, uint16_t h)
+{
+	return z_impl_svc_display_present(x, y, w, h);
+}
+#include <zephyr/syscalls/svc_display_present_mrsh.c>
 
 static inline int z_vrfy_svc_display_write(uint16_t x, uint16_t y, uint16_t w, uint16_t h,
 					   const void *buf, size_t len)
