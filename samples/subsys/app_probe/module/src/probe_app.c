@@ -245,7 +245,7 @@ void app_main(void *arg)
 	 * 802.15.4 share one radio on this SoC and cannot run at once, so this
 	 * runs only in the radio-only build (BLE compiled out).
 	 */
-#ifdef PROBE_NO_BLE
+#if defined(PROBE_NO_BLE) && !defined(PROBE_NO_RADIO)
 	svc_log("radio: sending to 802.15.4 peer, awaiting echo...");
 	uint8_t rx[16] = {0};
 

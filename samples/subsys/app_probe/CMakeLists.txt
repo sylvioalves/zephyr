@@ -18,6 +18,9 @@ add_llext_target(probe_app_ext OUTPUT ${bin} SOURCES ${ext_src})
 if(NOT CONFIG_APP_PLATFORM_BLE)
   llext_compile_definitions(probe_app_ext PROBE_NO_BLE)
 endif()
+if(NOT CONFIG_APP_PLATFORM_RADIO)
+  llext_compile_definitions(probe_app_ext PROBE_NO_RADIO)
+endif()
 llext_include_directories(probe_app_ext
   ${CMAKE_CURRENT_SOURCE_DIR}/src
   ${ZEPHYR_BINARY_DIR}/include/generated
