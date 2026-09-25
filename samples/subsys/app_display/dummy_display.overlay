@@ -1,0 +1,20 @@
+/*
+ * Copyright (c) 2026 Espressif Systems (Shanghai) Co., Ltd.
+ *
+ * SPDX-License-Identifier: Apache-2.0
+ */
+
+/* A display that discards what is drawn, for boards without a panel. */
+
+/ {
+	chosen {
+		zephyr,display = &dummy_display;
+	};
+
+	dummy_display: dummy_display {
+		compatible = "zephyr,dummy-dc";
+		width = <320>;
+		height = <240>;
+		status = "okay";
+	};
+};
