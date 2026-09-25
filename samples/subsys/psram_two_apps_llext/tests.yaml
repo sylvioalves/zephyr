@@ -8,4 +8,11 @@ tests:
     tags: app_platform
     platform_allow:
       - esp32c5_devkitc/esp32c5/hpcore
-    build_only: true
+    harness: console
+    harness_config:
+      type: multi_line
+      ordered: true
+      regex:
+        - "stress iters=[0-9]+ err=0 OK"
+        - "stress iters=[0-9]+ err=0 OK"
+        - "done: two loadable apps each stressed a private region"
