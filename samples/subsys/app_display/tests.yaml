@@ -1,0 +1,33 @@
+sample:
+  name: Isolated display applications
+  description: >
+    Share one display between the supervisor and two loadable user-mode
+    applications, each drawing inside its own viewport.
+common:
+  tags: app_platform
+tests:
+  sample.subsys.app_display:
+    platform_allow:
+      - qemu_x86
+      - esp32p4x_function_ev_board/esp32p4/hpcore
+    integration_platforms:
+      - qemu_x86
+    # The console is checked, so QEMU runs without opening a window.
+    extra_configs:
+      - 'platform:qemu_x86:CONFIG_QEMU_EXTRA_FLAGS="-display none"'
+    harness: console
+    harness_config:
+      type: multi_line
+      ordered: true
+      regex:
+        - "display: app 0 viewport [0-9]+x[0-9]+ rc=0"
+        - "display: app 1 frame 100, 0 failed"
+        - "stopped 'right' rc=0"
+        - "done: 'left' active=1 after 'right' was stopped"
+  sample.subsys.app_display.dummy:
+    build_only: true
+    platform_allow:
+      - esp32c5_devkitc/esp32c5/hpcore
+      - esp32c6_devkitc/esp32c6/hpcore
+    extra_args:
+      - EXTRA_DTC_OVERLAY_FILE=dummy_display.overlay
