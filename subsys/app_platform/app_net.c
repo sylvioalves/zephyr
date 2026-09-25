@@ -78,8 +78,7 @@ struct session {
 
 static struct session sessions[MAX_SESSIONS];
 
-/* Raw UDP/TCP datagram buffer carried across the user/kernel boundary. */
-#define SOCK_PAYLOAD_MAX 256
+#define SOCK_PAYLOAD_MAX CONFIG_APP_PLATFORM_NET_DGRAM_MAX
 
 struct sock_msg {
 	uint16_t           len;

@@ -531,14 +531,18 @@ __syscall int svc_udp_open(const char *host, uint16_t port);
  * @brief Send a datagram on the application's UDP socket. Needs @ref APP_CAP_SOCKET.
  *
  * @param buf Payload.
- * @param len Payload length.
- * @retval >=0 bytes queued, -EPERM without the capability, negative errno otherwise.
+ * @param len Payload length, at most CONFIG_APP_PLATFORM_NET_DGRAM_MAX.
+ * @retval >=0 bytes queued, -EMSGSIZE if @p len is too long, -EPERM without
+ *         the capability, negative errno otherwise.
  */
 __syscall int svc_udp_send(const void *buf, size_t len);
 
 /**
  * @brief Receive a datagram from the application's UDP socket.
  *        Needs @ref APP_CAP_SOCKET.
+ *
+ * A datagram longer than @p cap or CONFIG_APP_PLATFORM_NET_DGRAM_MAX is
+ * truncated.
  *
  * @param buf Destination buffer.
  * @param cap Size of @p buf.

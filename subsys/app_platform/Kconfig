@@ -370,6 +370,16 @@ config APP_PLATFORM_NET_BROKER_HOST
 	  Broker an application reaches through the MQTT service. Resolved at
 	  connect time, so a name or a literal address both work.
 
+config APP_PLATFORM_NET_DGRAM_MAX
+	int "Maximum socket datagram size"
+	default 256
+	range 64 1472
+	help
+	  Largest UDP datagram an application can send or receive, and the
+	  chunk size of a TCP send or receive. A longer UDP send is refused
+	  and a longer received datagram is truncated. Each application
+	  holds one send buffer and five receive buffers of this size.
+
 endif # APP_PLATFORM_NET
 
 config APP_PLATFORM_GPIO
