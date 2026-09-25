@@ -20,8 +20,9 @@
 #ifndef MODE
 #define MODE 3
 #endif
+/* The ESP32-C6 core has no standard counter CSRs. */
 #ifndef RDC
-#define RDC 1
+#define RDC (!IS_ENABLED(CONFIG_SOC_SERIES_ESP32C6))
 #endif
 #ifndef POLL_MS
 #define POLL_MS 1
@@ -80,7 +81,7 @@ int main(void)
 {
 	printk("\n*** app_lock MODE=%d RDC=%d POLL_MS=%d NOCNT=%d ***\n",
 	       MODE, RDC, POLL_MS, IS_ENABLED(NOCNT));
-#ifndef NOCNT
+#if RDC && !defined(NOCNT)
 	csr_write(mcounteren, 0x7);
 #endif
 	if (app_platform_init() != 0) {
