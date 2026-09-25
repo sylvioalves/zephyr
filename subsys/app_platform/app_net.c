@@ -1377,7 +1377,7 @@ static inline int z_vrfy_svc_resolve(const char *host, char *out_ip, size_t cap)
 	K_OOPS(K_SYSCALL_MEMORY_WRITE(out_ip, cap));
 
 	char buf[64];
-	int rc = z_impl_svc_resolve(h, buf, sizeof(buf));
+	int rc = z_impl_svc_resolve(h, buf, cap);
 
 	if (rc == 0 && k_usermode_to_copy(out_ip, buf, strlen(buf) + 1) != 0) {
 		return -EFAULT;

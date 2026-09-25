@@ -509,7 +509,8 @@ __syscall int svc_wifi_disconnect(void);
  * @param host Hostname or dotted address to resolve.
  * @param out_ip Destination for the dotted IPv4 string.
  * @param cap Size of @p out_ip (16 is enough for IPv4).
- * @retval 0 on success, -EPERM without the capability, negative errno otherwise.
+ * @retval 0 on success, -ENOSPC if the address does not fit in @p cap, -EPERM
+ *         without the capability, negative errno otherwise.
  */
 __syscall int svc_resolve(const char *host, char *out_ip, size_t cap);
 
