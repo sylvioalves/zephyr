@@ -456,6 +456,41 @@ config APP_PLATFORM_RGB
 	  The platform keeps the colors and refreshes the whole strip on every
 	  change. At most the first 32 pixels of the strip are exposed.
 
+DT_CHOSEN_Z_DISPLAY := zephyr,display
+
+config APP_PLATFORM_DISPLAY
+	bool "Shared display service"
+	depends on APP_PLATFORM_SERVICES
+	depends on DISPLAY
+	depends on $(dt_chosen_enabled,$(DT_CHOSEN_Z_DISPLAY))
+	default y
+	select EVENTS
+	help
+	  Let applications draw on the zephyr,display panel, each only
+	  inside the viewport the platform granted it. The platform owns
+	  the panel and serializes every access to it. A reclaimed
+	  application's viewport is filled with
+	  APP_PLATFORM_DISPLAY_CLEAR_COLOR.
+
+config APP_PLATFORM_DISPLAY_XFER_MAX
+	int "Bytes staged per display write chunk"
+	default 4096
+	range 256 65536
+	depends on APP_PLATFORM_DISPLAY
+	help
+	  An application's pixel data is copied into a per-application
+	  supervisor buffer of this size, one chunk of whole rows at a
+	  time, and written to the panel under the display lock. The cost
+	  is this size times APP_PLATFORM_MAX_APPS.
+
+config APP_PLATFORM_DISPLAY_CLEAR_COLOR
+	hex "Color written over a reclaimed application's viewport"
+	default 0x0
+	depends on APP_PLATFORM_DISPLAY
+	help
+	  Pixel value in the panel's format, with the same encoding as the
+	  color argument of svc_display_fill().
+
 config APP_PLATFORM_MOTION
 	bool "Shared pulse-counter and motor-control PWM services"
 	depends on APP_PLATFORM_SERVICES

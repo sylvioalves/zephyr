@@ -41,8 +41,8 @@ two produce different errors, and the distinction is deliberate:
 
 * ``-EPERM`` - the application does not hold the capability.
 * ``-EACCES`` - it holds the capability, but this GPIO line, ADC or PWM channel,
-  I2C address, SPI bus, LED pin, RGB LED pixel or flash window was not assigned
-  to it.
+  I2C address, SPI bus, LED pin, RGB LED pixel, display viewport or flash window
+  was not assigned to it.
 
 Checking the capability first means an application that holds none cannot tell
 an ungranted resource from one that does not exist.
@@ -59,9 +59,10 @@ opt into monitoring also get a watchdog channel.
 When an application stops or is reclaimed, a reaper drops its resource grants
 and returns the hardware it drove to idle: regulator enables it holds are
 released, counters and steppers it started are stopped, PWM, motor, DAC, GPIO
-and LED outputs it last set are driven back to zero, and RGB LED pixels it last
-lit are turned off. An output another application set more recently is left as
-it is. Other device state an application changed, such as the real-time clock
+and LED outputs it last set are driven back to zero, RGB LED pixels it last lit
+are turned off, and a display viewport it drew in is filled with
+:kconfig:option:`CONFIG_APP_PLATFORM_DISPLAY_CLEAR_COLOR`. An output another
+application set more recently is left as it is. Other device state an application changed, such as the real-time clock
 or EEPROM contents, is kept.
 
 Loading and verification

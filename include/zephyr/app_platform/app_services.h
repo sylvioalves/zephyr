@@ -1412,6 +1412,134 @@ __syscall int svc_rgb_count(void);
 /** @brief Grant an application a set of RGB LED pixels (bit N = pixel N). */
 void app_platform_grant_rgb(int id, uint32_t pixel_mask);
 
+/** A rectangle on the display, in panel coordinates. */
+struct app_display_rect {
+	uint16_t x;      /**< left column */
+	uint16_t y;      /**< top row */
+	uint16_t width;  /**< width in pixels */
+	uint16_t height; /**< height in pixels */
+};
+
+/** What an application sees of the display: its viewport and the pixel layout. */
+struct svc_display_info {
+	uint16_t width;          /**< viewport width in pixels */
+	uint16_t height;         /**< viewport height in pixels */
+	uint32_t pixel_format;   /**< PIXEL_FORMAT_* value of the panel */
+	uint8_t  bytes_per_pixel; /**< bytes per pixel in a write buffer */
+};
+
+/**
+ * @brief Describe the calling application's viewport. Needs @ref APP_CAP_DISPLAY
+ *        and a viewport grant (@ref app_platform_grant_display).
+ *
+ * @param out Filled with the viewport size and the panel pixel format.
+ * @retval 0 on success.
+ * @retval -EPERM without @ref APP_CAP_DISPLAY.
+ * @retval -EACCES with the capability but without a viewport grant.
+ * @retval -ENODEV The display is not ready.
+ * @retval -ENOTSUP The panel uses a format smaller than one byte per pixel.
+ */
+__syscall int svc_display_info(struct svc_display_info *out);
+
+/**
+ * @brief Wait for the next display refresh. Needs @ref APP_CAP_DISPLAY and a
+ *        viewport grant.
+ *
+ * Returns when the panel has finished scanning out a frame. A small update
+ * drawn right after it stays ahead of the next scanout and shows without
+ * tearing, and a loop that waits here runs at the panel refresh rate.
+ *
+ * @retval 0 on success.
+ * @retval -EPERM without @ref APP_CAP_DISPLAY.
+ * @retval -EACCES with the capability but without a viewport grant.
+ * @retval -ENODEV The display is not ready.
+ * @retval -ENOTSUP The panel does not report its refresh.
+ * @retval -EAGAIN No refresh was reported within 100 ms.
+ */
+__syscall int svc_display_vsync(void);
+
+/**
+ * @brief Draw a rectangle of pixels inside the calling application's viewport.
+ *        Needs @ref APP_CAP_DISPLAY and a viewport grant.
+ *
+ * Coordinates are relative to the viewport, and the rectangle must lie fully
+ * inside it: nothing is clipped. Rows are tightly packed in the panel format.
+ * The viewport is filled with @kconfig{CONFIG_APP_PLATFORM_DISPLAY_CLEAR_COLOR}
+ * when the application is reclaimed.
+ *
+ * @param x Left column in the viewport.
+ * @param y Top row in the viewport.
+ * @param w Width in pixels.
+ * @param h Height in pixels.
+ * @param buf Pixel data.
+ * @param len Size of @p buf, which must be @p w * @p h * bytes per pixel.
+ * @retval 0 on success.
+ * @retval -EPERM without @ref APP_CAP_DISPLAY.
+ * @retval -EACCES with the capability but without a viewport grant.
+ * @retval -ERANGE The rectangle is empty or not fully inside the viewport.
+ * @retval -EINVAL @p len does not match the rectangle.
+ * @retval -ENODEV The display is not ready.
+ * @retval -ENOTSUP The panel uses a format smaller than one byte per pixel.
+ * @retval -EBUSY The display stayed locked by another caller.
+ * @retval -EIO The display driver failed.
+ */
+__syscall int svc_display_write(uint16_t x, uint16_t y, uint16_t w, uint16_t h, const void *buf,
+				size_t len);
+
+/**
+ * @brief Fill a rectangle inside the calling application's viewport with one
+ *        color. Needs @ref APP_CAP_DISPLAY and a viewport grant.
+ *
+ * Each pixel is the low bytes-per-pixel bytes of @p color, least significant
+ * byte first. Bounds follow @ref svc_display_write.
+ *
+ * @param x Left column in the viewport.
+ * @param y Top row in the viewport.
+ * @param w Width in pixels.
+ * @param h Height in pixels.
+ * @param color Pixel value in the panel format.
+ * @retval 0 on success.
+ * @retval -EPERM without @ref APP_CAP_DISPLAY.
+ * @retval -EACCES with the capability but without a viewport grant.
+ * @retval -ERANGE The rectangle is empty or not fully inside the viewport.
+ * @retval -ENODEV The display is not ready.
+ * @retval -ENOTSUP The panel uses a format smaller than one byte per pixel.
+ * @retval -EBUSY The display stayed locked by another caller.
+ * @retval -EIO The display driver failed.
+ */
+__syscall int svc_display_fill(uint16_t x, uint16_t y, uint16_t w, uint16_t h, uint32_t color);
+
+/**
+ * @brief Grant an application a viewport on the display.
+ *
+ * Viewports may overlap; a reclaim then also clears the overlapping pixels of
+ * the other application.
+ *
+ * @param id Application slot.
+ * @param vp Viewport in panel coordinates, or NULL or an empty rectangle to
+ *           revoke the grant.
+ * @retval 0 on success.
+ * @retval -EINVAL @p id is not a slot or @p vp is not inside the panel.
+ * @retval -ENODEV The display is not ready.
+ */
+int app_platform_grant_display(int id, const struct app_display_rect *vp);
+
+/**
+ * @brief Take the display lock from supervisor code.
+ *
+ * Panel drivers are not safe against concurrent calls, so supervisor code that
+ * draws on the same panel takes this lock around its display calls, which then
+ * never interleave with an application's writes.
+ *
+ * @param timeout How long to wait for the lock.
+ * @retval 0 on success.
+ * @retval -EBUSY The lock was not obtained within @p timeout.
+ */
+int app_platform_display_lock(k_timeout_t timeout);
+
+/** @brief Release the display lock taken by @ref app_platform_display_lock. */
+void app_platform_display_unlock(void);
+
 /**
  * @brief Wait for the next button press. Needs @ref APP_CAP_INPUT.
  *

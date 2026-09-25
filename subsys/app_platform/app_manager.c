@@ -380,6 +380,9 @@ static void clear_grants(int id)
 	if (IS_ENABLED(CONFIG_APP_PLATFORM_RGB)) {
 		app_platform_clear_rgb_grants(id);
 	}
+	if (IS_ENABLED(CONFIG_APP_PLATFORM_DISPLAY)) {
+		app_platform_clear_display_grants(id);
+	}
 	if (IS_ENABLED(CONFIG_APP_PLATFORM_PERIPH)) {
 		app_platform_clear_periph_grants(id);
 	}
