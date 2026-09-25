@@ -5,11 +5,13 @@ sample:
     reaches hardware only through a whitelisted capability surface, supervised
     by a task watchdog. Demonstrates containment and supervision guarantees.
 common:
-  tags: userspace sandbox
+  tags:
+    - userspace
+    - sandbox
   harness: console
+  filter: CONFIG_ARCH_HAS_USERSPACE
   depends_on:
     - gpio
-    - userspace
 tests:
   sample.subsys.behavior_sandbox:
     platform_allow:
