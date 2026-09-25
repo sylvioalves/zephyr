@@ -114,7 +114,7 @@ int main(void)
 	struct llext *raw = NULL;
 
 	if (llext_load(&bl.loader, "rogue", &raw, &parm) == 0) {
-		void *entry = llext_find_sym(&raw->exp_tab, "app_main");
+		const void *entry = llext_find_sym(&raw->exp_tab, "app_main");
 		int rc = app_platform_launch_llext("rogue", raw,
 						   (app_entry_t)entry, NULL, APP_CAPS);
 
