@@ -39,10 +39,10 @@ static const uint8_t loop_hash[32] = {
 extern struct k_heap _system_heap;
 extern struct k_heap llext_heap;
 
-static char names[CONFIG_APP_PLATFORM_MAX_APPS][12];
+static __maybe_unused char names[CONFIG_APP_PLATFORM_MAX_APPS][12];
 
 /* Total relaunches the supervisor has performed, across every slot. */
-static uint32_t restart_total(void)
+static __maybe_unused uint32_t restart_total(void)
 {
 	uint32_t n = 0;
 
@@ -57,7 +57,7 @@ static uint32_t restart_total(void)
 }
 
 
-static void heap_line(const char *tag)
+static __maybe_unused void heap_line(const char *tag)
 {
 	struct sys_memory_stats s1, s2;
 
@@ -68,7 +68,7 @@ static void heap_line(const char *tag)
 	       s2.max_allocated_bytes);
 }
 
-static int load_launch(const char *name)
+static __maybe_unused int load_launch(const char *name)
 {
 	struct llext *ext = NULL;
 	void *entry = NULL;
@@ -86,7 +86,7 @@ static int load_launch(const char *name)
 	return rc;
 }
 
-static bool wait_slot_free(int id, int ms)
+static __maybe_unused bool wait_slot_free(int id, int ms)
 {
 	for (int i = 0; i < ms; i++) {
 		struct app_platform_status st;
