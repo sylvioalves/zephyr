@@ -1,0 +1,14 @@
+sample:
+  name: Brokered BLE GATT client
+  description: >
+    Subscribe a user-mode application to a Heart Rate peer's notifications
+    through a broker that owns the scan, the connection and the GATT client.
+tests:
+  sample.subsys.ble_gatt_client:
+    tags:
+      - bluetooth
+      - app_platform
+    platform_allow:
+      - esp32c5_devkitc/esp32c5/hpcore
+      - esp32c6_devkitc/esp32c6/hpcore
+    build_only: true
