@@ -90,18 +90,59 @@ struct sock_msg {
 
 /* One platform-owned raw socket per application, keyed by group id. The
  * application never holds the socket; the supervisor net thread pumps incoming
- * bytes into the inbox and the send syscall writes directly under net_lock.
+ * bytes into the inbox. The receive lock and staging buffer belong to one
+ * application only, and are reset when it is reclaimed.
  */
 struct app_sock {
 	bool                    used;
 	bool                    is_tcp;
 	int                     fd;
 	struct sockaddr_in      peer;
+	struct k_mutex          rx_lock;
+	struct sock_msg         rx;
 	struct k_msgq           inbox;
 	char                    inbox_buf[4 * sizeof(struct sock_msg)];
 };
 
 static struct app_sock socks[MAX_SESSIONS];
+
+#define HOST_MAX 64
+
+enum net_op {
+	NET_OP_RESOLVE,
+	NET_OP_SOCK_OPEN,
+	NET_OP_SOCK_SEND,
+	NET_OP_SOCK_CLOSE,
+	NET_OP_MQTT_OPEN,
+};
+
+/* A network call an application hands to the net thread, so the network stack
+ * never runs on the application's privileged stack. One slot per application,
+ * held by its lock for the length of the call. A reclaim bumps gen so the net
+ * thread drops a call whose caller is gone.
+ */
+struct net_req {
+	struct k_mutex          lock;
+	struct k_sem            done;
+	uint32_t                gen;
+	enum net_op             op;
+	bool                    tcp;
+	uint16_t                port;
+	size_t                  len;
+	int                     rc;
+	struct sockaddr_in      addr;
+	char                    host[HOST_MAX];
+	uint8_t                 data[SOCK_PAYLOAD_MAX];
+};
+
+struct net_req_msg {
+	int                     id;
+	uint32_t                gen;
+};
+
+static struct net_req reqs[MAX_SESSIONS];
+K_MSGQ_DEFINE(net_req_q, sizeof(struct net_req_msg), 2 * MAX_SESSIONS, 4);
+static K_SEM_DEFINE(net_wake, 0, 1);
 
 struct pub_req {
 	int  id;
@@ -470,6 +511,126 @@ static void take_link_down(void)
 	broker_resolved = false;
 }
 
+static int sock_do_open(struct app_sock *sk, const struct net_req *r)
+{
+	struct sockaddr_in peer;
+	int rc = resolve_host(r->host, r->port, &peer);
+
+	if (rc != 0) {
+		return rc;
+	}
+	if (sk->used) {
+		return -EALREADY;
+	}
+
+	int fd = zsock_socket(AF_INET, r->tcp ? SOCK_STREAM : SOCK_DGRAM,
+			      r->tcp ? IPPROTO_TCP : IPPROTO_UDP);
+
+	if (fd < 0) {
+		return -errno;
+	}
+	if (r->tcp && zsock_connect(fd, (struct sockaddr *)&peer, sizeof(peer)) != 0) {
+		/* Report what actually went wrong: a flat -ECONNREFUSED
+		 * hides a routing or resource failure behind the one
+		 * error that looks like the peer's fault.
+		 */
+		rc = -errno;
+		zsock_close(fd);
+		return rc;
+	}
+	int flags = zsock_fcntl(fd, F_GETFL, 0);
+
+	(void)zsock_fcntl(fd, F_SETFL, flags | O_NONBLOCK);
+
+	sk->fd = fd;
+	sk->is_tcp = r->tcp;
+	sk->peer = peer;
+	k_msgq_init(&sk->inbox, sk->inbox_buf, sizeof(struct sock_msg), 4);
+	sk->used = true;
+	return 0;
+}
+
+static int sock_do_send(struct app_sock *sk, const struct net_req *r)
+{
+	ssize_t n;
+
+	if (!sk->used || sk->fd < 0 || sk->is_tcp != r->tcp) {
+		return -ENOTCONN;
+	}
+	if (r->tcp) {
+		n = zsock_send(sk->fd, r->data, r->len, 0);
+	} else {
+		n = zsock_sendto(sk->fd, r->data, r->len, 0,
+				 (struct sockaddr *)&sk->peer, sizeof(sk->peer));
+	}
+	return (n < 0) ? -errno : (int)n;
+}
+
+static int sock_do_close(struct app_sock *sk)
+{
+	if (sk->fd >= 0) {
+		zsock_close(sk->fd);
+		sk->fd = -1;
+	}
+	sk->used = false;
+	return 0;
+}
+
+static int net_run(int id, struct net_req *r)
+{
+	switch (r->op) {
+	case NET_OP_RESOLVE:
+		return resolve_host(r->host, 0, &r->addr);
+	case NET_OP_SOCK_OPEN:
+		return sock_do_open(&socks[id], r);
+	case NET_OP_SOCK_SEND:
+		return sock_do_send(&socks[id], r);
+	case NET_OP_SOCK_CLOSE:
+		return sock_do_close(&socks[id]);
+	case NET_OP_MQTT_OPEN:
+		return session_connect(&sessions[id]);
+	default:
+		return -EINVAL;
+	}
+}
+
+static void net_serve_requests(void)
+{
+	struct net_req_msg m;
+
+	while (k_msgq_get(&net_req_q, &m, K_NO_WAIT) == 0) {
+		if (m.id < 0 || m.id >= MAX_SESSIONS) {
+			continue;
+		}
+
+		struct net_req *r = &reqs[m.id];
+
+		app_svc_lock(&net_lock, K_FOREVER);
+		if (r->gen == m.gen) {
+			r->rc = net_run(m.id, r);
+			k_sem_give(&r->done);
+		}
+		app_svc_unlock(&net_lock);
+	}
+}
+
+/* Run the call staged in the caller's slot on the net thread and wait for its
+ * result. The caller holds the slot's lock.
+ */
+static int net_call(int id)
+{
+	struct net_req *r = &reqs[id];
+	struct net_req_msg m = { .id = id, .gen = r->gen };
+
+	k_sem_reset(&r->done);
+	if (k_msgq_put(&net_req_q, &m, K_NO_WAIT) != 0) {
+		return -EBUSY;
+	}
+	k_sem_give(&net_wake);
+	(void)k_sem_take(&r->done, K_FOREVER);
+	return r->rc;
+}
+
 static void net_thread(void *a, void *b, void *c)
 {
 	ARG_UNUSED(a); ARG_UNUSED(b); ARG_UNUSED(c);
@@ -504,9 +665,14 @@ static void net_thread(void *a, void *b, void *c)
 			bring_link_up();
 		}
 
-		if (k_msgq_get(&net_pub_q, &req, K_MSEC(500)) == 0 &&
-		    req.id >= 0 && req.id < MAX_SESSIONS &&
-		    sessions[req.id].connected) {
+		(void)k_sem_take(&net_wake, K_MSEC(500));
+		net_serve_requests();
+
+		while (k_msgq_get(&net_pub_q, &req, K_NO_WAIT) == 0) {
+			if (req.id < 0 || req.id >= MAX_SESSIONS ||
+			    !sessions[req.id].connected) {
+				continue;
+			}
 			struct session *s = &sessions[req.id];
 			struct mqtt_publish_param p = { 0 };
 
@@ -567,7 +733,7 @@ static void net_thread(void *a, void *b, void *c)
 				app_svc_unlock(&net_lock);
 				continue;
 			}
-			struct sock_msg m = { 0 };
+			static struct sock_msg m;
 			struct sockaddr_in from = { 0 };
 			socklen_t fromlen = sizeof(from);
 			int n = zsock_recvfrom(sk->fd, m.data, sizeof(m.data), 0,
@@ -670,12 +836,16 @@ int z_impl_svc_mqtt_open(const char *client_id, const char *pub_topic,
 	strncpy(s->sub_topic, sub_topic, sizeof(s->sub_topic) - 1);
 	k_msgq_init(&s->inbox, s->inbox_buf, sizeof(struct inbox_msg), 4);
 
-	if (app_svc_lock(&net_lock, SVC_LOCK_TIMEOUT) != 0) {
+	struct net_req *r = &reqs[id];
+
+	if (k_mutex_lock(&r->lock, SVC_LOCK_TIMEOUT) != 0) {
 		return -EBUSY;
 	}
-	int rc = session_connect(s);
+	r->op = NET_OP_MQTT_OPEN;
 
-	app_svc_unlock(&net_lock);
+	int rc = net_call(id);
+
+	k_mutex_unlock(&r->lock);
 	return rc;
 }
 
@@ -721,7 +891,11 @@ int z_impl_svc_mqtt_publish(const char *payload)
 
 	strncpy(req.payload, payload, sizeof(req.payload) - 1);
 	req.payload[sizeof(req.payload) - 1] = '\0';
-	return k_msgq_put(&net_pub_q, &req, K_NO_WAIT);
+
+	int rc = k_msgq_put(&net_pub_q, &req, K_NO_WAIT);
+
+	k_sem_give(&net_wake);
+	return rc;
 }
 
 int z_impl_svc_wifi_status(struct svc_wifi_status *out)
@@ -811,13 +985,29 @@ int z_impl_svc_resolve(const char *host, char *out_ip, size_t cap)
 		return -ENETDOWN;
 	}
 
-	struct sockaddr_in addr;
-	int rc = resolve_host(host, 0, &addr);
+	int id = app_platform_id_current();
 
+	if (id < 0 || id >= MAX_SESSIONS) {
+		return -EINVAL;
+	}
+
+	struct net_req *r = &reqs[id];
+
+	if (k_mutex_lock(&r->lock, SVC_LOCK_TIMEOUT) != 0) {
+		return -EBUSY;
+	}
+	r->op = NET_OP_RESOLVE;
+	strncpy(r->host, host, sizeof(r->host) - 1);
+	r->host[sizeof(r->host) - 1] = '\0';
+
+	int rc = net_call(id);
+	struct in_addr addr = r->addr.sin_addr;
+
+	k_mutex_unlock(&r->lock);
 	if (rc != 0) {
 		return rc;
 	}
-	if (zsock_inet_ntop(AF_INET, &addr.sin_addr, out_ip, cap) == NULL) {
+	if (zsock_inet_ntop(AF_INET, &addr, out_ip, cap) == NULL) {
 		return -ENOSPC;
 	}
 	return 0;
@@ -837,60 +1027,34 @@ static int sock_open(bool tcp, const char *host, uint16_t port)
 	if (id < 0 || id >= MAX_SESSIONS) {
 		return -EINVAL;
 	}
-
-	struct app_sock *sk = &socks[id];
-
-	if (sk->used) {
+	if (socks[id].used) {
 		return -EALREADY;
 	}
 
-	struct sockaddr_in peer;
-	int rc = resolve_host(host, port, &peer);
+	struct net_req *r = &reqs[id];
 
-	if (rc != 0) {
-		return rc;
-	}
-
-	if (app_svc_lock(&net_lock, SVC_LOCK_TIMEOUT) != 0) {
+	if (k_mutex_lock(&r->lock, SVC_LOCK_TIMEOUT) != 0) {
 		return -EBUSY;
 	}
-	int fd = zsock_socket(AF_INET, tcp ? SOCK_STREAM : SOCK_DGRAM,
-			      tcp ? IPPROTO_TCP : IPPROTO_UDP);
+	r->op = NET_OP_SOCK_OPEN;
+	r->tcp = tcp;
+	r->port = port;
+	strncpy(r->host, host, sizeof(r->host) - 1);
+	r->host[sizeof(r->host) - 1] = '\0';
 
-	if (fd < 0) {
-		app_svc_unlock(&net_lock);
-		return -errno;
-	}
-	if (tcp) {
-		rc = zsock_connect(fd, (struct sockaddr *)&peer, sizeof(peer));
-		if (rc != 0) {
-			/* Report what actually went wrong: a flat -ECONNREFUSED
-			 * hides a routing or resource failure behind the one
-			 * error that looks like the peer's fault.
-			 */
-			rc = -errno;
-			zsock_close(fd);
-			app_svc_unlock(&net_lock);
-			return rc;
-		}
-	}
-	int flags = zsock_fcntl(fd, F_GETFL, 0);
+	int rc = net_call(id);
 
-	(void)zsock_fcntl(fd, F_SETFL, flags | O_NONBLOCK);
-
-	sk->fd = fd;
-	sk->is_tcp = tcp;
-	sk->peer = peer;
-	k_msgq_init(&sk->inbox, sk->inbox_buf, sizeof(struct sock_msg), 4);
-	sk->used = true;
-	app_svc_unlock(&net_lock);
-	return 0;
+	k_mutex_unlock(&r->lock);
+	return rc;
 }
 
 static int sock_send(bool tcp, const void *buf, size_t len)
 {
 	if (!app_has_cap(APP_CAP_SOCKET)) {
 		return -EPERM;
+	}
+	if (!link_ready) {
+		return -ENETDOWN;
 	}
 
 	int id = app_platform_id_current();
@@ -908,35 +1072,35 @@ static int sock_send(bool tcp, const void *buf, size_t len)
 		return -EMSGSIZE;
 	}
 
-	uint8_t tmp[SOCK_PAYLOAD_MAX];
+	struct net_req *r = &reqs[id];
+
+	if (k_mutex_lock(&r->lock, SVC_LOCK_TIMEOUT) != 0) {
+		return -EBUSY;
+	}
+
 	size_t sent = 0U;
+	int rc = 0;
 
 	/* A stream is sent in bounded chunks, a datagram in one piece. */
 	do {
-		size_t chunk = MIN(len - sent, sizeof(tmp));
-		ssize_t n;
+		size_t chunk = MIN(len - sent, sizeof(r->data));
 
-		memcpy(tmp, (const uint8_t *)buf + sent, chunk);
-		if (app_svc_lock(&net_lock, SVC_LOCK_TIMEOUT) != 0) {
-			return (sent > 0U) ? (int)sent : -EBUSY;
+		memcpy(r->data, (const uint8_t *)buf + sent, chunk);
+		r->op = NET_OP_SOCK_SEND;
+		r->tcp = tcp;
+		r->len = chunk;
+		rc = net_call(id);
+		if (rc < 0) {
+			break;
 		}
-		if (tcp) {
-			n = zsock_send(sk->fd, tmp, chunk, 0);
-		} else {
-			n = zsock_sendto(sk->fd, tmp, chunk, 0,
-					 (struct sockaddr *)&sk->peer, sizeof(sk->peer));
-		}
-		app_svc_unlock(&net_lock);
-		if (n < 0) {
-			return (sent > 0U) ? (int)sent : -errno;
-		}
-		sent += (size_t)n;
-		if ((size_t)n < chunk) {
+		sent += (size_t)rc;
+		if ((size_t)rc < chunk) {
 			break;
 		}
 	} while (sent < len);
 
-	return (int)sent;
+	k_mutex_unlock(&r->lock);
+	return (sent > 0U) ? (int)sent : rc;
 }
 
 static int sock_recv(bool tcp, void *buf, size_t cap, uint32_t timeout_ms,
@@ -958,22 +1122,27 @@ static int sock_recv(bool tcp, void *buf, size_t cap, uint32_t timeout_ms,
 		return -ENOTCONN;
 	}
 
-	struct sock_msg m;
+	k_timepoint_t end = sys_timepoint_calc(K_MSEC(timeout_ms));
 
-	if (k_msgq_get(&sk->inbox, &m, K_MSEC(timeout_ms)) != 0) {
+	if (k_mutex_lock(&sk->rx_lock, K_MSEC(timeout_ms)) != 0) {
+		return -EAGAIN;
+	}
+	if (k_msgq_get(&sk->inbox, &sk->rx, sys_timepoint_timeout(end)) != 0) {
+		k_mutex_unlock(&sk->rx_lock);
 		return -EAGAIN;
 	}
 
 	if (src_addr != NULL) {
-		*src_addr = m.src_addr;
+		*src_addr = sk->rx.src_addr;
 	}
 	if (src_port != NULL) {
-		*src_port = m.src_port;
+		*src_port = sk->rx.src_port;
 	}
 
-	size_t n = MIN((size_t)m.len, cap);
+	size_t n = MIN((size_t)sk->rx.len, cap);
 
-	memcpy(buf, m.data, n);
+	memcpy(buf, sk->rx.data, n);
+	k_mutex_unlock(&sk->rx_lock);
 	return (int)n;
 }
 
@@ -995,16 +1164,17 @@ static int sock_close(bool tcp)
 		return -ENOTCONN;
 	}
 
-	if (app_svc_lock(&net_lock, SVC_LOCK_TIMEOUT) != 0) {
+	struct net_req *r = &reqs[id];
+
+	if (k_mutex_lock(&r->lock, SVC_LOCK_TIMEOUT) != 0) {
 		return -EBUSY;
 	}
-	if (sk->fd >= 0) {
-		zsock_close(sk->fd);
-		sk->fd = -1;
-	}
-	sk->used = false;
-	app_svc_unlock(&net_lock);
-	return 0;
+	r->op = NET_OP_SOCK_CLOSE;
+
+	int rc = net_call(id);
+
+	k_mutex_unlock(&r->lock);
+	return rc;
 }
 
 int z_impl_svc_udp_open(const char *host, uint16_t port)
@@ -1078,9 +1248,7 @@ static void net_release(int id)
 		return;
 	}
 
-	if (app_svc_lock(&net_lock, SVC_LOCK_TIMEOUT) != 0) {
-		return;
-	}
+	app_svc_lock(&net_lock, K_FOREVER);
 	if (sessions[id].used) {
 		if (sessions[id].connected) {
 			(void)mqtt_disconnect(&sessions[id].client, false);
@@ -1094,11 +1262,20 @@ static void net_release(int id)
 		socks[id].used = false;
 		socks[id].fd = -1;
 	}
+	k_mutex_init(&socks[id].rx_lock);
+	reqs[id].gen++;
+	k_mutex_init(&reqs[id].lock);
+	k_sem_init(&reqs[id].done, 0, 1);
 	app_svc_unlock(&net_lock);
 }
 
 static int net_service_init(void)
 {
+	for (int i = 0; i < MAX_SESSIONS; i++) {
+		k_mutex_init(&socks[i].rx_lock);
+		k_mutex_init(&reqs[i].lock);
+		k_sem_init(&reqs[i].done, 0, 1);
+	}
 	return app_platform_on_reclaim(net_release);
 }
 SYS_INIT(net_service_init, APPLICATION, 99);
@@ -1230,19 +1407,11 @@ static inline int z_vrfy_svc_udp_send(const void *buf, size_t len)
 
 static inline int z_vrfy_svc_udp_recv(void *buf, size_t cap, uint32_t timeout_ms)
 {
-	char tmp[SOCK_PAYLOAD_MAX];
-
-	if (cap == 0 || cap > sizeof(tmp)) {
+	if (cap == 0) {
 		return -EINVAL;
 	}
 	K_OOPS(K_SYSCALL_MEMORY_WRITE(buf, cap));
-
-	int rc = z_impl_svc_udp_recv(tmp, cap, timeout_ms);
-
-	if (rc > 0 && k_usermode_to_copy(buf, tmp, rc) != 0) {
-		return -EFAULT;
-	}
-	return rc;
+	return z_impl_svc_udp_recv(buf, cap, timeout_ms);
 }
 #include <zephyr/syscalls/svc_udp_recv_mrsh.c>
 
@@ -1250,11 +1419,7 @@ static inline int z_vrfy_svc_udp_recv_from(void *buf, size_t cap,
 					   uint32_t timeout_ms, char *src_ip,
 					   size_t ip_cap, uint16_t *src_port)
 {
-	char tmp[SOCK_PAYLOAD_MAX];
-	char ip[16];
-	uint16_t port = 0;
-
-	if (cap == 0 || cap > sizeof(tmp) || ip_cap > sizeof(ip)) {
+	if (cap == 0) {
 		return -EINVAL;
 	}
 	K_OOPS(K_SYSCALL_MEMORY_WRITE(buf, cap));
@@ -1264,25 +1429,8 @@ static inline int z_vrfy_svc_udp_recv_from(void *buf, size_t cap,
 	if (src_port != NULL) {
 		K_OOPS(K_SYSCALL_MEMORY_WRITE(src_port, sizeof(*src_port)));
 	}
-
-	int rc = z_impl_svc_udp_recv_from(tmp, cap, timeout_ms, ip,
-					  src_ip ? ip_cap : 0, &port);
-
-	if (rc < 0) {
-		return rc;
-	}
-	if (rc > 0 && k_usermode_to_copy(buf, tmp, rc) != 0) {
-		return -EFAULT;
-	}
-	if (src_ip != NULL &&
-	    k_usermode_to_copy(src_ip, ip, strlen(ip) + 1) != 0) {
-		return -EFAULT;
-	}
-	if (src_port != NULL &&
-	    k_usermode_to_copy(src_port, &port, sizeof(port)) != 0) {
-		return -EFAULT;
-	}
-	return rc;
+	return z_impl_svc_udp_recv_from(buf, cap, timeout_ms, src_ip, ip_cap,
+					src_port);
 }
 #include <zephyr/syscalls/svc_udp_recv_from_mrsh.c>
 
@@ -1312,19 +1460,11 @@ static inline int z_vrfy_svc_tcp_send(const void *buf, size_t len)
 
 static inline int z_vrfy_svc_tcp_recv(void *buf, size_t cap, uint32_t timeout_ms)
 {
-	char tmp[SOCK_PAYLOAD_MAX];
-
-	if (cap == 0 || cap > sizeof(tmp)) {
+	if (cap == 0) {
 		return -EINVAL;
 	}
 	K_OOPS(K_SYSCALL_MEMORY_WRITE(buf, cap));
-
-	int rc = z_impl_svc_tcp_recv(tmp, cap, timeout_ms);
-
-	if (rc > 0 && k_usermode_to_copy(buf, tmp, rc) != 0) {
-		return -EFAULT;
-	}
-	return rc;
+	return z_impl_svc_tcp_recv(buf, cap, timeout_ms);
 }
 #include <zephyr/syscalls/svc_tcp_recv_mrsh.c>
 
