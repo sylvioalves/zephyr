@@ -1,0 +1,21 @@
+sample:
+  name: Isolated RGB LED application
+  description: >
+    Cycle the color of a granted RGB LED pixel from a loadable
+    user-mode application.
+tests:
+  sample.subsys.app_rgb:
+    tags: app_platform
+    platform_allow:
+      - esp32c5_devkitc/esp32c5/hpcore
+      - esp32c6_devkitc/esp32c6/hpcore
+    harness: console
+    harness_config:
+      type: multi_line
+      ordered: true
+      regex:
+        - "rgb: step 1 red"
+        - "rgb: svc_rgb_set rc=0"
+        - "rgb: step 8 off"
+        - "rgb: 8 step\\(s\\), 0 failed"
+        - "done: rgb app cycled pixel 0 and exited"
