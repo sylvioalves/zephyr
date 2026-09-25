@@ -54,7 +54,7 @@ int main(void)
 		return 0;
 	}
 
-	if (load_and_launch("psram-a") != 0 || load_and_launch("psram-b") != 0) {
+	if (load_and_launch("psram-a") < 0 || load_and_launch("psram-b") < 0) {
 		return 0;
 	}
 
