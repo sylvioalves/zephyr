@@ -17,6 +17,7 @@
 #include <zephyr/app_memory/app_memdomain.h>
 #include <zephyr/arch/riscv/syscall.h>
 #include <zephyr/kernel.h>
+#include <zephyr/devicetree.h>
 #include <string.h>
 #include <errno.h>
 
@@ -239,8 +240,8 @@ ZTEST(zhostile, test_4_2_write_syscall_table)
 static void write_gpio_mmio(void *a)
 {
 	ARG_UNUSED(a);
-	/* GPIO_OUT_W1TS_REG on ESP32-C5 (GPIO base 0x60091000). */
-	volatile uint32_t *reg = (volatile uint32_t *)0x60091008;
+	/* GPIO_OUT_W1TS_REG */
+	volatile uint32_t *reg = (volatile uint32_t *)(DT_REG_ADDR(DT_NODELABEL(gpio0)) + 0x8U);
 	*reg = BIT(2);
 	report_done = 1;
 }
@@ -248,8 +249,8 @@ static void write_gpio_mmio(void *a)
 static void write_uart_mmio(void *a)
 {
 	ARG_UNUSED(a);
-	/* UART0 FIFO register on ESP32-C5. */
-	volatile uint32_t *reg = (volatile uint32_t *)0x60000000;
+	/* UART0 FIFO register */
+	volatile uint32_t *reg = (volatile uint32_t *)DT_REG_ADDR(DT_NODELABEL(uart0));
 	*reg = 'X';
 	report_done = 1;
 }
