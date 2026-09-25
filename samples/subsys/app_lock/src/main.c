@@ -53,28 +53,28 @@ static void body(void *arg)
 	}
 }
 
-static K_THREAD_STACK_DEFINE(stk, 2048);
-static K_THREAD_STACK_DEFINE(stk2, 2048);
-static struct k_thread th2;
+static __maybe_unused K_THREAD_STACK_DEFINE(stk, 2048);
+static __maybe_unused K_THREAD_STACK_DEFINE(stk2, 2048);
+static __maybe_unused struct k_thread th2;
 
 /* Second thread: sleeps POLL_MS so the timer ISR reschedules to it. */
-static void sleeper(void *a, void *b, void *c)
+static __maybe_unused void sleeper(void *a, void *b, void *c)
 {
 	ARG_UNUSED(a); ARG_UNUSED(b); ARG_UNUSED(c);
 	for (;;) {
 		k_msleep(POLL_MS);
 	}
 }
-static struct k_timer tick;
+static __maybe_unused struct k_timer tick;
 static K_SEM_DEFINE(never, 0, 1);
 static volatile uint32_t ticks;
 
-static void tick_fn(struct k_timer *t)
+static __maybe_unused void tick_fn(struct k_timer *t)
 {
 	ARG_UNUSED(t);
 	ticks++;
 }
-static struct k_thread th;
+static __maybe_unused struct k_thread th;
 
 int main(void)
 {
