@@ -13,6 +13,7 @@
 #include <zephyr/dt-bindings/i2c/i2c.h>
 #include <zephyr/dt-bindings/gpio/gpio.h>
 #include <zephyr/dt-bindings/pwm/pwm.h>
+#include <zephyr/dt-bindings/led/led.h>
 
 / {
 	dac_emul: dac_emul {
@@ -81,6 +82,29 @@
 		};
 	};
 
+	/* Captures the frames the WS2812 driver writes to the strip. */
+	strip_uart: strip_uart {
+		compatible = "vnd,serial";
+		current-speed = <2500000>;
+		data-bits = <7>;
+		tx-invert;
+		buffer-size = <1024>;
+		status = "okay";
+
+		test_strip: ws2812 {
+			compatible = "worldsemi,ws2812-uart";
+			one-symbol = <6>;
+			zero-symbol = <4>;
+			bits-per-symbol = <3>;
+			chain-length = <2>;
+			reset-delay = <50>;
+			color-mapping = <LED_COLOR_ID_GREEN
+					 LED_COLOR_ID_RED
+					 LED_COLOR_ID_BLUE>;
+			status = "okay";
+		};
+	};
+
 	adc_emul: adc_emul {
 		compatible = "zephyr,adc-emul";
 		nchannels = <1>;
@@ -95,6 +119,7 @@
 	aliases {
 		led0 = &test_led;
 		app-pwm0 = &test_pwm;
+		led-strip = &test_strip;
 	};
 
 	fake_i2c_bus: i2c@100 {

@@ -21,6 +21,8 @@
 #include <zephyr/drivers/gpio/gpio_emul.h>
 #include <zephyr/drivers/pwm/pwm_fake.h>
 #include <zephyr/drivers/regulator.h>
+#include <zephyr/drivers/led_strip.h>
+#include <zephyr/drivers/uart/serial_test.h>
 #include <zephyr/fs/fs.h>
 #include <zephyr/fs/littlefs.h>
 #include <zephyr/storage/flash_map.h>
@@ -709,6 +711,109 @@ ZTEST(devices, test_led_off_on_reclaim)
 	zassert_equal(gpio_emul_output_get_dt(&led), 1, "LED was not lit");
 	release_held("o_rc");
 	zassert_equal(gpio_emul_output_get_dt(&led), 0, "reclaim left the LED lit");
+}
+
+/* ---- addressable RGB LED ---- */
+
+static const struct device *const strip = DEVICE_DT_GET(DT_NODELABEL(test_strip));
+static const struct device *const strip_uart = DEVICE_DT_GET(DT_NODELABEL(strip_uart));
+static uint8_t strip_bytes[256];
+
+static uint32_t strip_drain(void)
+{
+	uint32_t total = 0U;
+	uint32_t n;
+
+	do {
+		n = serial_vnd_read_out_data(strip_uart, &strip_bytes[total],
+					     sizeof(strip_bytes) - total);
+		total += n;
+	} while (n > 0U && total < sizeof(strip_bytes));
+	return total;
+}
+
+static void rgb_set_p0(void *a)
+{
+	ARG_UNUSED(a);
+	report_rc = svc_rgb_set(0, 1U, 2U, 3U);
+	report_done = 1;
+}
+
+static void rgb_set_p1(void *a)
+{
+	ARG_UNUSED(a);
+	report_rc = svc_rgb_set(1, 1U, 2U, 3U);
+	report_done = 1;
+}
+
+static void rgb_set_past_end(void *a)
+{
+	ARG_UNUSED(a);
+	report_rc = svc_rgb_set(2, 1U, 2U, 3U);
+	report_done = 1;
+}
+
+static void rgb_count(void *a)
+{
+	ARG_UNUSED(a);
+	report_rc = svc_rgb_count();
+	report_done = 1;
+}
+
+ZTEST(devices, test_rgb_gate_and_grant)
+{
+	for (int i = 0; i < CONFIG_APP_PLATFORM_MAX_APPS; i++) {
+		app_platform_grant_rgb(i, BIT(0));
+	}
+	(void)strip_drain();
+	expect_rc("r_np", rgb_set_p0, APP_CAP_LOG, -EPERM);
+	zassert_equal(strip_drain(), 0U, "a refused set reached the strip");
+	expect_rc("r_ct", rgb_count, APP_CAP_LOG, 2);
+
+	for (int i = 0; i < CONFIG_APP_PLATFORM_MAX_APPS; i++) {
+		app_platform_grant_rgb(i, BIT(0));
+	}
+	expect_rc("r_ng", rgb_set_p1, APP_CAP_LOG | APP_CAP_RGB, -EACCES);
+	expect_rc("r_pe", rgb_set_past_end, APP_CAP_LOG | APP_CAP_RGB, -EACCES);
+	zassert_equal(strip_drain(), 0U, "a refused set reached the strip");
+
+	for (int i = 0; i < CONFIG_APP_PLATFORM_MAX_APPS; i++) {
+		app_platform_grant_rgb(i, BIT(0));
+	}
+	expect_rc("r_ok", rgb_set_p0, APP_CAP_LOG | APP_CAP_RGB, 0);
+	zassert_true(strip_drain() > 0U, "the set did not reach the strip");
+}
+
+static void rgb_set_held(void *a)
+{
+	ARG_UNUSED(a);
+	hold_until_released(svc_rgb_set(0, 10U, 20U, 30U));
+}
+
+ZTEST(devices, test_rgb_off_on_reclaim)
+{
+	struct led_rgb black[2] = { 0 };
+	uint8_t off[sizeof(strip_bytes)];
+	uint32_t len;
+	uint32_t n;
+
+	(void)strip_drain();
+	zassert_ok(led_strip_update_rgb(strip, black, ARRAY_SIZE(black)));
+	len = strip_drain();
+	zassert_true(len > 0U, "no reference frame");
+	memcpy(off, strip_bytes, len);
+
+	for (int i = 0; i < CONFIG_APP_PLATFORM_MAX_APPS; i++) {
+		app_platform_grant_rgb(i, BIT(0));
+	}
+	launch_held("x_rc", rgb_set_held, APP_CAP_LOG | APP_CAP_RGB);
+	n = strip_drain();
+	zassert_equal(n, len, "the set did not refresh the strip");
+	zassert_true(memcmp(strip_bytes, off, len) != 0, "pixel was not lit");
+	release_held("x_rc");
+	n = strip_drain();
+	zassert_true(n >= len, "reclaim did not refresh the strip");
+	zassert_mem_equal(&strip_bytes[n - len], off, len, "reclaim left the pixel lit");
 }
 
 /* ---- the per-application file sandbox ---- */
