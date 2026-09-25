@@ -1,0 +1,20 @@
+sample:
+  name: Signed module install from an application store
+  description: >
+    Install and run a signed loadable module, and reject a tampered module
+    and one that skipped verification.
+tests:
+  sample.subsys.app_store:
+    tags: app_platform
+    platform_allow:
+      - esp32c5_devkitc/esp32c5/hpcore
+      - esp32c6_devkitc/esp32c6/hpcore
+    harness: console
+    harness_config:
+      type: multi_line
+      ordered: true
+      regex:
+        - "'store' installed and running"
+        - "install REJECTED"
+        - "unverified module refused at launch OK"
+        - "done: signed module ran; tampered and unverified modules rejected"
