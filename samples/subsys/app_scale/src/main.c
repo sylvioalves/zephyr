@@ -274,7 +274,8 @@ static void beat_app(void *arg)
 
 static void mode_wdt(void)
 {
-	printk("== 5.5 watchdog under load: 36 busy apps + 1 monitored heartbeat app, 60 s\n");
+	printk("== 5.5 watchdog under load: %d busy apps + 1 monitored heartbeat app, 60 s\n",
+	       CONFIG_APP_PLATFORM_MAX_APPS - 1);
 	app_platform_log_enable(false);
 	const struct app_def beat = {
 		.name = "beat", .source = APP_BUILTIN, .entry = beat_app,
@@ -282,7 +283,7 @@ static void mode_wdt(void)
 	};
 	int bid = app_platform_launch(&beat);
 
-	for (int i = 0; i < 36; i++) {
+	for (int i = 0; i < CONFIG_APP_PLATFORM_MAX_APPS - 1; i++) {
 		snprintk(names[i], sizeof(names[i]), "busy%02d", i);
 		const struct app_def b = {
 			.name = names[i], .source = APP_BUILTIN, .entry = busy_app,
