@@ -22,6 +22,7 @@
 #include <zephyr/drivers/pwm/pwm_fake.h>
 #include <zephyr/drivers/regulator.h>
 #include <zephyr/drivers/led_strip.h>
+#include <zephyr/drivers/display.h>
 #include <zephyr/drivers/uart/serial_test.h>
 #include <zephyr/fs/fs.h>
 #include <zephyr/fs/littlefs.h>
@@ -29,6 +30,8 @@
 #include <zephyr/app_memory/app_memdomain.h>
 #include <string.h>
 #include <errno.h>
+
+#include "display_capture.h"
 
 /* The fake regulator and stepper drivers are FFF-based, so the test image owns
  * the framework's globals.
@@ -814,6 +817,325 @@ ZTEST(devices, test_rgb_off_on_reclaim)
 	n = strip_drain();
 	zassert_true(n >= len, "reclaim did not refresh the strip");
 	zassert_mem_equal(&strip_bytes[n - len], off, len, "reclaim left the pixel lit");
+}
+
+/* ---- shared display ---- */
+
+static const struct app_display_rect vp_left = { .x = 0, .y = 0, .width = 80, .height = 24 };
+static const struct app_display_rect vp_right = { .x = 80, .y = 0, .width = 80, .height = 24 };
+static const struct app_display_rect vp_full = {
+	.x = 0, .y = 0, .width = CAPTURE_W, .height = CAPTURE_H,
+};
+
+K_APP_DMEM(report_part) uint16_t disp_pix[CAPTURE_W * 3];
+K_APP_DMEM(report_part) struct svc_display_info disp_info;
+
+static void grant_display_all(const struct app_display_rect *vp)
+{
+	for (int i = 0; i < CONFIG_APP_PLATFORM_MAX_APPS; i++) {
+		zassert_ok(app_platform_grant_display(i, vp));
+	}
+}
+
+static void paint_panel(uint16_t color)
+{
+	for (int r = 0; r < CAPTURE_H; r++) {
+		for (int c = 0; c < CAPTURE_W; c++) {
+			capture_fb[r][c] = color;
+		}
+	}
+}
+
+static bool rect_is(const struct app_display_rect *vp, uint16_t color)
+{
+	for (int r = vp->y; r < vp->y + vp->height; r++) {
+		for (int c = vp->x; c < vp->x + vp->width; c++) {
+			if (capture_fb[r][c] != color) {
+				return false;
+			}
+		}
+	}
+	return true;
+}
+
+static void disp_info_app(void *a)
+{
+	ARG_UNUSED(a);
+	report_rc = svc_display_info(&disp_info);
+	report_done = 1;
+}
+
+static void disp_write_2x2(void *a)
+{
+	ARG_UNUSED(a);
+	report_rc = svc_display_write(3, 4, 2, 2, disp_pix, 4 * sizeof(uint16_t));
+	report_done = 1;
+}
+
+static void disp_write_short(void *a)
+{
+	ARG_UNUSED(a);
+	report_rc = svc_display_write(3, 4, 2, 2, disp_pix, 3 * sizeof(uint16_t));
+	report_done = 1;
+}
+
+static void disp_write_edge(void *a)
+{
+	ARG_UNUSED(a);
+	report_rc = svc_display_write(79, 23, 1, 1, disp_pix, sizeof(uint16_t));
+	report_done = 1;
+}
+
+static void disp_write_past(void *a)
+{
+	ARG_UNUSED(a);
+	report_rc = svc_display_write(79, 23, 2, 1, disp_pix, 2 * sizeof(uint16_t));
+	report_done = 1;
+}
+
+static void disp_write_empty(void *a)
+{
+	ARG_UNUSED(a);
+	report_rc = svc_display_write(0, 0, 0, 1, disp_pix, 0);
+	report_done = 1;
+}
+
+/* An application's viewport is cleared once it exits, so the drawing tests
+ * inspect the panel while the application is still held.
+ */
+static void disp_write_2x2_held(void *a)
+{
+	ARG_UNUSED(a);
+	hold_until_released(svc_display_write(3, 4, 2, 2, disp_pix, 4 * sizeof(uint16_t)));
+}
+
+static void disp_write_edge_held(void *a)
+{
+	ARG_UNUSED(a);
+	hold_until_released(svc_display_write(79, 23, 1, 1, disp_pix, sizeof(uint16_t)));
+}
+
+static void disp_write_wide_held(void *a)
+{
+	ARG_UNUSED(a);
+	hold_until_released(svc_display_write(0, 0, CAPTURE_W, 3, disp_pix, sizeof(disp_pix)));
+}
+
+static void disp_write_rows_held(void *a)
+{
+	ARG_UNUSED(a);
+	hold_until_released(svc_display_write(0, 0, 64, 6, disp_pix, 64 * 6 * sizeof(uint16_t)));
+}
+
+static void disp_write_kernel_ptr(void *a)
+{
+	ARG_UNUSED(a);
+	report_rc = svc_display_write(0, 0, 1, 1, &capture_fb[0][0], sizeof(uint16_t));
+	report_done = 1;
+}
+
+static void disp_vsync_app(void *a)
+{
+	ARG_UNUSED(a);
+	report_rc = svc_display_vsync();
+	report_done = 1;
+}
+
+static void disp_fill_held(void *a)
+{
+	ARG_UNUSED(a);
+	hold_until_released(svc_display_fill(0, 0, 80, 24, 0xf800U));
+}
+
+ZTEST(devices, test_display_gate_and_grant)
+{
+	const struct app_display_rect off_panel = {
+		.x = 100, .y = 0, .width = 80, .height = 24,
+	};
+
+	zassert_equal(app_platform_grant_display(0, &off_panel), -EINVAL);
+	zassert_equal(app_platform_grant_display(CONFIG_APP_PLATFORM_MAX_APPS, &vp_left), -EINVAL);
+
+	capture_writes = 0U;
+	grant_display_all(&vp_left);
+	expect_rc("d_np", disp_write_2x2, APP_CAP_LOG, -EPERM);
+
+	grant_display_all(NULL);
+	expect_rc("d_ng", disp_write_2x2, APP_CAP_LOG | APP_CAP_DISPLAY, -EACCES);
+	expect_rc("d_ni", disp_info_app, APP_CAP_LOG | APP_CAP_DISPLAY, -EACCES);
+	zassert_equal(capture_writes, 0U, "a refused write reached the panel");
+
+	grant_display_all(&vp_left);
+	expect_rc("d_in", disp_info_app, APP_CAP_LOG | APP_CAP_DISPLAY, 0);
+	zassert_equal(disp_info.width, 80U);
+	zassert_equal(disp_info.height, 24U);
+	zassert_equal(disp_info.pixel_format, PIXEL_FORMAT_RGB_565);
+	zassert_equal(disp_info.bytes_per_pixel, 2U);
+}
+
+ZTEST(devices, test_display_bounds_and_length)
+{
+	paint_panel(0U);
+	disp_pix[0] = 0xabcdU;
+	capture_writes = 0U;
+
+	grant_display_all(&vp_left);
+	expect_rc("d_pa", disp_write_past, APP_CAP_LOG | APP_CAP_DISPLAY, -ERANGE);
+	grant_display_all(&vp_left);
+	expect_rc("d_em", disp_write_empty, APP_CAP_LOG | APP_CAP_DISPLAY, -ERANGE);
+	grant_display_all(&vp_left);
+	expect_rc("d_sh", disp_write_short, APP_CAP_LOG | APP_CAP_DISPLAY, -EINVAL);
+	zassert_equal(capture_writes, 0U, "a refused write reached the panel");
+
+	grant_display_all(&vp_left);
+	launch_held("d_ed", disp_write_edge_held, APP_CAP_LOG | APP_CAP_DISPLAY);
+	zassert_equal(capture_fb[23][79], 0xabcdU, "the edge pixel was not drawn");
+	zassert_true(rect_is(&vp_right, 0U), "a write crossed into the next viewport");
+	release_held("d_ed");
+}
+
+ZTEST(devices, test_display_write_lands_at_viewport_offset)
+{
+	paint_panel(0U);
+	disp_pix[0] = 0x1111U;
+	disp_pix[1] = 0x2222U;
+	disp_pix[2] = 0x3333U;
+	disp_pix[3] = 0x4444U;
+
+	grant_display_all(&vp_right);
+	launch_held("d_of", disp_write_2x2_held, APP_CAP_LOG | APP_CAP_DISPLAY);
+	zassert_equal(capture_fb[4][83], 0x1111U);
+	zassert_equal(capture_fb[4][84], 0x2222U);
+	zassert_equal(capture_fb[5][83], 0x3333U);
+	zassert_equal(capture_fb[5][84], 0x4444U);
+	zassert_equal(capture_fb[4][3], 0U, "the write ignored the viewport offset");
+	release_held("d_of");
+}
+
+ZTEST(devices, test_display_fill)
+{
+	paint_panel(0U);
+	grant_display_all(&vp_right);
+	launch_held("d_fi", disp_fill_held, APP_CAP_LOG | APP_CAP_DISPLAY);
+	zassert_true(rect_is(&vp_right, 0xf800U), "the viewport was not filled");
+	zassert_true(rect_is(&vp_left, 0U), "the fill left its viewport");
+	release_held("d_fi");
+}
+
+ZTEST(devices, test_display_chunked_writes)
+{
+	for (int i = 0; i < ARRAY_SIZE(disp_pix); i++) {
+		disp_pix[i] = (uint16_t)(i + 1);
+	}
+	paint_panel(0U);
+
+	/* A 320-byte row does not fit a 256-byte chunk, so each row is split. */
+	capture_writes = 0U;
+	grant_display_all(&vp_full);
+	launch_held("d_wi", disp_write_wide_held, APP_CAP_LOG | APP_CAP_DISPLAY);
+	zassert_equal(capture_writes, 6U, "%u driver writes", capture_writes);
+	for (int r = 0; r < 3; r++) {
+		zassert_mem_equal(capture_fb[r], &disp_pix[r * CAPTURE_W],
+				  CAPTURE_W * sizeof(uint16_t), "row %d differs", r);
+	}
+	release_held("d_wi");
+
+	/* 128-byte rows go two to a chunk. */
+	capture_writes = 0U;
+	grant_display_all(&vp_full);
+	launch_held("d_ro", disp_write_rows_held, APP_CAP_LOG | APP_CAP_DISPLAY);
+	zassert_equal(capture_writes, 3U, "%u driver writes", capture_writes);
+	for (int r = 0; r < 6; r++) {
+		zassert_mem_equal(capture_fb[r], &disp_pix[r * 64], 64 * sizeof(uint16_t),
+				  "row %d differs", r);
+	}
+	release_held("d_ro");
+}
+
+ZTEST(devices, test_display_cleared_on_reclaim)
+{
+	paint_panel(0x1234U);
+	grant_display_all(&vp_left);
+	launch_held("d_rc", disp_fill_held, APP_CAP_LOG | APP_CAP_DISPLAY);
+	zassert_true(rect_is(&vp_left, 0xf800U), "the viewport was not filled");
+	release_held("d_rc");
+	zassert_true(rect_is(&vp_left, CONFIG_APP_PLATFORM_DISPLAY_CLEAR_COLOR),
+		     "reclaim did not clear the viewport");
+	zassert_true(rect_is(&vp_right, 0x1234U), "reclaim cleared another viewport");
+}
+
+ZTEST(devices, test_display_bad_buffer_leaves_lock_free)
+{
+	const struct app_def def = {
+		.name = "d_bp", .source = APP_BUILTIN, .entry = disp_write_kernel_ptr,
+		.caps = APP_CAP_LOG | APP_CAP_DISPLAY,
+	};
+	int id;
+
+	grant_display_all(&vp_left);
+	report_done = 0;
+	id = app_platform_launch(&def);
+	zassert_true(id >= 0, "launch failed");
+	k_mem_domain_add_partition(app_platform_domain(id), &report_part);
+	zassert_true(wait_slot_free("d_bp", 2000), "d_bp was not reclaimed");
+	zassert_equal(report_done, 0, "a kernel pointer was accepted");
+
+	zassert_ok(app_platform_display_lock(K_NO_WAIT), "the display lock was left held");
+	app_platform_display_unlock();
+	grant_display_all(&vp_left);
+	expect_rc("d_af", disp_write_edge, APP_CAP_LOG | APP_CAP_DISPLAY, 0);
+}
+
+ZTEST(devices, test_display_supervisor_lock_excludes_apps)
+{
+	const struct app_def def = {
+		.name = "d_lk", .source = APP_BUILTIN, .entry = disp_write_edge,
+		.caps = APP_CAP_LOG | APP_CAP_DISPLAY,
+	};
+	int id;
+
+	grant_display_all(&vp_left);
+	report_rc = -9999;
+	report_done = 0;
+	zassert_ok(app_platform_display_lock(K_NO_WAIT));
+	id = app_platform_launch(&def);
+	zassert_true(id >= 0, "launch failed");
+	k_mem_domain_add_partition(app_platform_domain(id), &report_part);
+	k_msleep(50);
+	zassert_equal(report_done, 0, "an application drew under the supervisor lock");
+	app_platform_display_unlock();
+	zassert_true(wait_slot_free("d_lk", 2000), "d_lk never exited");
+	zassert_equal(report_rc, 0, "rc %d", report_rc);
+}
+
+ZTEST(devices, test_display_vsync_wakes_waiter)
+{
+	const struct app_def def = {
+		.name = "d_vs", .source = APP_BUILTIN, .entry = disp_vsync_app,
+		.caps = APP_CAP_LOG | APP_CAP_DISPLAY,
+	};
+	int id;
+
+	grant_display_all(&vp_left);
+	expect_rc("d_vn", disp_vsync_app, APP_CAP_LOG, -EPERM);
+
+	grant_display_all(&vp_left);
+	report_rc = -9999;
+	report_done = 0;
+	id = app_platform_launch(&def);
+	zassert_true(id >= 0, "launch failed");
+	k_mem_domain_add_partition(app_platform_domain(id), &report_part);
+	k_msleep(20);
+	zassert_equal(report_done, 0, "the wait returned before a refresh");
+	capture_vsync();
+	zassert_true(wait_slot_free("d_vs", 2000), "d_vs never exited");
+	zassert_equal(report_rc, 0, "rc %d", report_rc);
+}
+
+ZTEST(devices, test_display_vsync_times_out)
+{
+	grant_display_all(&vp_left);
+	expect_rc("d_vt", disp_vsync_app, APP_CAP_LOG | APP_CAP_DISPLAY, -EAGAIN);
 }
 
 /* ---- the per-application file sandbox ---- */

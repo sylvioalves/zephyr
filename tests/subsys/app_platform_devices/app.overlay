@@ -105,6 +105,13 @@
 		};
 	};
 
+	capture_display: capture_display {
+		compatible = "vnd,display-capture";
+		width = <160>;
+		height = <24>;
+		status = "okay";
+	};
+
 	adc_emul: adc_emul {
 		compatible = "zephyr,adc-emul";
 		nchannels = <1>;
@@ -158,5 +165,6 @@
 		zephyr,rtc = &rtc_emul;
 		zephyr,fuel-gauge = &smartbattery0;
 		zephyr,charger = &sbscharger0;
+		zephyr,display = &capture_display;
 	};
 };

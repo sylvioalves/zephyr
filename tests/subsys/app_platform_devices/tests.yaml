@@ -1,6 +1,8 @@
 common:
   tags: app_platform
   harness: ztest
+  # One case hands a service a kernel pointer and expects the oops.
+  ignore_faults: true
   # The device services are exercised against emulated instances, so the suite
   # runs anywhere that offers user mode rather than only on the boards that
   # happen to carry this hardware.
