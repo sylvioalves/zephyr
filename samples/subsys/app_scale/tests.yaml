@@ -1,0 +1,18 @@
+sample:
+  name: Platform application scale runs
+  description: >
+    Launch loadable applications into every platform slot, with the llext
+    heap in external RAM, and check that all of them stay alive.
+tests:
+  sample.subsys.app_scale:
+    tags: app_platform
+    platform_allow:
+      - esp32c5_devkitc/esp32c5/hpcore
+    harness: console
+    harness_config:
+      type: multi_line
+      ordered: true
+      regex:
+        - "launched 30 apps"
+        - "30 / 30 apps alive after 5 s"
+        - "app_scale done"
