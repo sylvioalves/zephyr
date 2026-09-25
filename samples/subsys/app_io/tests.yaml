@@ -8,6 +8,7 @@ tests:
     platform_allow:
       - esp32c5_devkitc/esp32c5/hpcore
       - esp32c6_devkitc/esp32c6/hpcore
+      - esp32p4x_function_ev_board/esp32p4/hpcore
     harness: console
     harness_config:
       type: one_line
