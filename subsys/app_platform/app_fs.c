@@ -40,6 +40,9 @@ LOG_MODULE_DECLARE(app_platform, CONFIG_APP_PLATFORM_LOG_LEVEL);
 #define OPEN_FILES   CONFIG_APP_PLATFORM_FS_OPEN_FILES
 #define PATH_MAX_LEN CONFIG_APP_PLATFORM_FS_PATH_MAX
 
+BUILD_ASSERT(CONFIG_PRIVILEGED_STACK_SIZE >= 2048,
+	     "a file call runs the filesystem on the privileged stack");
+
 static struct fs_file_t files[OPEN_FILES];
 static int file_owner[OPEN_FILES];
 static bool file_used[OPEN_FILES];

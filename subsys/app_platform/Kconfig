@@ -273,10 +273,6 @@ config APP_PLATFORM_FS_PATH_MAX
 	  Bound on the absolute path built from an application's root and the
 	  relative name it supplied. A longer path is refused.
 
-# A file call runs on the privileged stack, not the application's own, so a
-# deep filesystem chain is bounded by CONFIG_PRIVILEGED_STACK_SIZE. The default
-# 1024 is not enough to reach a flash driver through littlefs.
-
 config APP_PLATFORM_FS_XFER_MAX
 	int "Maximum bytes per file read or write"
 	default 256
