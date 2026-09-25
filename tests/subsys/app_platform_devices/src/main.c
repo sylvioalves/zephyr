@@ -1108,6 +1108,132 @@ ZTEST(devices, test_display_supervisor_lock_excludes_apps)
 	zassert_equal(report_rc, 0, "rc %d", report_rc);
 }
 
+K_APP_DMEM(report_part) struct svc_display_canvas disp_cv;
+
+static int canvas_is_zero(void)
+{
+	const uint8_t *p = (const uint8_t *)disp_cv.base;
+
+	for (size_t i = 0; i < disp_cv.size; i++) {
+		if (p[i] != 0U) {
+			return -EILSEQ;
+		}
+	}
+	return 0;
+}
+
+static void disp_canvas_app(void *a)
+{
+	ARG_UNUSED(a);
+	report_rc = svc_display_canvas(&disp_cv);
+	report_done = 1;
+}
+
+static void disp_present_no_canvas(void *a)
+{
+	ARG_UNUSED(a);
+	report_rc = svc_display_present(0, 0, 1, 1);
+	report_done = 1;
+}
+
+static void disp_present_past(void *a)
+{
+	ARG_UNUSED(a);
+	report_rc = svc_display_canvas(&disp_cv);
+	if (report_rc == 0) {
+		report_rc = svc_display_present(79, 23, 2, 1);
+	}
+	report_done = 1;
+}
+
+static void disp_canvas_dirty(void *a)
+{
+	ARG_UNUSED(a);
+	report_rc = svc_display_canvas(&disp_cv);
+	if (report_rc == 0) {
+		memset((void *)disp_cv.base, 0xab, disp_cv.size);
+	}
+	report_done = 1;
+}
+
+static void disp_canvas_zeroed(void *a)
+{
+	ARG_UNUSED(a);
+	report_rc = svc_display_canvas(&disp_cv);
+	if (report_rc == 0) {
+		report_rc = canvas_is_zero();
+	}
+	report_done = 1;
+}
+
+static void disp_canvas_draw_held(void *a)
+{
+	struct svc_display_canvas again;
+	uint16_t *px;
+	int rc;
+
+	ARG_UNUSED(a);
+	rc = svc_display_canvas(&disp_cv);
+	if (rc == 0) {
+		rc = svc_display_canvas(&again);
+	}
+	if (rc == 0 && again.base != disp_cv.base) {
+		rc = -EFAULT;
+	}
+	if (rc == 0) {
+		px = (uint16_t *)disp_cv.base;
+		for (int r = 3; r < 5; r++) {
+			for (int c = 2; c < 6; c++) {
+				px[r * disp_cv.pitch + c] = (uint16_t)(0x1000 + r * 16 + c);
+			}
+		}
+		rc = svc_display_present(2, 3, 4, 2);
+	}
+	hold_until_released(rc);
+}
+
+ZTEST(devices, test_display_canvas_gate)
+{
+	grant_display_all(&vp_right);
+	expect_rc("c_np", disp_canvas_app, APP_CAP_LOG, -EPERM);
+	grant_display_all(NULL);
+	expect_rc("c_ng", disp_canvas_app, APP_CAP_LOG | APP_CAP_DISPLAY, -EACCES);
+	grant_display_all(&vp_right);
+	expect_rc("c_nc", disp_present_no_canvas, APP_CAP_LOG | APP_CAP_DISPLAY, -ENOENT);
+	grant_display_all(&vp_right);
+	expect_rc("c_pa", disp_present_past, APP_CAP_LOG | APP_CAP_DISPLAY, -ERANGE);
+}
+
+ZTEST(devices, test_display_canvas_present)
+{
+	paint_panel(0U);
+	grant_display_all(&vp_right);
+	launch_held("c_dr", disp_canvas_draw_held, APP_CAP_LOG | APP_CAP_DISPLAY);
+	zassert_equal(disp_cv.width, 80U);
+	zassert_equal(disp_cv.height, 24U);
+	zassert_equal(disp_cv.bytes_per_pixel, 2U);
+	zassert_true(disp_cv.size >= 80U * 24U * 2U);
+	for (int r = 3; r < 5; r++) {
+		for (int c = 2; c < 6; c++) {
+			zassert_equal(capture_fb[r][80 + c], 0x1000 + r * 16 + c,
+				      "pixel %d,%d was not presented", c, r);
+		}
+	}
+	zassert_equal(capture_fb[3][80 + 1], 0U, "present went outside its rectangle");
+	zassert_equal(capture_fb[3][2], 0U, "present ignored the viewport offset");
+	release_held("c_dr");
+	zassert_true(rect_is(&vp_right, CONFIG_APP_PLATFORM_DISPLAY_CLEAR_COLOR),
+		     "reclaim did not clear the viewport");
+}
+
+ZTEST(devices, test_display_canvas_zeroed_for_next_app)
+{
+	grant_display_all(&vp_right);
+	expect_rc("c_di", disp_canvas_dirty, APP_CAP_LOG | APP_CAP_DISPLAY, 0);
+	grant_display_all(&vp_right);
+	expect_rc("c_ze", disp_canvas_zeroed, APP_CAP_LOG | APP_CAP_DISPLAY, 0);
+}
+
 ZTEST(devices, test_display_vsync_wakes_waiter)
 {
 	const struct app_def def = {
