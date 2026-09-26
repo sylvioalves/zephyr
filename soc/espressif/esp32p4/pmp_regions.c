@@ -7,6 +7,7 @@
 #include <zephyr/kernel.h>
 #include <zephyr/arch/riscv/csr.h>
 #include <zephyr/devicetree.h>
+#include <zephyr/linker/linker-defs.h>
 #include <pmp.h>
 
 /*
@@ -46,15 +47,18 @@ PMP_SOC_REGION_DEFINE(esp32p4_iram_text, _iram_text_start, _iram_text_end, PMP_R
  * window as the executable text, but past __rom_region_end, so the
  * read-only region entry does not cover them. User-mode loads of const
  * data are permission checked against PMP, so this window must be
- * explicitly allowed as read-only. Use _image_rodata_* so sections
+ * explicitly allowed as read-only. Use _image_rodata_end so sections
  * after __rodata_region_end that still map into DROM are covered.
+ *
+ * The entry starts at __rom_region_end so it shares its lower bound with
+ * the flash text entry and takes a single PMP slot. The addresses between
+ * the end of the text and the DROM mapping only hold image padding.
  *
  * The CPU subsystem (CLINT-style timer and software interrupt) and the
  * peripheral bus are not listed here: SoC regions are granted to both
  * kernel and user mode, and user threads must not reach those windows.
  * Kernel accesses to them are covered by the kernel-mode catch-all entry.
  */
-extern char _image_rodata_start[];
 extern char _image_rodata_end[];
 
-PMP_SOC_REGION_DEFINE(esp32p4_flash_rodata, _image_rodata_start, _image_rodata_end, PMP_R);
+PMP_SOC_REGION_DEFINE(esp32p4_flash_rodata, __rom_region_end, _image_rodata_end, PMP_R);

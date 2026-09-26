@@ -7,6 +7,7 @@
 #include <zephyr/kernel.h>
 #include <zephyr/arch/riscv/csr.h>
 #include <zephyr/devicetree.h>
+#include <zephyr/linker/linker-defs.h>
 #include <pmp.h>
 
 /* The soc ROM holds libc and other utility functions and must stay
@@ -29,13 +30,17 @@ PMP_SOC_REGION_DEFINE(esp32c61_iram_text, _iram_text_start, _iram_text_end, PMP_
 /* Flash-mapped read-only data (DROM). Const data and string
  * literals live in a separate MMU window from executable flash
  * text (__rom_region). Without an explicit PMP entry, user mode
- * cannot read that window. Use _image_rodata_* so sections after
+ * cannot read that window. Use _image_rodata_end so sections after
  * __rodata_region_end that still map into DROM are covered.
+ *
+ * The entry starts at __rom_region_end so it shares its lower bound
+ * with the flash text entry and takes a single PMP slot. The addresses
+ * between the end of the text and the DROM mapping only hold image
+ * padding.
  */
-extern char _image_rodata_start[];
 extern char _image_rodata_end[];
 
-PMP_SOC_REGION_DEFINE(esp32c61_flash_rodata, _image_rodata_start, _image_rodata_end, PMP_R);
+PMP_SOC_REGION_DEFINE(esp32c61_flash_rodata, __rom_region_end, _image_rodata_end, PMP_R);
 
 /* The peripheral bus needs an explicit PMP entry: PMP_NO_LOCK_GLOBAL
  * enforces machine-mode checks through MPRV and the catch-all entry
