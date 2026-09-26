@@ -1181,27 +1181,84 @@ void z_riscv_pmp_usermode_prepare(struct k_thread *thread)
 }
 
 /**
- * @brief Convert partition information into PMP entries
+ * @brief Permissions of a partition, masked by the memory attribute region
+ *        that contains it.
  */
-static void resync_pmp_domain(struct k_thread *thread,
-			      struct k_mem_domain *domain)
+static uint8_t partition_pmp_perm(const struct k_mem_partition *part)
 {
-	unsigned int index = thread->arch.u_mode_pmp_domain_offset;
-	int p_idx, remaining_partitions;
-	bool ok;
+#ifdef CONFIG_MEM_ATTR
+	/*
+	 * Determine whether the partition is covered by a memory
+	 * attribute region.
+	 *
+	 * Constraint due to number of PMP entry limitation:
+	 * The logic asserts against any cases that requires splitting
+	 * a partition into multiple permissions, such as partial
+	 * overlap or the partition fully containing the memory
+	 * attribute region but not fully match.
+	 *
+	 * Supported cases:
+	 * 1. Partition excludes all memory attribute regions
+	 *    The partition's permission is applied directly.
+	 * 2. Partition is contained in a memory attribute region:
+	 *    The partition's permission is masked with the memory
+	 *    attribute.
+	 */
+	const struct mem_attr_region_t *region;
+	uint8_t attr_mask = PMP_R | PMP_W | PMP_X;
 
-	k_spinlock_key_t key = k_spin_lock(&z_mem_domain_lock);
+	for (int idx = 0; idx < mem_attr_get_regions(&region); idx++) {
+		uintptr_t dt_start = (uintptr_t)(region[idx].dt_addr);
+		uintptr_t dt_end = dt_start + (size_t)(region[idx].dt_size);
+		bool covered = false;
 
-	remaining_partitions = domain->num_partitions;
-	for (p_idx = 0; remaining_partitions > 0; p_idx++) {
-		struct k_mem_partition *part = &domain->partitions[p_idx];
+		/* No overlap at all, skip this memory region */
+		if ((part->start + part->size) <= dt_start || part->start >= dt_end) {
+			continue;
+		}
+
+		/* Check if the partition is contained in the memory attribute region. */
+		covered = part->start >= dt_start && (part->start + part->size) <= dt_end;
+		__ASSERT(covered, "No allowed partition partially overlaps memory region");
+
+		attr_mask = DT_MEM_RISCV_TO_PMP_PERM(region[idx].dt_attr);
+		break;
+	}
+
+	return part->attr.pmp_attr & attr_mask;
+#else
+	return part->attr.pmp_attr;
+#endif
+}
+
+/**
+ * @brief Convert a domain's partitions into PMP entries.
+ *
+ * Partitions are programmed in address order so that adjacent ones can share
+ * a TOR bound, and contiguous partitions with equal permissions are merged
+ * into a single range.
+ *
+ * @return Number of partitions left without an entry, 0 when all fit.
+ */
+static int set_domain_pmp_entries(const struct k_mem_domain *domain, unsigned int *index_p,
+				  unsigned long *pmp_addr, unsigned long *pmp_cfg,
+				  unsigned int index_limit)
+{
+	uint8_t order[MAX(CONFIG_MAX_DOMAIN_PARTITIONS, 1)];
+	int count = 0;
+	int seen = 0;
+	int i = 0;
+
+	for (int p_idx = 0; seen < domain->num_partitions; p_idx++) {
+		const struct k_mem_partition *part = &domain->partitions[p_idx];
+		int pos;
 
 		if (part->size == 0) {
 			/* skip empty partition */
 			continue;
 		}
 
-		remaining_partitions--;
+		seen++;
 
 		if (part->size < 4) {
 			/* * 4 bytes is the minimum we can map */
@@ -1210,66 +1267,62 @@ static void resync_pmp_domain(struct k_thread *thread,
 			continue;
 		}
 
-#ifdef CONFIG_MEM_ATTR
-		/*
-		 * Determine whether the partition is covered by a memory
-		 * attribute region.
-		 *
-		 * Constraint due to number of PMP entry limitation:
-		 * The logic asserts against any cases that requires splitting
-		 * a partition into multiple permissions, such as partial
-		 * overlap or the partition fully containing the memory
-		 * attribute region but not fully match.
-		 *
-		 * Supported cases:
-		 * 1. Partition excludes all memory attribute regions
-		 *    The partition's permission is applied directly.
-		 * 2. Partition is contained in a memory attribute region:
-		 *    The partition's permission is masked with the memory
-		 *    attribute.
-		 */
-		const struct mem_attr_region_t *region;
-		uint8_t attr_mask = PMP_R | PMP_W | PMP_X;
+		for (pos = count; pos > 0 && domain->partitions[order[pos - 1]].start > part->start;
+		     pos--) {
+			order[pos] = order[pos - 1];
+		}
+		order[pos] = (uint8_t)p_idx;
+		count++;
+	}
 
-		for (int idx = 0; idx < mem_attr_get_regions(&region); idx++) {
-			uintptr_t dt_start = (uintptr_t)(region[idx].dt_addr);
-			uintptr_t dt_end = dt_start + (size_t)(region[idx].dt_size);
-			bool covered = false;
+	while (i < count) {
+		const struct k_mem_partition *part = &domain->partitions[order[i]];
+		uintptr_t start = part->start;
+		size_t size = part->size;
+		uint8_t perm = partition_pmp_perm(part);
+		int first = i;
 
-			/* No overlap at all, skip this memory region */
-			if ((part->start + part->size) <= dt_start || part->start >= dt_end) {
-				continue;
+		for (i++; PMP_TOR_SUPPORTED && i < count; i++) {
+			const struct k_mem_partition *next = &domain->partitions[order[i]];
+
+			if (next->start != start + size || partition_pmp_perm(next) != perm) {
+				break;
 			}
-
-			/* Check if the partition is contained in the memory attribute region. */
-			covered = part->start >= dt_start && (part->start + part->size) <= dt_end;
-			__ASSERT(covered, "No allowed partition partially overlaps memory region");
-
-			attr_mask = DT_MEM_RISCV_TO_PMP_PERM(region[idx].dt_attr);
-			break;
+			size += next->size;
 		}
 
-		ok = set_pmp_entry(&index, part->attr.pmp_attr & attr_mask, part->start, part->size,
-				   PMP_U_MODE(thread));
-#else
-		ok = set_pmp_entry(&index, part->attr.pmp_attr, part->start, part->size,
-				   PMP_U_MODE(thread));
-#endif
-
-		/*
-		 * The available slot count is an optimistic estimate (see
-		 * arch_mem_domain_max_partitions_get), so a domain may hold more
-		 * partitions than fit in this thread's remaining PMP entries. If we
-		 * run out, stop programming rather than asserting: the thread runs
-		 * with the partitions that fit and faults - only that thread - on an
-		 * access to an unmapped one, which is recoverable, whereas an assert
-		 * here runs during a context switch and takes down the whole system.
-		 */
-		if (!ok) {
-			LOG_ERR("no PMP slot left for %d remaining partitions in domain %p",
-				remaining_partitions + 1, domain);
-			break;
+		if (!set_pmp_entry(index_p, perm, start, size, pmp_addr, pmp_cfg, index_limit)) {
+			return count - first;
 		}
+	}
+
+	return 0;
+}
+
+/**
+ * @brief Convert partition information into PMP entries
+ */
+static void resync_pmp_domain(struct k_thread *thread,
+			      struct k_mem_domain *domain)
+{
+	unsigned int index = thread->arch.u_mode_pmp_domain_offset;
+	int left;
+
+	k_spinlock_key_t key = k_spin_lock(&z_mem_domain_lock);
+
+	left = set_domain_pmp_entries(domain, &index, PMP_U_MODE(thread));
+
+	/*
+	 * The available slot count is an optimistic estimate (see
+	 * arch_mem_domain_max_partitions_get), so a domain may hold more
+	 * partitions than fit in this thread's remaining PMP entries. If we
+	 * run out, stop programming rather than asserting: the thread runs
+	 * with the partitions that fit and faults - only that thread - on an
+	 * access to an unmapped one, which is recoverable, whereas an assert
+	 * here runs during a context switch and takes down the whole system.
+	 */
+	if (left != 0) {
+		LOG_ERR("no PMP slot left for %d remaining partitions in domain %p", left, domain);
 	}
 
 	thread->arch.u_mode_pmp_end_index = index;
