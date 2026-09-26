@@ -243,6 +243,22 @@ typedef void (*app_reclaim_hook_t)(int id);
 int app_platform_on_reclaim(app_reclaim_hook_t hook);
 
 /**
+ * @brief Take over a fatal error raised by an application thread.
+ *
+ * Queues the faulting application for reclaim when the current thread belongs
+ * to one. The platform calls this from its own k_sys_fatal_error_handler()
+ * unless @kconfig{CONFIG_APP_PLATFORM_FATAL_HANDLER} is disabled, in which case
+ * the handler that replaces it must call this first and return when it reports
+ * true.
+ *
+ * @param reason Reason code passed to k_sys_fatal_error_handler().
+ * @param esf    Exception stack frame passed to k_sys_fatal_error_handler().
+ * @retval true The fault belongs to an application, which will be reclaimed.
+ * @retval false A kernel panic or a fault outside any application.
+ */
+bool app_platform_handle_fatal_error(unsigned int reason, const struct arch_esf *esf);
+
+/**
  * @brief Enable or mute per-application log output (svc_log).
  *
  * Muting lets a console operator silence the application stream while typing,

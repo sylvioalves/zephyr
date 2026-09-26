@@ -56,6 +56,12 @@ resilient is relaunched after a fault, up to
 faulting is left stopped rather than respawning without end. Applications that
 opt into monitoring also get a watchdog channel.
 
+Faults reach the supervisor through :c:func:`k_sys_fatal_error_handler`, which
+the platform defines. An application that needs its own handler disables
+:kconfig:option:`CONFIG_APP_PLATFORM_FATAL_HANDLER` and calls
+:c:func:`app_platform_handle_fatal_error` first, returning when it reports the
+fault as taken over.
+
 When an application stops or is reclaimed, a reaper drops its resource grants
 and returns the hardware it drove to idle: regulator enables it holds are
 released, counters and steppers it started are stopped, PWM, motor, DAC, GPIO

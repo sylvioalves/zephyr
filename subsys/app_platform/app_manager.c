@@ -282,27 +282,37 @@ int app_platform_status(int id, struct app_platform_status *out)
 }
 
 /* Fault containment: a faulting app is reclaimed, the system survives. */
-void k_sys_fatal_error_handler(unsigned int reason, const struct arch_esf *esf)
+bool app_platform_handle_fatal_error(unsigned int reason, const struct arch_esf *esf)
 {
 	ARG_UNUSED(esf);
 
 	if (reason == K_ERR_KERNEL_PANIC) {
-		LOG_ERR("kernel panic, halting");
-		k_fatal_halt(reason);
+		return false;
 	}
 
 	struct running_app *a = app_of_thread(k_current_get());
 
-	if (a) {
-		uint8_t id = a - apps;
+	if (a == NULL) {
+		return false;
+	}
 
-		LOG_WRN("app '%s' faulted (reason %u) - reclaiming", a->name, reason);
-		a->faulted = true;
-		(void)k_msgq_put(&reclaim_q, &id, K_NO_WAIT);
-	} else {
+	uint8_t id = a - apps;
+
+	LOG_WRN("app '%s' faulted (reason %u) - reclaiming", a->name, reason);
+	a->faulted = true;
+	(void)k_msgq_put(&reclaim_q, &id, K_NO_WAIT);
+	return true;
+}
+
+#ifdef CONFIG_APP_PLATFORM_FATAL_HANDLER
+void k_sys_fatal_error_handler(unsigned int reason, const struct arch_esf *esf)
+{
+	if (!app_platform_handle_fatal_error(reason, esf)) {
+		LOG_ERR("fatal error %u outside any application, halting", reason);
 		k_fatal_halt(reason);
 	}
 }
+#endif
 
 /* Only monitored apps have a channel; a timeout here means the app hung. */
 static void wdt_cb(int chan, void *user)
