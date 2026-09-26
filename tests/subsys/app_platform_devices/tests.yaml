@@ -11,3 +11,7 @@ common:
 tests:
   app_platform.devices:
     timeout: 60
+  app_platform.devices.own_fatal_handler:
+    timeout: 60
+    extra_configs:
+      - CONFIG_APP_PLATFORM_FATAL_HANDLER=n

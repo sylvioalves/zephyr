@@ -1256,6 +1256,64 @@ ZTEST(devices, test_fs_handles_are_not_shared)
 	expect_rc("f_st", fs_steal_handle, APP_CAP_LOG | APP_CAP_FS, -EBADF);
 }
 
+/* ---- Fault containment ---- */
+
+static atomic_t own_handler_calls;
+static volatile int kernel_only;
+
+#ifndef CONFIG_APP_PLATFORM_FATAL_HANDLER
+void k_sys_fatal_error_handler(unsigned int reason, const struct arch_esf *esf)
+{
+	atomic_inc(&own_handler_calls);
+	if (!app_platform_handle_fatal_error(reason, esf)) {
+		k_fatal_halt(reason);
+	}
+}
+#endif
+
+K_APP_DMEM(report_part) volatile int fault_runs;
+
+/* Fault on the first run; the restart that only a fault earns exits cleanly. */
+static void fault_once(void *a)
+{
+	ARG_UNUSED(a);
+
+	fault_runs++;
+	if (fault_runs == 1) {
+		kernel_only = 1;
+	}
+	report_rc = 0;
+	report_done = 1;
+}
+
+ZTEST(devices, test_fault_is_contained)
+{
+	const struct app_def def = {
+		.name = "flt", .source = APP_BUILTIN, .entry = fault_once, .caps = APP_CAP_LOG,
+	};
+	atomic_val_t calls = atomic_get(&own_handler_calls);
+	int id;
+
+	fault_runs = 0;
+	report_done = 0;
+	id = app_platform_launch(&def);
+	zassert_true(id >= 0, "flt launch failed");
+	k_mem_domain_add_partition(app_platform_domain(id), &report_part);
+	zassert_equal(app_platform_set_restart(id, true), 0);
+
+	for (int i = 0; i < 400 && report_done == 0; i++) {
+		k_msleep(5);
+	}
+	zassert_equal(report_done, 1, "the fault did not earn a restart");
+	zassert_equal(fault_runs, 2, "unexpected run count %d", fault_runs);
+	zassert_true(wait_slot_free("flt", 2000), "flt never exited");
+	zassert_equal(kernel_only, 0, "user store reached kernel data");
+	if (!IS_ENABLED(CONFIG_APP_PLATFORM_FATAL_HANDLER)) {
+		zassert_true(atomic_get(&own_handler_calls) > calls,
+			     "the system handler was not the one called");
+	}
+}
+
 /* ---- External RAM mapping ---- */
 
 #define PSRAM_REGION_SIZE 16384U
