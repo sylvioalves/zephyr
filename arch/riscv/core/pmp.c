@@ -1061,6 +1061,8 @@ void z_riscv_pmp_kernelmode_prepare(struct k_thread *thread)
 void z_riscv_pmp_kernelmode_enable(struct k_thread *thread)
 {
 	unsigned int global_end_index;
+	unsigned int end_index = thread->arch.m_mode_pmp_end_index;
+	bool clear = false;
 
 	LOG_DBG("pmp_kernelmode_enable for thread %p", thread);
 
@@ -1077,10 +1079,24 @@ void z_riscv_pmp_kernelmode_enable(struct k_thread *thread)
 	global_end_index = global_pmp_end_index[M_MODE];
 #endif /* CONFIG_USERSPACE */
 
+#if defined(CONFIG_USERSPACE) && !defined(CONFIG_PMP_KERNEL_MODE_DYNAMIC_CATCHALL)
+	/*
+	 * No catch-all entry ends our m-mode entries, so u-mode entries left
+	 * after them by a user thread would still be checked under MPRV and
+	 * could deny kernel accesses. Clear them, writing an entry that is
+	 * off when we have none of our own.
+	 */
+	clear = true;
+	if (end_index == global_end_index && end_index < PMP_USABLE_SLOTS) {
+		thread->arch.m_mode_pmpaddr_regs[end_index] = 0;
+		((uint8_t *)thread->arch.m_mode_pmpcfg_regs)[end_index] = 0;
+		end_index++;
+	}
+#endif
+
 	/* Write our m-mode MPP entries */
-	if (thread->arch.m_mode_pmp_end_index > global_end_index) {
-		write_pmp_entries(global_end_index, thread->arch.m_mode_pmp_end_index,
-				  false /* no need to clear to the end */, PMP_M_MODE(thread));
+	if (end_index > global_end_index) {
+		write_pmp_entries(global_end_index, end_index, clear, PMP_M_MODE(thread));
 	}
 
 #if defined(CONFIG_PMP_DATA_EXECUTION_PREVENTION) && defined(CONFIG_USERSPACE)
