@@ -248,6 +248,13 @@ int k_mem_domain_add_partition(struct k_mem_domain *domain,
 
 #ifdef CONFIG_ARCH_MEM_DOMAIN_SYNCHRONOUS_API
 	ret = arch_mem_domain_partition_add(domain, p_idx);
+	if (ret != 0) {
+		LOG_ERR("architecture refused partition base %lx size %zu: %d", part->start,
+			part->size, ret);
+		(void)arch_mem_domain_partition_remove(domain, p_idx);
+		domain->partitions[p_idx].size = 0U;
+		domain->num_partitions--;
+	}
 #endif /* CONFIG_ARCH_MEM_DOMAIN_SYNCHRONOUS_API */
 
 unlock_out:
