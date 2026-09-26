@@ -1,0 +1,12 @@
+common:
+  platform_allow:
+    - qemu_riscv32
+    - qemu_riscv64
+  filter: CONFIG_RISCV_PMP and CONFIG_ARCH_HAS_USERSPACE
+  tags:
+    - pmp
+    - userspace
+
+tests:
+  arch.riscv.pmp.domain_merge:
+    harness: ztest
