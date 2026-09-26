@@ -1393,16 +1393,12 @@ int arch_mem_domain_max_partitions_get(void)
 		IS_ENABLED(CONFIG_MPU_REQUIRES_POWER_OF_TWO_ALIGNMENT) ? 1 : 2;
 
 	/*
-	 * Each partition may require either 1 or 2 PMP slots depending
-	 * on a couple factors that are not known in advance. Even when
-	 * arch_mem_domain_partition_add() is called, we can't tell if a
-	 * given partition will fit in the remaining PMP slots of an
-	 * affected thread if it hasn't executed in usermode yet.
-	 *
-	 * Give the most optimistic answer here (which should be pretty
-	 * accurate if CONFIG_MPU_REQUIRES_POWER_OF_TWO_ALIGNMENT=y) and be
-	 * prepared to deny availability in resync_pmp_domain() if this
-	 * estimate was too high.
+	 * Each partition may require either 1 or 2 PMP slots, or none when
+	 * it merges with a neighbour, depending on its layout within the
+	 * domain. Give the most optimistic answer here (which should be
+	 * pretty accurate if CONFIG_MPU_REQUIRES_POWER_OF_TWO_ALIGNMENT=y);
+	 * arch_mem_domain_partition_add() refuses a partition that does not
+	 * fit the actual layout.
 	 */
 	return available_pmp_slots;
 }
@@ -1416,7 +1412,23 @@ int arch_mem_domain_init(struct k_mem_domain *domain)
 int arch_mem_domain_partition_add(struct k_mem_domain *domain,
 				  uint32_t partition_id)
 {
+	/* Scratch entries, guarded by z_mem_domain_lock which the caller holds */
+	static unsigned long pmp_addr[CONFIG_PMP_SLOTS];
+	static unsigned long pmp_cfg[CONFIG_PMP_SLOTS / PMPCFG_STRIDE];
+	unsigned int index = global_pmp_end_index[U_MODE] +
+			     (IS_ENABLED(CONFIG_MPU_REQUIRES_POWER_OF_TWO_ALIGNMENT) ? 1 : 2);
+
 	ARG_UNUSED(partition_id);
+
+	/*
+	 * Lay the domain out as a user thread would, assuming its stack took
+	 * the most entries, and refuse the partition if the layout does not
+	 * fit. The bound below the domain is unknown, so nothing shares it.
+	 */
+	pmp_addr[index - 1] = ~0UL;
+	if (set_domain_pmp_entries(domain, &index, pmp_addr, pmp_cfg, PMP_USABLE_SLOTS) != 0) {
+		return -ENOSPC;
+	}
 
 	/* Force resynchronization for every thread using this domain */
 	domain->arch.pmp_update_nr += 1;
