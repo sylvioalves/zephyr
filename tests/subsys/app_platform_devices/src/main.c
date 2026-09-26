@@ -28,6 +28,7 @@
 #include <zephyr/fs/littlefs.h>
 #include <zephyr/storage/flash_map.h>
 #include <zephyr/app_memory/app_memdomain.h>
+#include <zephyr/multi_heap/shared_multi_heap.h>
 #include <string.h>
 #include <errno.h>
 
@@ -1253,6 +1254,80 @@ ZTEST(devices, test_fs_handles_are_not_shared)
 	 * rather than left for the next tenant of the table.
 	 */
 	expect_rc("f_st", fs_steal_handle, APP_CAP_LOG | APP_CAP_FS, -EBADF);
+}
+
+/* ---- External RAM mapping ---- */
+
+#define PSRAM_REGION_SIZE 16384U
+#define PSRAM_MAP_SIZE    4096U
+
+static uint8_t __aligned(PSRAM_REGION_SIZE) psram_backing[PSRAM_REGION_SIZE];
+static struct shared_multi_heap_region psram_region;
+
+static void psram_map_size(size_t size)
+{
+	uintptr_t addr;
+	size_t got;
+
+	report_rc = svc_psram_map(size, &addr, &got);
+	report_done = 1;
+}
+
+static void psram_map_small(void *a)
+{
+	ARG_UNUSED(a);
+	psram_map_size(PSRAM_MAP_SIZE);
+}
+
+static void psram_map_huge(void *a)
+{
+	ARG_UNUSED(a);
+	psram_map_size(2U * PSRAM_REGION_SIZE);
+}
+
+/* Require a zeroed region, then leave it dirty for the next tenant. */
+static void psram_zero_then_dirty(void *a)
+{
+	ARG_UNUSED(a);
+
+	uintptr_t addr;
+	size_t got;
+	int rc = svc_psram_map(PSRAM_MAP_SIZE, &addr, &got);
+
+	if (rc == 0) {
+		volatile uint8_t *p = (volatile uint8_t *)addr;
+
+		for (size_t i = 0; i < got; i++) {
+			if (p[i] != 0U) {
+				rc = -EIO;
+				break;
+			}
+		}
+		for (size_t i = 0; i < got; i++) {
+			p[i] = 0xA5U;
+		}
+	}
+	report_rc = rc;
+	report_done = 1;
+}
+
+ZTEST(devices, test_psram_absent_zeroed_and_reclaimed)
+{
+	expect_rc("p_np", psram_map_small, APP_CAP_LOG, -EPERM);
+	expect_rc("p_none", psram_map_small, APP_CAP_PSRAM, -ENOTSUP);
+
+	(void)memset(psram_backing, 0x5A, sizeof(psram_backing));
+	psram_region = (struct shared_multi_heap_region){
+		.attr = SMH_REG_ATTR_EXTERNAL,
+		.addr = (uintptr_t)psram_backing,
+		.size = sizeof(psram_backing),
+	};
+	zassert_equal(shared_multi_heap_add(&psram_region, NULL), 0,
+		      "external region registration failed");
+
+	expect_rc("p_big", psram_map_huge, APP_CAP_PSRAM, -ENOMEM);
+	expect_rc("p_one", psram_zero_then_dirty, APP_CAP_PSRAM, 0);
+	expect_rc("p_two", psram_zero_then_dirty, APP_CAP_PSRAM, 0);
 }
 
 /* The file service works within a filesystem the system mounts, so the suite
