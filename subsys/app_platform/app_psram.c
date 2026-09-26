@@ -8,8 +8,9 @@
  * external RAM and adds it as a partition to the calling application's own
  * memory domain, so the application reads and writes it directly at full speed -
  * no per-access syscall, unlike a brokered copy. The region is power-of-two
- * sized and naturally aligned for the memory-protection hardware, and is freed
- * when the application is reclaimed. Each application may hold one region.
+ * sized and naturally aligned for the memory-protection hardware, zeroed before
+ * it is mapped, and freed when the application is reclaimed. Each application
+ * may hold one region.
  */
 
 #include <zephyr/app_platform/app_services.h>
@@ -20,6 +21,7 @@
 #include <zephyr/multi_heap/shared_multi_heap.h>
 #include <zephyr/init.h>
 #include <errno.h>
+#include <string.h>
 #include "app_grants.h"
 
 #define PSRAM_MIN 1024U
@@ -100,9 +102,16 @@ int z_impl_svc_psram_map(size_t size, uintptr_t *out_addr, size_t *out_size)
 						     want, want);
 
 	if (base == NULL) {
+		void *probe = shared_multi_heap_alloc(SMH_REG_ATTR_EXTERNAL, 1);
+
+		if (probe != NULL) {
+			shared_multi_heap_free(probe);
+		}
 		app_svc_unlock(&psram_lock);
-		return -ENOMEM;
+		return (probe != NULL) ? -ENOMEM : -ENOTSUP;
 	}
+
+	(void)memset(base, 0, want);
 
 	regions[id].base = base;
 	regions[id].size = want;
@@ -145,6 +154,8 @@ int z_impl_svc_psram_unmap(void)
 
 static int psram_service_init(void)
 {
+	(void)shared_multi_heap_pool_init();
+
 	return app_platform_on_reclaim(psram_release);
 }
 SYS_INIT(psram_service_init, APPLICATION, 99);

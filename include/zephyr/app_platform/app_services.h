@@ -2163,7 +2163,7 @@ __syscall int svc_dma_copy(const uint8_t *src, uint8_t *dst, size_t len);
  * partition to the calling application's memory domain, so the application
  * accesses it directly at full speed with no per-access syscall. The size is
  * rounded up to a power of two for the memory-protection hardware. The region is
- * released automatically when the application is reclaimed, or by
+ * zeroed before it is mapped. It is released automatically when the application is reclaimed, or by
  * @ref svc_psram_unmap.
  *
  * @param size     Requested size in bytes.
