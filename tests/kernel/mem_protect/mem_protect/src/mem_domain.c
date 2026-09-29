@@ -359,6 +359,76 @@ ZTEST(mem_protect_domain, test_mem_domain_change_reaches_running_thread)
 		      "failed to add memory partition");
 }
 
+/* Change the test domain from this CPU while the child spins on another. */
+static void run_remote_domain_change(bool grant, bool should_fault)
+{
+	child_spinning = false;
+	domain_changed = false;
+	set_fault_valid(should_fault);
+
+	k_thread_create(&child_thread, child_stack, K_THREAD_STACK_SIZEOF(child_stack),
+			access_after_domain_change, NULL, NULL, NULL, 0, K_USER, K_FOREVER);
+	k_thread_name_set(&child_thread, "child_thread");
+	k_mem_domain_add_thread(&test_domain, &child_thread);
+	k_thread_start(&child_thread);
+
+	while (!child_spinning) {
+	}
+
+	if (grant) {
+		zassert_equal(k_mem_domain_add_partition(&test_domain, &rw_parts[0]), 0,
+			      "failed to add memory partition");
+	} else {
+		zassert_equal(k_mem_domain_remove_partition(&test_domain, &rw_parts[0]), 0,
+			      "failed to remove memory partition");
+	}
+	domain_changed = true;
+
+	k_thread_join(&child_thread, K_FOREVER);
+	zassert_false(should_fault && valid_fault, "the access after the revoke did not fault");
+}
+
+/**
+ * @brief Verify that a domain change reaches a thread running on another CPU.
+ *
+ * @ingroup kernel_memprotect_tests
+ *
+ * @details
+ * A partition added to or removed from a domain by one CPU applies at once to
+ * a thread of that domain that is running on another CPU.
+ *
+ * Test steps:
+ * - Remove a read-write partition from the test domain.
+ * - Spawn a user thread in the domain and, while it spins on another CPU, add
+ *   the partition back from this CPU; the thread then accesses it.
+ * - Spawn another and, while it spins on another CPU, remove the partition;
+ *   the thread then accesses it.
+ * - Restore the partition.
+ *
+ * Expected result:
+ * - The access after the grant succeeds and the access after the revoke
+ *   faults.
+ *
+ * @see k_mem_domain_add_partition()
+ * @see k_mem_domain_remove_partition()
+ */
+ZTEST(mem_protect_domain, test_mem_domain_change_reaches_other_cpu)
+{
+	Z_TEST_SKIP_IFNDEF(CONFIG_SMP);
+	if (arch_num_cpus() < 2) {
+		ztest_test_skip();
+	}
+
+	zassert_equal(k_mem_domain_remove_partition(&test_domain, &rw_parts[0]), 0,
+		      "failed to remove memory partition");
+
+	run_remote_domain_change(true, false);
+	run_remote_domain_change(false, true);
+
+	zassert_equal(k_mem_domain_add_partition(&test_domain, &rw_parts[0]), 0,
+		      "failed to add memory partition");
+}
+
 /* user mode will attempt to initialize this and fail */
 static struct k_mem_domain no_access_domain;
 
