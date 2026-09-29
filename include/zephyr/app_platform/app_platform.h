@@ -49,6 +49,12 @@ typedef void (*app_entry_t)(void *arg);
  * restarted. The application runs in user mode, so a pointer must refer to
  * memory its domain can read; a plain value, such as an instance number, needs
  * no access.
+ *
+ * @p cpu_mask restricts the application's threads to a set of CPUs, bit n
+ * standing for CPU n; 0 lets them run on any CPU. It needs
+ * @kconfig{CONFIG_APP_PLATFORM_CPU_AFFINITY} on an SMP kernel, and a mask with
+ * one bit set with @kconfig{CONFIG_SCHED_CPU_MASK_PIN_ONLY}. Without
+ * @kconfig{CONFIG_SMP} it is ignored.
  */
 struct app_def {
 	const char     *name;    /**< unique application name */
@@ -58,6 +64,7 @@ struct app_def {
 	bool            monitored; /**< opt in to hang detection (see heartbeat) */
 	void           *arg;     /**< argument passed to entry, see below */
 	size_t          heap_size; /**< per-application heap bytes, 0 for none */
+	uint32_t        cpu_mask;  /**< CPUs the application may run on, 0 for any */
 };
 
 /**
@@ -81,7 +88,11 @@ int app_platform_init(void);
  * @retval -E2BIG The heap size is above
  *         @kconfig{CONFIG_APP_PLATFORM_APP_HEAP_MAX_BYTES}.
  * @retval -ENOMEM The heap pool has no room for the heap.
- * @retval -ENOTSUP A heap is declared and the platform has no heap pool.
+ * @retval -ENOTSUP A heap is declared and the platform has no heap pool, or a
+ *         CPU mask is set and @kconfig{CONFIG_APP_PLATFORM_CPU_AFFINITY} is
+ *         disabled.
+ * @retval -EINVAL The CPU mask names a CPU the system does not have, or more
+ *         than one with @kconfig{CONFIG_SCHED_CPU_MASK_PIN_ONLY}.
  */
 int app_platform_launch(const struct app_def *def);
 
@@ -106,6 +117,34 @@ int app_platform_launch(const struct app_def *def);
  */
 int app_platform_launch_llext(const char *name, struct llext *ext,
 			      app_entry_t entry, void *arg, app_caps_t caps);
+
+/** Options for @ref app_platform_launch_llext_opts. */
+struct app_launch_opts {
+	uint32_t cpu_mask; /**< CPUs the application may run on, as @ref app_def.cpu_mask */
+};
+
+/**
+ * @brief Launch a loaded llext application with launch options.
+ *
+ * As @ref app_platform_launch_llext, with the options in @p opts applied.
+ *
+ * @param name Application name.
+ * @param ext  Loaded extension (see @ref app_platform_load).
+ * @param entry Resolved entry symbol.
+ * @param arg  Argument passed to @p entry, as for @ref app_def.arg.
+ * @param caps Per-app grant mask.
+ * @param opts Launch options, or NULL for the defaults of
+ *        @ref app_platform_launch_llext.
+ * @retval >=0 the application's group id, or negative errno on failure.
+ * @retval -EINVAL The CPU mask names a CPU the system does not have, or more
+ *         than one with @kconfig{CONFIG_SCHED_CPU_MASK_PIN_ONLY}.
+ * @retval -ENOTSUP The CPU mask is not 0 and
+ *         @kconfig{CONFIG_APP_PLATFORM_CPU_AFFINITY} is disabled.
+ *
+ * The other return values are those of @ref app_platform_launch_llext.
+ */
+int app_platform_launch_llext_opts(const char *name, struct llext *ext, app_entry_t entry,
+				   void *arg, app_caps_t caps, const struct app_launch_opts *opts);
 
 /**
  * @brief Feed the calling application's liveness watchdog.

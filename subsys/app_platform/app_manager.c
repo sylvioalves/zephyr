@@ -99,6 +99,7 @@ struct running_app {
 	app_caps_t          caps;
 	size_t              module_bytes; /* loadable-extension footprint, 0 if built-in */
 	size_t              heap_size; /* heap bytes declared at launch */
+	uint32_t            cpu_mask;  /* CPUs the threads may run on, 0 for any */
 #ifdef CONFIG_LLEXT
 	struct llext       *ext;       /* retained so a stopped app can restart */
 #endif
@@ -113,6 +114,44 @@ static SVC_LOCK_DEFINE(spawn_lock);
 #endif
 
 static void trampoline(void *entry, void *arg, void *u2);
+
+static int check_cpu_mask(uint32_t cpu_mask)
+{
+	if (cpu_mask == 0U || !IS_ENABLED(CONFIG_SMP)) {
+		return 0;
+	}
+	if (!IS_ENABLED(CONFIG_APP_PLATFORM_CPU_AFFINITY)) {
+		return -ENOTSUP;
+	}
+	if (((uint64_t)cpu_mask >> arch_num_cpus()) != 0U ||
+	    (IS_ENABLED(CONFIG_SCHED_CPU_MASK_PIN_ONLY) && !IS_POWER_OF_TWO(cpu_mask))) {
+		return -EINVAL;
+	}
+	return 0;
+}
+
+/* Restrict a created, not yet started application thread to the app's CPUs. */
+static void pin_thread(const struct running_app *a, k_tid_t t)
+{
+#ifdef CONFIG_APP_PLATFORM_CPU_AFFINITY
+	if (a->cpu_mask == 0U) {
+		return;
+	}
+	if (IS_POWER_OF_TWO(a->cpu_mask)) {
+		(void)k_thread_cpu_pin(t, find_lsb_set(a->cpu_mask) - 1);
+		return;
+	}
+	(void)k_thread_cpu_mask_clear(t);
+	for (unsigned int cpu = 0; cpu < arch_num_cpus(); cpu++) {
+		if ((a->cpu_mask & BIT(cpu)) != 0U) {
+			(void)k_thread_cpu_mask_enable(t, cpu);
+		}
+	}
+#else
+	ARG_UNUSED(a);
+	ARG_UNUSED(t);
+#endif
+}
 
 /* Reclaim requests from the wdt callback / fatal handler -> supervisor thread. */
 struct reclaim_req {
@@ -761,6 +800,7 @@ static int restart_thread(struct running_app *a)
 	a->threads[0].live = true;
 
 	k_thread_name_set(t, a->name);
+	pin_thread(a, t);
 #ifdef CONFIG_USERSPACE
 	k_mem_domain_add_thread(&a->domain, t);
 #endif
@@ -844,7 +884,8 @@ int app_platform_remove(int id)
 }
 
 static int launch(const char *name, app_entry_t entry, void *arg, app_caps_t caps,
-		  struct llext *ext, bool restart, bool monitored, size_t heap_size);
+		  struct llext *ext, bool restart, bool monitored, size_t heap_size,
+		  uint32_t cpu_mask);
 
 static void supervisor(void *p1, void *p2, void *p3)
 {
@@ -879,6 +920,7 @@ static void supervisor(void *p1, void *p2, void *p3)
 		app_caps_t caps = a->caps;
 		bool monitored = a->monitored;
 		size_t heap_size = a->heap_size;
+		uint32_t cpu_mask = a->cpu_mask;
 		uint32_t restarts = a->restarts;
 
 		/* Restart only a resilient built-in app that crashed or hung,
@@ -906,7 +948,8 @@ static void supervisor(void *p1, void *p2, void *p3)
 				LOG_ERR("app '%s' not restarted: cleanup stuck", name);
 				continue;
 			}
-			int nid = launch(name, entry, arg, caps, NULL, true, monitored, heap_size);
+			int nid = launch(name, entry, arg, caps, NULL, true, monitored, heap_size,
+					 cpu_mask);
 
 			if (nid < 0) {
 				LOG_ERR("app '%s' could not be restarted", name);
@@ -991,6 +1034,7 @@ int z_impl_app_svc_thread_spawn(app_thread_entry_t entry, void *arg, int prio_of
 			      K_USER, K_FOREVER);
 	(void)snprintk(name, sizeof(name), "%s.w%d", a->name, slot);
 	k_thread_name_set(tid, name);
+	pin_thread(a, tid);
 #ifdef CONFIG_USERSPACE
 	k_mem_domain_add_thread(&a->domain, tid);
 #endif
@@ -1068,8 +1112,15 @@ int app_platform_init(void)
 
 /* Common launch: find a free slot, set up the domain, start a user-mode thread. */
 static int launch(const char *name, app_entry_t entry, void *arg, app_caps_t caps,
-		  struct llext *ext, bool restart, bool monitored, size_t heap_size)
+		  struct llext *ext, bool restart, bool monitored, size_t heap_size,
+		  uint32_t cpu_mask)
 {
+	int err = check_cpu_mask(cpu_mask);
+
+	if (err != 0) {
+		return err;
+	}
+
 	for (int i = 0; i < MAX_APPS; i++) {
 		if (apps[i].active && strncmp(apps[i].name, name, APP_NAME_LEN) == 0) {
 			return -EEXIST;
@@ -1096,6 +1147,7 @@ static int launch(const char *name, app_entry_t entry, void *arg, app_caps_t cap
 		a->wdt_chan = -1;
 		a->module_bytes = 0;
 		a->heap_size = heap_size;
+		a->cpu_mask = cpu_mask;
 #ifdef CONFIG_LLEXT
 		a->ext = ext;
 #endif
@@ -1152,6 +1204,7 @@ static int launch(const char *name, app_entry_t entry, void *arg, app_caps_t cap
 
 		a->threads[0].live = true;
 		k_thread_name_set(t, name);
+		pin_thread(a, t);
 #ifdef CONFIG_USERSPACE
 		k_mem_domain_add_thread(&a->domain, t);
 #endif
@@ -1181,13 +1234,21 @@ static int launch(const char *name, app_entry_t entry, void *arg, app_caps_t cap
 int app_platform_launch(const struct app_def *def)
 {
 	return launch(def->name, def->entry, def->arg, def->caps, NULL, false, def->monitored,
-		      def->heap_size);
+		      def->heap_size, def->cpu_mask);
 }
 
 #ifdef CONFIG_LLEXT
 int app_platform_launch_llext(const char *name, struct llext *ext,
 			      app_entry_t entry, void *arg, app_caps_t caps)
 {
+	return app_platform_launch_llext_opts(name, ext, entry, arg, caps, NULL);
+}
+
+int app_platform_launch_llext_opts(const char *name, struct llext *ext, app_entry_t entry,
+				   void *arg, app_caps_t caps, const struct app_launch_opts *opts)
+{
+	uint32_t cpu_mask = (opts != NULL) ? opts->cpu_mask : 0U;
+
 #ifdef CONFIG_APP_PLATFORM_LOADER
 	/* Refuse any extension that did not pass the verifying loader, so a
 	 * launch cannot bypass signature and integrity checks.
@@ -1196,9 +1257,10 @@ int app_platform_launch_llext(const char *name, struct llext *ext,
 		LOG_ERR("refusing to launch '%s': extension not verified", name);
 		return -EPERM;
 	}
-	return launch(name, entry, arg, caps, ext, false, false, app_loader_heap_size(ext));
+	return launch(name, entry, arg, caps, ext, false, false, app_loader_heap_size(ext),
+		      cpu_mask);
 #else
-	return launch(name, entry, arg, caps, ext, false, false, 0U);
+	return launch(name, entry, arg, caps, ext, false, false, 0U, cpu_mask);
 #endif
 }
 #endif

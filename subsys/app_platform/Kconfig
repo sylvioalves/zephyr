@@ -77,6 +77,18 @@ config APP_PLATFORM_APP_SEMS
 	  coordinate its threads. They are reserved per slot at build time and
 	  released when the application ends.
 
+config APP_PLATFORM_CPU_AFFINITY
+	bool "Per-application CPU affinity"
+	depends on SMP
+	select SCHED_CPU_MASK
+	help
+	  Run an application only on the CPUs the firmware assigns it, with
+	  app_def.cpu_mask for a built-in application or
+	  app_platform_launch_llext_pinned() for a loaded one. The entry
+	  thread and every worker thread keep the assignment, also across a
+	  stop and start or a restart after a fault. Without it an application
+	  runs on any CPU and launching one with a CPU mask fails.
+
 config APP_PLATFORM_APP_HEAP_POOL_SIZE
 	int "Internal RAM for per-application heaps (bytes)"
 	default 0
