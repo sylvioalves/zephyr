@@ -5,7 +5,7 @@
  */
 
 /* Additional loader negatives: wrong key, truncated, padded, name mismatch,
- * foreign ABI.
+ * foreign ABI, foreign ELF class or CPU.
  */
 
 #include <zephyr/ztest.h>
@@ -154,6 +154,30 @@ ZTEST(loader_neg, test_file_foreign_abi_rejected)
 
 	(void)fs_unlink(path);
 	zassert_equal(rc, -ENOEXEC, "foreign ABI must be rejected (%d)", rc);
+	zassert_is_null(ext);
+}
+
+/* A module for another ELF class or CPU is refused before it is hashed. */
+ZTEST(loader_neg, test_foreign_class_and_machine_rejected)
+{
+	const size_t class_off = 4;
+	const size_t machine_off = 18;
+	const uint8_t expect[32] = {0};
+	struct llext *ext = NULL;
+	void *entry = NULL;
+
+	memcpy(work, mod_bytes, ARRAY_SIZE(mod_bytes));
+	work[class_off] ^= 0x3U;
+	zassert_equal(app_loader_verify_load("foreign", work, ARRAY_SIZE(mod_bytes), expect,
+					     "app_main", &ext, &entry), -E2BIG,
+		      "a module of another ELF class must be rejected");
+	zassert_is_null(ext);
+
+	memcpy(work, mod_bytes, ARRAY_SIZE(mod_bytes));
+	work[machine_off] ^= 0xffU;
+	zassert_equal(app_loader_verify_load("foreign", work, ARRAY_SIZE(mod_bytes), expect,
+					     "app_main", &ext, &entry), -E2BIG,
+		      "a module for another CPU must be rejected");
 	zassert_is_null(ext);
 }
 
