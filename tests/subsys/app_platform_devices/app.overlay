@@ -59,6 +59,15 @@
 		};
 	};
 
+	app_platform {
+		compatible = "zephyr,app-platform";
+		gpios = <&test_gpio 0 GPIO_ACTIVE_HIGH>;
+		line-names = "test_line";
+		dacs = <&dac_emul>;
+		regulators = <&fake_reg0>;
+		steppers = <&fake_stepper>;
+	};
+
 	fake_pwm: fake_pwm {
 		compatible = "zephyr,fake-pwm";
 		#pwm-cells = <2>;

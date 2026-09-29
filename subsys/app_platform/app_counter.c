@@ -26,11 +26,8 @@
 
 #include "app_grants.h"
 
-/* Every enabled counter node on the board, in devicetree order. */
-#define COUNTER_ENTRY(node) DEVICE_DT_GET(node),
-
 static const struct device *const counters[] = {
-	DT_FOREACH_STATUS_OKAY(espressif_esp32_counter, COUNTER_ENTRY)
+	APP_PLATFORM_DEVICES(counters)
 };
 
 #define COUNTER_COUNT ARRAY_SIZE(counters)

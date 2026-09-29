@@ -7,12 +7,24 @@
 #ifndef ZEPHYR_SUBSYS_APP_PLATFORM_APP_GRANTS_H_
 #define ZEPHYR_SUBSYS_APP_PLATFORM_APP_GRANTS_H_
 
+#include <zephyr/device.h>
+#include <zephyr/devicetree.h>
 #include <zephyr/kernel.h>
 #include <zephyr/app_platform/app_platform.h>
 
 #define APP_PLATFORM_NAME_LEN 24
 
 #define MAX_APPS CONFIG_APP_PLATFORM_MAX_APPS
+
+/* The devicetree node that lists the devices applications may use. */
+#define APP_PLATFORM_NODE DT_COMPAT_GET_ANY_STATUS_OKAY(zephyr_app_platform)
+
+#define APP_PLATFORM_DEVICE(node, prop, idx) DEVICE_DT_GET(DT_PHANDLE_BY_IDX(node, prop, idx)),
+
+/* The devices in property @p prop of the platform node, in index order. */
+#define APP_PLATFORM_DEVICES(prop)                                                         \
+	COND_CODE_1(DT_NODE_HAS_PROP(APP_PLATFORM_NODE, prop),                             \
+		    (DT_FOREACH_PROP_ELEM(APP_PLATFORM_NODE, prop, APP_PLATFORM_DEVICE)), ())
 
 /* Bound on the wait for a service lock. The protected sections are short, so
  * reaching it means the resource is wedged and the service returns -EBUSY

@@ -24,20 +24,21 @@
 #include <errno.h>
 #include <string.h>
 
-#define LEDS_NODE DT_PATH(leds)
+#define HAS_LINES DT_NODE_HAS_PROP(APP_PLATFORM_NODE, gpios)
 
-#if DT_NODE_EXISTS(LEDS_NODE)
-#define GPIO_SPEC(node_id) GPIO_DT_SPEC_GET(node_id, gpios),
-#define GPIO_NAME(node_id) \
-	DT_PROP_OR(node_id, label, DT_NODE_FULL_NAME(node_id)),
+#if HAS_LINES
+#define GPIO_SPEC(node_id, prop, idx) GPIO_DT_SPEC_GET_BY_IDX(node_id, prop, idx),
+#define GPIO_NAME(node_id, prop, idx)                                                     \
+	COND_CODE_1(DT_NODE_HAS_PROP(node_id, line_names),                                 \
+		    (DT_PROP_BY_IDX(node_id, line_names, idx)), ("")),
 
 static const struct gpio_dt_spec lines[] = {
-	DT_FOREACH_CHILD_STATUS_OKAY(LEDS_NODE, GPIO_SPEC)
+	DT_FOREACH_PROP_ELEM(APP_PLATFORM_NODE, gpios, GPIO_SPEC)
 };
 #define LINE_COUNT ARRAY_SIZE(lines)
 
 static const char *const line_name[] = {
-	DT_FOREACH_CHILD_STATUS_OKAY(LEDS_NODE, GPIO_NAME)
+	DT_FOREACH_PROP_ELEM(APP_PLATFORM_NODE, gpios, GPIO_NAME)
 };
 #else
 #define LINE_COUNT 0
@@ -62,7 +63,7 @@ void app_platform_clear_gpio_grants(int id)
 	if (app_service_lock(&line_lock, SVC_LOCK_TIMEOUT) != 0) {
 		return;
 	}
-#if DT_NODE_EXISTS(LEDS_NODE)
+#if HAS_LINES
 	for (int i = 0; i < (int)LINE_COUNT; i++) {
 		if ((line_active[id] & BIT(i)) != 0U) {
 			(void)gpio_pin_set_dt(&lines[i], 0);
@@ -83,7 +84,7 @@ void app_platform_grant_gpio(int id, uint32_t line_mask)
 
 static void gpio_ready_init(void)
 {
-#if DT_NODE_EXISTS(LEDS_NODE)
+#if HAS_LINES
 	if (gpio_ready) {
 		return;
 	}
@@ -96,7 +97,7 @@ static void gpio_ready_init(void)
 #endif
 }
 
-#if DT_NODE_EXISTS(LEDS_NODE) && defined(CONFIG_APP_PLATFORM_EVENTS)
+#if HAS_LINES && defined(CONFIG_APP_PLATFORM_EVENTS)
 /* Bit N set means application N is watching this line. A line is configured as
  * an input and its interrupt enabled only while at least one application is
  * watching, so an unwatched line stays an output.
@@ -142,7 +143,7 @@ int z_impl_app_svc_gpio_find(const char *name)
 	if (!app_has_cap(APP_CAP_GPIO)) {
 		return -EPERM;
 	}
-#if DT_NODE_EXISTS(LEDS_NODE)
+#if HAS_LINES
 	for (int i = 0; i < (int)LINE_COUNT; i++) {
 		if (strcmp(line_name[i], name) == 0) {
 			return i;
@@ -168,7 +169,7 @@ int z_impl_app_svc_gpio_set(int line, int on)
 	if ((line_grant[id] & BIT(line)) == 0U) {
 		return -EACCES;
 	}
-#if DT_NODE_EXISTS(LEDS_NODE)
+#if HAS_LINES
 	int rc;
 
 	if (app_service_lock(&line_lock, SVC_LOCK_TIMEOUT) != 0) {
@@ -206,7 +207,7 @@ int z_impl_app_svc_gpio_watch(int line, int on)
 	if ((line_grant[id] & BIT(line)) == 0U) {
 		return -EACCES;
 	}
-#if DT_NODE_EXISTS(LEDS_NODE) && defined(CONFIG_APP_PLATFORM_EVENTS)
+#if HAS_LINES && defined(CONFIG_APP_PLATFORM_EVENTS)
 	if (!gpio_is_ready_dt(&lines[line])) {
 		return -ENODEV;
 	}

@@ -28,10 +28,8 @@
 #ifdef CONFIG_APP_PLATFORM_DAC
 #include <zephyr/drivers/dac.h>
 
-#define DAC_ENTRY(node) DEVICE_DT_GET(node),
-
 static const struct device *const dacs[] = {
-	DT_FOREACH_STATUS_OKAY(zephyr_dac_emul, DAC_ENTRY)
+	APP_PLATFORM_DEVICES(dacs)
 };
 
 #define DAC_COUNT ARRAY_SIZE(dacs)

@@ -20,7 +20,7 @@
 &timer0 {
 	status = "okay";
 
-	counter {
+	app_counter0: counter {
 		status = "okay";
 	};
 };
@@ -28,7 +28,14 @@
 &timer1 {
 	status = "okay";
 
-	counter {
+	app_counter1: counter {
 		status = "okay";
+	};
+};
+
+/ {
+	app_platform {
+		compatible = "zephyr,app-platform";
+		counters = <&app_counter0 &app_counter1>;
 	};
 };

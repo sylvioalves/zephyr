@@ -187,14 +187,8 @@ int z_impl_app_svc_battery_percent(void)
 #ifdef CONFIG_APP_PLATFORM_REGULATOR
 #include <zephyr/drivers/regulator.h>
 
-/* A regulator device is a child of its controller node, so the controllers are
- * walked and each of their children contributes one instance.
- */
-#define REG_CHILD(node)  DEVICE_DT_GET(node),
-#define REG_ENTRY(node)  DT_FOREACH_CHILD_STATUS_OKAY(node, REG_CHILD)
-
 static const struct device *const regulators[] = {
-	DT_FOREACH_STATUS_OKAY(zephyr_fake_regulator, REG_ENTRY)
+	APP_PLATFORM_DEVICES(regulators)
 };
 
 #define REG_COUNT ARRAY_SIZE(regulators)
@@ -298,10 +292,8 @@ int z_impl_app_svc_regulator_enable(int idx, int on)
 #ifdef CONFIG_APP_PLATFORM_STEPPER
 #include <zephyr/drivers/stepper/stepper_ctrl.h>
 
-#define STEP_ENTRY(node) DEVICE_DT_GET(node),
-
 static const struct device *const steppers[] = {
-	DT_FOREACH_STATUS_OKAY(zephyr_fake_stepper_ctrl, STEP_ENTRY)
+	APP_PLATFORM_DEVICES(steppers)
 };
 
 #define STEP_COUNT ARRAY_SIZE(steppers)

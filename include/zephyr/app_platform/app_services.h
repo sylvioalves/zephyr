@@ -623,7 +623,7 @@ __syscall int app_svc_tcp_close(void);
 /**
  * @brief Number of GPIO lines the platform exposes. Needs @ref APP_CAP_GPIO.
  *
- * The lines come from the board's @c leds devicetree node.
+ * The lines are the @c gpios of the @c zephyr,app-platform devicetree node.
  *
  * @retval >=0 The number of lines, which may be zero.
  * @retval -EPERM The application does not hold @ref APP_CAP_GPIO.
@@ -651,7 +651,7 @@ __syscall int app_svc_gpio_set(int line, int on);
  * @brief Resolve a GPIO line's devicetree name to its index. Needs @ref
  *        APP_CAP_GPIO. Resolve once and pass the index to @ref app_svc_gpio_set.
  *
- * @param name Line devicetree label (or node name when it has no label).
+ * @param name Line name from the @c line-names of the @c zephyr,app-platform node.
  * @retval >=0 the line index, -ENOENT if no line has that name.
  */
 __syscall int app_svc_gpio_find(const char *name);
@@ -894,7 +894,7 @@ __syscall int app_svc_app_start(int id);
 __syscall int app_svc_app_restart(int id);
 
 /**
- * @brief Number of hardware counter instances the board announces. Needs
+ * @brief Number of hardware counter instances the platform exposes. Needs
  *        @ref APP_CAP_COUNTER_DEV.
  *
  * Counting is not gated per instance, so an application can size its own table

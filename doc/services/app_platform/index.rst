@@ -47,6 +47,20 @@ two produce different errors, and the distinction is deliberate:
 Checking the capability first means an application that holds none cannot tell
 an ungranted resource from one that does not exist.
 
+The GPIO lines, counters, DACs, regulators and steppers that applications reach
+by index are the ones listed in the ``zephyr,app-platform`` devicetree node, in
+index order. A device the node does not list is never reachable by an
+application, whatever else the board describes.
+
+.. code-block:: devicetree
+
+   app-platform {
+           compatible = "zephyr,app-platform";
+           gpios = <&gpio0 2 GPIO_ACTIVE_HIGH>, <&gpio0 3 GPIO_ACTIVE_HIGH>;
+           line-names = "status", "relay";
+           counters = <&timer0 &timer1>;
+   };
+
 Supervision
 ===========
 

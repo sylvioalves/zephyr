@@ -24,6 +24,14 @@
 		};
 	};
 
+	app_platform {
+		compatible = "zephyr,app-platform";
+		gpios = <&gpio0 2 GPIO_ACTIVE_HIGH>,
+			<&gpio0 3 GPIO_ACTIVE_HIGH>,
+			<&gpio0 4 GPIO_ACTIVE_HIGH>;
+		line-names = "status LED 0", "status LED 1", "status LED 2";
+	};
+
 	aliases {
 		led0 = &led_a;
 		led1 = &led_b;

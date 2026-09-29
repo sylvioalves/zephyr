@@ -20,6 +20,13 @@
 		};
 	};
 
+	app_platform {
+		compatible = "zephyr,app-platform";
+		gpios = <&gpio0 6 GPIO_ACTIVE_HIGH>,
+			<&gpio0 7 GPIO_ACTIVE_HIGH>;
+		line-names = "probe LED 0", "probe LED 1";
+	};
+
 	app_pwm: app_pwm {
 		compatible = "pwm-leds";
 
