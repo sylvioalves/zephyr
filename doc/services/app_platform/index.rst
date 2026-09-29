@@ -105,6 +105,28 @@ the state behind that lock half updated. The service is then disabled: every lat
 fails with ``-EIO`` until the next boot, and the resources it held for the dead application are
 not released. Other services and applications keep running.
 
+Worker threads
+==============
+
+An application runs on one thread unless the platform reserves workers for it.
+:kconfig:option:`CONFIG_APP_PLATFORM_APP_THREADS` sets how many workers each application may run
+next to the thread its entry point runs on, and
+:kconfig:option:`CONFIG_APP_PLATFORM_APP_THREAD_STACK_SIZE` the stack of each. Both are reserved
+per slot at build time. An application holding ``APP_CAP_THREAD`` starts a worker with
+:c:func:`app_svc_thread_spawn` and waits for it with :c:func:`app_svc_thread_join`.
+
+A worker belongs to its application like the entry thread does: it runs in the same memory domain,
+calls services with the same capabilities and grants, and runs at the application's priority or
+below. The application is one unit for supervision. A fault in any of its threads reclaims all of
+them, a stop or removal ends them together, and when the entry thread returns the workers end with
+it.
+
+The threads of one application coordinate through semaphores the platform keeps for it:
+:c:func:`app_svc_sem_init`, :c:func:`app_svc_sem_give` and :c:func:`app_svc_sem_take`, up to
+:kconfig:option:`CONFIG_APP_PLATFORM_APP_SEMS` per application. The application names them by
+handle and never holds the kernel object, so the calls behave the same with and without user
+mode. They are released when the application ends.
+
 Loading and verification
 ========================
 
