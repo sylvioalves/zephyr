@@ -46,6 +46,19 @@ __start:
 
 	li sp, DRAM_STACK_START
 
+#ifdef CONFIG_THREAD_LOCAL_STORAGE
+	/* Carve the boot TLS area from the stack and point tp at it. */
+	call z_tls_data_size_asm
+	beqz a0, 1f
+	mv s0, sp
+	mv s1, a0
+	sub sp, sp, a0
+	mv a0, s0
+	mv a1, s1
+	call arch_riscv_early_tls_stack_update
+1:
+#endif /* CONFIG_THREAD_LOCAL_STORAGE */
+
 	csrci mstatus, MSTATUS_MIE
 
 #ifdef CONFIG_INIT_STACKS
