@@ -137,8 +137,9 @@ main options are:
 * :kconfig:option:`CONFIG_APP_PLATFORM_SERVICES` - the shared, capability-gated
   service library.
 
-The platform requires :kconfig:option:`CONFIG_USERSPACE` and
-:kconfig:option:`CONFIG_TASK_WDT`.
+The platform requires :kconfig:option:`CONFIG_TASK_WDT`. It enables
+:kconfig:option:`CONFIG_USERSPACE` by default where the architecture supports it; see
+`Without user mode`_ for builds without it.
 
 API status
 **********
