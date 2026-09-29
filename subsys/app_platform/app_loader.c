@@ -28,13 +28,27 @@
 
 LOG_MODULE_DECLARE(app_platform, CONFIG_APP_PLATFORM_LOG_LEVEL);
 
-/* Minimal ELF identification: a relocatable object the llext core can accept. */
-#define ELF_MAGIC      0x464c457fU /* 0x7f 'E' 'L' 'F' little-endian */
-#define ELF_ET_REL     1
-#define ELF_HDR_MIN    52          /* 32-bit ELF header size */
-#define ELF_E_TYPE_OFF 16
-#define ELF_E_SHOFF_OFF 32
-#define ELF_E_SHNUM_OFF 48
+/* Minimal ELF identification: a relocatable object for this CPU that the llext
+ * core can accept.
+ */
+#define ELF_MAGIC    0x464c457fU /* 0x7f 'E' 'L' 'F' little-endian */
+#define ELF_HDR_MIN  sizeof(elf_ehdr_t)
+#define ELF_EI_CLASS 4
+#define ELF_CLASS    (IS_ENABLED(CONFIG_64BIT) ? 2U : 1U)
+
+#if defined(CONFIG_ARM64)
+#define ELF_MACHINE 183U
+#elif defined(CONFIG_ARM)
+#define ELF_MACHINE 40U
+#elif defined(CONFIG_RISCV)
+#define ELF_MACHINE 243U
+#elif defined(CONFIG_X86_64)
+#define ELF_MACHINE 62U
+#elif defined(CONFIG_X86)
+#define ELF_MACHINE 3U
+#elif defined(CONFIG_XTENSA)
+#define ELF_MACHINE 94U
+#endif
 
 static const uint8_t abi_id[APP_MANIFEST_ABI_ID_LEN] = APP_PLATFORM_ABI_ID;
 
@@ -75,31 +89,36 @@ static int ecdsa_verify(const uint8_t *pubkey, size_t pubkey_len,
 	return (st == PSA_SUCCESS) ? 0 : -EPERM;
 }
 
-/* Reject an image that cannot be a valid 32-bit relocatable ELF before the
- * loader touches it: enough bytes for a header, the ELF magic, an ET_REL type,
- * and a section table that lies inside the image. @p hdr supplies at least the
+/* Reject an image that cannot be a valid relocatable ELF for this CPU before
+ * the loader touches it: enough bytes for a header, the ELF magic, the class
+ * and machine of the firmware, an ET_REL type, and a section table that lies
+ * inside the image. @p hdr supplies at least the
  * ELF header; @p hdr_len is how many header bytes are available; @p total_len
  * is the full image size the section table must lie within (equal to @p hdr_len
  * for a buffer fully in memory, or the file size when streaming).
  */
 static int elf_bounds_chk(const uint8_t *hdr, size_t hdr_len, size_t total_len)
 {
+	elf_ehdr_t eh;
+
 	if (hdr_len < ELF_HDR_MIN || total_len < ELF_HDR_MIN) {
 		return -E2BIG;
 	}
-	if (sys_get_le32(hdr) != ELF_MAGIC) {
+	memcpy(&eh, hdr, sizeof(eh));
+	if (sys_get_le32(eh.e_ident) != ELF_MAGIC || eh.e_ident[ELF_EI_CLASS] != ELF_CLASS ||
+	    eh.e_type != ET_REL) {
 		return -E2BIG;
 	}
-	if (sys_get_le16(hdr + ELF_E_TYPE_OFF) != ELF_ET_REL) {
+#ifdef ELF_MACHINE
+	if (eh.e_machine != ELF_MACHINE) {
 		return -E2BIG;
 	}
+#endif
 
-	uint32_t shoff = sys_get_le32(hdr + ELF_E_SHOFF_OFF);
-	uint16_t shnum = sys_get_le16(hdr + ELF_E_SHNUM_OFF);
-	/* 32-bit section header entry is 40 bytes. */
-	uint64_t sh_end = (uint64_t)shoff + (uint64_t)shnum * 40U;
+	uint64_t sh_end = (uint64_t)eh.e_shoff + (uint64_t)eh.e_shnum * sizeof(elf_shdr_t);
 
-	if (shoff >= total_len || sh_end > total_len) {
+	if (eh.e_shentsize != sizeof(elf_shdr_t) || eh.e_shoff >= total_len ||
+	    sh_end > total_len) {
 		return -E2BIG;
 	}
 	return 0;
