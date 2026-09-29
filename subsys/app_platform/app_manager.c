@@ -779,20 +779,10 @@ int app_platform_stop(int id)
 	return 0;
 }
 
-#ifdef CONFIG_LLEXT
-/* Re-create the user-mode thread of a stopped app in its existing domain. */
-static int restart_thread(struct running_app *a)
+/* Create and start the main thread and the death-watcher of an active slot. */
+static int start_app(struct running_app *a)
 {
 	int id = a - apps;
-
-	/* Wait for any pending reaper cleanup of this slot to finish, so its
-	 * per-app service resources are released before the app runs again.
-	 */
-	if (!wait_cleanup_done(a)) {
-		return -EBUSY;
-	}
-	app_platform_heap_reset(id);
-
 	k_tid_t t = k_thread_create(&a->threads[0].thread, app_stacks[id], APP_STACK,
 				    trampoline, (void *)a->entry, a->arg, NULL,
 				    APP_PRIO, K_USER, K_FOREVER);
@@ -808,9 +798,12 @@ static int restart_thread(struct running_app *a)
 	a->stop_requested = false;
 	a->running = true;
 
+	/* Opt-in hang detection: only a monitored app gets a watchdog. */
 	if (a->monitored) {
 		a->wdt_chan = task_wdt_add(WDT_TIMEOUT, wdt_cb, a);
 	}
+
+	/* A death-watcher gives passive crash/exit detection for every app. */
 	a->gen++;
 	k_thread_create(&watchers[id], watch_stacks[id],
 			K_THREAD_STACK_SIZEOF(watch_stacks[id]), death_watch,
@@ -820,6 +813,19 @@ static int restart_thread(struct running_app *a)
 	k_thread_start(t);
 	LOG_DBG("app '%s' started (group %d)", a->name, id);
 	return id;
+}
+
+/* Re-create the user-mode thread of a stopped app in its existing domain. */
+static int restart_thread(struct running_app *a)
+{
+	/* Wait for any pending reaper cleanup of this slot to finish, so its
+	 * per-app service resources are released before the app runs again.
+	 */
+	if (!wait_cleanup_done(a)) {
+		return -EBUSY;
+	}
+	app_platform_heap_reset(a - apps);
+	return start_app(a);
 }
 
 int app_platform_start(int id)
@@ -846,7 +852,6 @@ int app_platform_restart(int id)
 	}
 	return app_platform_start(id);
 }
-#endif /* CONFIG_LLEXT */
 
 int app_platform_request_stop(int id, uint32_t grace_ms)
 {
@@ -883,9 +888,7 @@ int app_platform_remove(int id)
 	return 0;
 }
 
-static int launch(const char *name, app_entry_t entry, void *arg, app_caps_t caps,
-		  struct llext *ext, bool restart, bool monitored, size_t heap_size,
-		  uint32_t cpu_mask);
+static int launch(const struct app_def *def, struct llext *ext, bool restart);
 
 static void supervisor(void *p1, void *p2, void *p3)
 {
@@ -915,12 +918,16 @@ static void supervisor(void *p1, void *p2, void *p3)
 		(void)strncpy(name, a->name, sizeof(name) - 1);
 		name[sizeof(name) - 1] = '\0';
 
-		app_entry_t entry = a->entry;
-		void *arg = a->arg;
-		app_caps_t caps = a->caps;
-		bool monitored = a->monitored;
-		size_t heap_size = a->heap_size;
-		uint32_t cpu_mask = a->cpu_mask;
+		const struct app_def def = {
+			.name = name,
+			.source = APP_BUILTIN,
+			.entry = a->entry,
+			.caps = a->caps,
+			.monitored = a->monitored,
+			.arg = a->arg,
+			.heap_size = a->heap_size,
+			.cpu_mask = a->cpu_mask,
+		};
 		uint32_t restarts = a->restarts;
 
 		/* Restart only a resilient built-in app that crashed or hung,
@@ -928,7 +935,7 @@ static void supervisor(void *p1, void *p2, void *p3)
 		 * faults in its entry would otherwise respawn without end and
 		 * starve the rest of the system.
 		 */
-		bool restart = a->restart && a->faulted && entry != NULL;
+		bool restart = a->restart && a->faulted && def.entry != NULL;
 
 		if (restart && MAX_RESTARTS != 0U && restarts >= MAX_RESTARTS) {
 			LOG_ERR("app '%s' faulted %u times, giving up", name, restarts);
@@ -948,8 +955,7 @@ static void supervisor(void *p1, void *p2, void *p3)
 				LOG_ERR("app '%s' not restarted: cleanup stuck", name);
 				continue;
 			}
-			int nid = launch(name, entry, arg, caps, NULL, true, monitored, heap_size,
-					 cpu_mask);
+			int nid = launch(&def, NULL, true);
 
 			if (nid < 0) {
 				LOG_ERR("app '%s' could not be restarted", name);
@@ -1110,12 +1116,14 @@ int app_platform_init(void)
 	return 0;
 }
 
-/* Common launch: find a free slot, set up the domain, start a user-mode thread. */
-static int launch(const char *name, app_entry_t entry, void *arg, app_caps_t caps,
-		  struct llext *ext, bool restart, bool monitored, size_t heap_size,
-		  uint32_t cpu_mask)
+/* Common launch: find a free slot, set up the domain and, unless the definition
+ * asks for a stopped launch, start a user-mode thread.
+ */
+static int launch(const struct app_def *def, struct llext *ext, bool restart)
 {
-	int err = check_cpu_mask(cpu_mask);
+	const char *name = def->name;
+	size_t heap_size = def->heap_size;
+	int err = check_cpu_mask(def->cpu_mask);
 
 	if (err != 0) {
 		return err;
@@ -1136,18 +1144,18 @@ static int launch(const char *name, app_entry_t entry, void *arg, app_caps_t cap
 
 		(void)strncpy(a->name, name, sizeof(a->name) - 1);
 		a->name[sizeof(a->name) - 1] = '\0';
-		a->entry = entry;
-		a->arg = arg;
-		a->caps = caps;
+		a->entry = def->entry;
+		a->arg = def->arg;
+		a->caps = def->caps;
 		a->restart = restart;
-		a->monitored = monitored;
+		a->monitored = def->monitored;
 		a->faulted = false;
 		a->stop_requested = false;
 		a->restarts = 0;
 		a->wdt_chan = -1;
 		a->module_bytes = 0;
 		a->heap_size = heap_size;
-		a->cpu_mask = cpu_mask;
+		a->cpu_mask = def->cpu_mask;
 #ifdef CONFIG_LLEXT
 		a->ext = ext;
 #endif
@@ -1198,43 +1206,19 @@ static int launch(const char *name, app_entry_t entry, void *arg, app_caps_t cap
 		}
 #endif
 
-		k_tid_t t = k_thread_create(&a->threads[0].thread, app_stacks[i], APP_STACK,
-					    trampoline, (void *)entry, arg, NULL,
-					    APP_PRIO, K_USER, K_FOREVER);
-
-		a->threads[0].live = true;
-		k_thread_name_set(t, name);
-		pin_thread(a, t);
-#ifdef CONFIG_USERSPACE
-		k_mem_domain_add_thread(&a->domain, t);
-#endif
 		a->active = true;
-		a->running = true;
-
-		/* Opt-in hang detection: only a monitored app gets a watchdog. */
-		if (monitored) {
-			a->wdt_chan = task_wdt_add(WDT_TIMEOUT, wdt_cb, a);
+		if (def->stopped) {
+			LOG_DBG("launched app '%s' stopped (group %d)", name, i);
+			return i;
 		}
-
-		/* A death-watcher gives passive crash/exit detection for every app. */
-		a->gen++;
-		k_thread_create(&watchers[i], watch_stacks[i],
-				K_THREAD_STACK_SIZEOF(watch_stacks[i]), death_watch,
-				a, (void *)(uintptr_t)i, (void *)(uintptr_t)a->gen,
-				CONFIG_APP_PLATFORM_SUPERVISOR_PRIORITY, 0, K_NO_WAIT);
-		name_watcher(i);
-
-		k_thread_start(t);
-		LOG_DBG("launched app '%s' (isolated user-mode group %d)", name, i);
-		return i;
+		return start_app(a);
 	}
 	return -ENOSPC;
 }
 
 int app_platform_launch(const struct app_def *def)
 {
-	return launch(def->name, def->entry, def->arg, def->caps, NULL, false, def->monitored,
-		      def->heap_size, def->cpu_mask);
+	return launch(def, NULL, false);
 }
 
 #ifdef CONFIG_LLEXT
@@ -1247,7 +1231,18 @@ int app_platform_launch_llext(const char *name, struct llext *ext,
 int app_platform_launch_llext_opts(const char *name, struct llext *ext, app_entry_t entry,
 				   void *arg, app_caps_t caps, const struct app_launch_opts *opts)
 {
-	uint32_t cpu_mask = (opts != NULL) ? opts->cpu_mask : 0U;
+	struct app_def def = {
+		.name = name,
+		.source = APP_LOADABLE,
+		.entry = entry,
+		.caps = caps,
+		.arg = arg,
+	};
+
+	if (opts != NULL) {
+		def.cpu_mask = opts->cpu_mask;
+		def.stopped = opts->stopped;
+	}
 
 #ifdef CONFIG_APP_PLATFORM_LOADER
 	/* Refuse any extension that did not pass the verifying loader, so a
@@ -1257,11 +1252,9 @@ int app_platform_launch_llext_opts(const char *name, struct llext *ext, app_entr
 		LOG_ERR("refusing to launch '%s': extension not verified", name);
 		return -EPERM;
 	}
-	return launch(name, entry, arg, caps, ext, false, false, app_loader_heap_size(ext),
-		      cpu_mask);
-#else
-	return launch(name, entry, arg, caps, ext, false, false, 0U, cpu_mask);
+	def.heap_size = app_loader_heap_size(ext);
 #endif
+	return launch(&def, ext, false);
 }
 #endif
 

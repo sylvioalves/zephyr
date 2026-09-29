@@ -1017,16 +1017,12 @@ int z_impl_app_svc_app_start(int id)
 	if (id == app_platform_id_current()) {
 		return -EINVAL;
 	}
-#ifdef CONFIG_LLEXT
 	/* app_platform_start() reports success as the group id it started, so
 	 * normalise it: the service contract is 0 on success.
 	 */
 	int rc = app_platform_start(id);
 
 	return rc < 0 ? rc : 0;
-#else
-	return -ENOTSUP;
-#endif
 }
 
 int z_impl_app_svc_app_restart(int id)
@@ -1037,7 +1033,6 @@ int z_impl_app_svc_app_restart(int id)
 	if (id == app_platform_id_current()) {
 		return -EINVAL;
 	}
-#ifdef CONFIG_LLEXT
 	/* An application that is not running reports -EINVAL here, which is
 	 * not an error for a restart: the caller asked for it to end up
 	 * running, and starting a stopped one is the same operation. A busy
@@ -1050,9 +1045,6 @@ int z_impl_app_svc_app_restart(int id)
 	}
 	rc = app_platform_start(id);
 	return rc < 0 ? rc : 0;
-#else
-	return -ENOTSUP;
-#endif
 }
 
 #ifdef CONFIG_USERSPACE

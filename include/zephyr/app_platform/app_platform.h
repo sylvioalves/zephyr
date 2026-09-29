@@ -55,6 +55,12 @@ typedef void (*app_entry_t)(void *arg);
  * @kconfig{CONFIG_APP_PLATFORM_CPU_AFFINITY} on an SMP kernel, and a mask with
  * one bit set with @kconfig{CONFIG_SCHED_CPU_MASK_PIN_ONLY}. Without
  * @kconfig{CONFIG_SMP} it is ignored.
+ *
+ * @p stopped launches the application without starting it: the launch returns
+ * the group id of an application that is set up but not running, as after
+ * @ref app_platform_stop, so the caller can add memory partitions to
+ * @ref app_platform_domain and grant resources before any application code
+ * runs. @ref app_platform_start then starts it.
  */
 struct app_def {
 	const char     *name;    /**< unique application name */
@@ -65,6 +71,7 @@ struct app_def {
 	void           *arg;     /**< argument passed to entry, see below */
 	size_t          heap_size; /**< per-application heap bytes, 0 for none */
 	uint32_t        cpu_mask;  /**< CPUs the application may run on, 0 for any */
+	bool            stopped;   /**< launch without starting, see below */
 };
 
 /**
@@ -80,7 +87,8 @@ int app_platform_init(void);
  * @brief Launch a built-in application as an isolated, supervised group.
  *
  * A non-zero @ref app_def.heap_size gives the application a heap region, see
- * @kconfig{CONFIG_APP_PLATFORM_APP_HEAP_POOL_SIZE}.
+ * @kconfig{CONFIG_APP_PLATFORM_APP_HEAP_POOL_SIZE}. With @ref app_def.stopped
+ * set the application is not started, see @ref app_platform_start.
  *
  * @param def Catalog entry with a non-NULL @ref app_def.entry.
  * @retval >=0 the application's group id, or negative errno on failure.
@@ -121,6 +129,7 @@ int app_platform_launch_llext(const char *name, struct llext *ext,
 /** Options for @ref app_platform_launch_llext_opts. */
 struct app_launch_opts {
 	uint32_t cpu_mask; /**< CPUs the application may run on, as @ref app_def.cpu_mask */
+	bool     stopped;  /**< launch without starting, as @ref app_def.stopped */
 };
 
 /**
@@ -204,15 +213,20 @@ int app_platform_request_stop(int id, uint32_t grace_ms);
 bool app_platform_stop_requested(void);
 
 /**
- * @brief Start a previously stopped application group.
+ * @brief Start an application group that is not running.
  *
- * Re-creates the group's user-mode thread in its existing memory domain from
- * the loaded module. Only valid on a group that is loaded but not running.
+ * Starts a group launched stopped (see @ref app_def.stopped) or stopped with
+ * @ref app_platform_stop: creates its user-mode thread in its existing memory
+ * domain, with the partitions and grants the group has, and its watchdog
+ * channel when it is monitored. The heap region is zeroed and initialized
+ * again.
  *
  * @param id Group id.
- * @retval 0 on success (returns the id), -EALREADY if already running,
- *         -EINVAL if not a loaded group, -ENOTSUP if it cannot be restarted,
- *         -EBUSY if the previous stop has not completed.
+ * @retval id The group was started.
+ * @retval -EINVAL @p id is not an active group.
+ * @retval -EALREADY The group is already running.
+ * @retval -ENOTSUP The group has no entry point.
+ * @retval -EBUSY The previous stop of the group has not completed.
  */
 int app_platform_start(int id);
 

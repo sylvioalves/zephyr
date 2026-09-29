@@ -999,7 +999,7 @@ __syscall int app_svc_app_start(int id);
  * @retval 0 on success.
  * @retval -EPERM without @ref APP_CAP_CONTROL.
  * @retval -EINVAL on a bad id or the caller's own id.
- * @retval -ENOTSUP when loadable applications are not built in.
+ * @retval -ENOTSUP The group cannot be started again.
  */
 __syscall int app_svc_app_restart(int id);
 
