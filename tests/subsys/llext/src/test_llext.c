@@ -136,6 +136,36 @@ static void threads_objects_test_setup(struct llext *ext, struct k_thread *llext
 #define threads_objects_test_setup NULL
 #endif /* CONFIG_USERSPACE */
 
+#ifdef CONFIG_LLEXT_CONTIGUOUS_REGIONS
+/* The partition regions sit in one block in text, rodata, data, bss order, and
+ * data and BSS share one partition.
+ */
+static void check_region_block(struct llext *ext)
+{
+	static const enum llext_mem order[] = {
+		LLEXT_MEM_TEXT, LLEXT_MEM_RODATA, LLEXT_MEM_DATA, LLEXT_MEM_BSS,
+	};
+	uintptr_t next = (uintptr_t)ext->region_block;
+
+	zassert_not_null(ext->region_block, "no region block");
+	for (size_t i = 0; i < ARRAY_SIZE(order); i++) {
+		enum llext_mem mem_idx = order[i];
+
+		if (ext->mem_size[mem_idx] == 0) {
+			continue;
+		}
+		zassert_true((uintptr_t)ext->mem[mem_idx] >= next,
+			     "region %d is out of block order", mem_idx);
+		next = (uintptr_t)ext->mem[mem_idx] + ext->mem_size[mem_idx];
+	}
+
+	if (ext->mem_size[LLEXT_MEM_DATA] != 0 && ext->mem_size[LLEXT_MEM_BSS] != 0) {
+		zassert_equal(ext->mem_parts[LLEXT_MEM_BSS].size, 0,
+			      "data and BSS were not given one partition");
+	}
+}
+#endif
+
 void load_call_unload(const struct llext_test *test_case)
 {
 	struct llext_buf_loader buf_loader =
@@ -178,6 +208,10 @@ void load_call_unload(const struct llext_test *test_case)
 		return;
 	}
 	zassert_ok(res, "adding partitions to domain should succeed");
+
+#ifdef CONFIG_LLEXT_CONTIGUOUS_REGIONS
+	check_region_block(ext);
+#endif
 
 	/* Should be runnable from newly created thread */
 	k_thread_create(&llext_thread, llext_stack,
@@ -604,6 +638,12 @@ ZTEST(llext, test_find_section)
 
 	uintptr_t symbol_ptr = (uintptr_t)llext_find_sym(&ext->exp_tab, "number");
 	uintptr_t section_ptr = (uintptr_t)find_section_ext + section_ofs;
+
+	if (IS_ENABLED(CONFIG_LLEXT_CONTIGUOUS_REGIONS)) {
+		/* The data region is copied into the region block. */
+		section_ptr = (uintptr_t)ext->mem[LLEXT_MEM_DATA] + section_ofs -
+			      loader->sects[LLEXT_MEM_DATA].sh_offset;
+	}
 
 	/*
 	 * FIXME on RISC-V, at least for GCC, the symbols aren't always at the beginning
