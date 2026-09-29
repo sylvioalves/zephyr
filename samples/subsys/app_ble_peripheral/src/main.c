@@ -169,7 +169,9 @@ int main(void)
 		return 0;
 	}
 	app_platform_grant_ble_gatt(id, svc_uuid, sizeof(svc_uuid));
+#ifdef CONFIG_USERSPACE
 	k_mem_domain_add_partition(app_platform_domain(id), &per_part);
+#endif
 
 	printk("*** launched isolated peripheral app (group %d) ***\n", id);
 	return 0;
