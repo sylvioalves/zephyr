@@ -12,6 +12,9 @@ target_sources_ifdef(CONFIG_USERSPACE app PRIVATE src/hostile.c)
 if(CONFIG_APP_PLATFORM_APP_THREADS GREATER 0)
   target_sources(app PRIVATE src/threads.c)
 endif()
+if(CONFIG_APP_PLATFORM_APP_HEAP_POOL_SIZE GREATER 0)
+  target_sources(app PRIVATE src/heap.c)
+endif()
 
 set(ext_src ${PROJECT_SOURCE_DIR}/module/src/test_mod.c)
 set(bin ${PROJECT_BINARY_DIR}/llext/test_mod.llext)
@@ -64,6 +67,30 @@ add_custom_command(
 )
 add_custom_target(test_badabi DEPENDS ${badabi_mf} ${badabi_sig})
 add_dependencies(app test_badabi)
+
+# The same module signed with a heap, for the per-application heap suite.
+# Reuses the key generated above.
+set(heap_mf  ${ZEPHYR_BINARY_DIR}/include/generated/test_mod.heap.manifest.inc)
+set(heap_sig ${ZEPHYR_BINARY_DIR}/include/generated/test_mod.heap.sig.inc)
+
+add_custom_command(
+  OUTPUT  ${heap_mf} ${heap_sig}
+  COMMAND ${CMAKE_COMMAND}
+    -DMODULE_BIN=${bin}
+    -DKEY_DIR=${CMAKE_CURRENT_SOURCE_DIR}/keys
+    -DAPP_NAME=${APP_NAME}
+    -DAPP_VERSION=${APP_VERSION}
+    -DAPP_HEAP_SIZE=992
+    -DABI_FILE=${APP_PLATFORM_ABI_FILE}
+    -DOUT_MF_INC=${heap_mf}
+    -DOUT_SIG_INC=${heap_sig}
+    -DPYTHON_EXECUTABLE=${PYTHON_EXECUTABLE}
+    -P ${ZEPHYR_BASE}/subsys/app_platform/cmake/sign_module.cmake
+  DEPENDS ${bin} ${sig} ${APP_PLATFORM_ABI_FILE}
+)
+add_custom_target(test_heap_sign DEPENDS ${heap_mf} ${heap_sig})
+add_dependencies(test_heap_sign app_platform_abi)
+add_dependencies(app test_heap_sign)
 
 # A signed-but-malformed module (out-of-section relocation) for the loader's
 # relocation bounds-check test. Reuses the key generated above.

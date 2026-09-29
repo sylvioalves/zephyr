@@ -11,10 +11,11 @@
  *
  * The module uses only service syscalls (app_svc_*) and builds its log line by
  * hand, so it has no libc or supervisor-symbol dependencies to resolve at load
- * time.
+ * time, except the heap allocator when it is started with HEAP_PROBE.
  */
 
 #include <zephyr/app_platform/app_services.h>
+#include <zephyr/app_platform/app_heap.h>
 
 #include <zephyr/llext/symbol.h>
 #include <zephyr/kernel.h>
@@ -47,9 +48,47 @@ static int put_u32(char *out, int i, uint32_t v)
 	return i;
 }
 
+/* Argument that makes the module exercise its heap and return. */
+#define HEAP_PROBE ((void *)0x4850U)
+
+static bool heap_probe(void)
+{
+	uint8_t *p = app_malloc(64);
+	uint8_t *q;
+
+	if (p == NULL) {
+		return false;
+	}
+	for (int i = 0; i < 64; i++) {
+		p[i] = (uint8_t)i;
+	}
+	q = app_realloc(p, 128);
+	if (q == NULL) {
+		app_free(p);
+		return false;
+	}
+	for (int i = 0; i < 64; i++) {
+		if (q[i] != (uint8_t)i) {
+			return false;
+		}
+	}
+	app_free(q);
+	p = app_calloc(4, 8);
+	if (p == NULL || p[0] != 0U) {
+		return false;
+	}
+	app_free(p);
+	return true;
+}
+
 void app_main(void *arg)
 {
-	ARG_UNUSED(arg);
+	if (arg == HEAP_PROBE) {
+		while (!heap_probe()) {
+			k_msleep(1000);
+		}
+		return;
+	}
 
 	char line[48];
 	uint32_t ticks = 0;

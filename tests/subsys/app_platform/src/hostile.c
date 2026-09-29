@@ -35,6 +35,7 @@ K_APPMEM_PARTITION_DEFINE(report_part);
 K_APP_DMEM(report_part) volatile int report_rc;
 K_APP_DMEM(report_part) volatile int report_done;
 K_APP_DMEM(report_part) volatile int report_n;
+K_APP_DMEM(report_part) volatile uintptr_t report_addr;
 
 /* A slot's memory domain outlives the app that ran in it, so a later test
  * reusing the slot finds the report partition already there. Add it only when
@@ -1087,6 +1088,93 @@ ZTEST(zhostile, test_4_17_running_name_is_unique)
 
 	zassert_equal(app_platform_launch(&def), -EEXIST,
 		      "a second application ran under a running name");
+}
+
+/* ---- 4.18 another application's heap ---- */
+
+static void heap_owner(void *a)
+{
+	uintptr_t base;
+	size_t size;
+
+	ARG_UNUSED(a);
+	if (app_svc_heap_info(&base, &size) == 0) {
+		report_addr = base;
+	}
+	for (;;) {
+		k_msleep(10);
+	}
+}
+
+static void read_reported_heap(void *a)
+{
+	ARG_UNUSED(a);
+	report_rc = (int)*(volatile uint32_t *)report_addr;
+	report_done = 1;
+}
+
+static int launch_heap_owner(void)
+{
+	const struct app_def def = {
+		.name = "h_owner",
+		.source = APP_BUILTIN,
+		.entry = heap_owner,
+		.caps = APP_CAP_LOG,
+		.heap_size = 992,
+	};
+	int id;
+
+	report_addr = 0U;
+	id = app_platform_launch(&def);
+	zassert_true(id >= 0, "owner launch rc %d", id);
+	add_report_part(id);
+	for (int i = 0; i < 100 && report_addr == 0U; i++) {
+		k_msleep(5);
+	}
+	zassert_not_equal(report_addr, 0U, "owner has no heap");
+	return id;
+}
+
+ZTEST(zhostile, test_4_18_read_other_heap)
+{
+	struct app_platform_status st;
+	int id;
+
+	if (CONFIG_APP_PLATFORM_APP_HEAP_POOL_SIZE == 0) {
+		ztest_test_skip();
+	}
+	id = launch_heap_owner();
+	expect_reclaimed("h_heap", read_reported_heap, APP_CAP_LOG);
+	zassert_equal(app_platform_status(id, &st), 0);
+	zassert_true(st.active, "the heap owner died");
+	zassert_equal(app_platform_remove(id), 0);
+	zassert_true(wait_slot_free("h_owner", 2000));
+}
+
+ZTEST(zhostile, test_4_18_heap_unmapped_after_reclaim)
+{
+	const struct app_def def = {
+		.name = "h_heap2",
+		.source = APP_BUILTIN,
+		.entry = read_reported_heap,
+		.caps = APP_CAP_LOG,
+	};
+	int id;
+	int id2;
+
+	if (CONFIG_APP_PLATFORM_APP_HEAP_POOL_SIZE == 0) {
+		ztest_test_skip();
+	}
+	id = launch_heap_owner();
+	zassert_equal(app_platform_remove(id), 0);
+	zassert_true(wait_slot_free("h_owner", 2000));
+	k_msleep(20);
+
+	id2 = app_platform_launch(&def);
+	zassert_equal(id2, id, "not the same slot (%d, %d)", id2, id);
+	add_report_part(id2);
+	zassert_true(wait_slot_free("h_heap2", 2000), "h_heap2 was not reclaimed");
+	zassert_equal(report_done, 0, "the previous application's heap stayed mapped");
 }
 
 ZTEST_SUITE(zhostile, NULL, hostile_setup, hostile_before, NULL, NULL);

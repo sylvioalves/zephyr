@@ -122,6 +122,21 @@ ZTEST(loader_neg, test_version_field_tamper_rejected)
 	zassert_is_null(ext);
 }
 
+ZTEST(loader_neg, test_heap_size_tamper_rejected)
+{
+	struct app_manifest mf;
+	struct llext *ext = NULL;
+
+	memcpy(&mf, mod_manifest, sizeof(mf));
+	memcpy(work, mod_bytes, ARRAY_SIZE(mod_bytes));
+	mf.heap_size += 4096U; /* enlarge the heap without re-signing */
+	int rc = load_key(&mf, mod_pubkey, ARRAY_SIZE(mod_pubkey), work, ARRAY_SIZE(mod_bytes),
+			  &ext);
+
+	zassert_equal(rc, -EPERM, "heap size tamper must be rejected (%d)", rc);
+	zassert_is_null(ext);
+}
+
 ZTEST(loader_neg, test_foreign_abi_rejected)
 {
 	struct app_manifest mf;
