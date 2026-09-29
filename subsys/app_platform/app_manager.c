@@ -378,8 +378,14 @@ bool app_platform_handle_fatal_error(unsigned int reason, const struct arch_esf 
 		return false;
 	}
 
-	struct running_app *a = app_of_thread(k_current_get());
+	struct running_app *a = NULL;
 
+	/* A thread of an application being stopped still belongs to it. */
+	for (int i = 0; i < MAX_APPS && a == NULL; i++) {
+		if (apps[i].active && thread_of(&apps[i], k_current_get()) != NULL) {
+			a = &apps[i];
+		}
+	}
 	if (a == NULL) {
 		return false;
 	}
