@@ -1319,7 +1319,7 @@ ZTEST(devices, test_fault_is_contained)
 #define PSRAM_REGION_SIZE 16384U
 #define PSRAM_MAP_SIZE    4096U
 
-static uint8_t __aligned(PSRAM_REGION_SIZE) psram_backing[PSRAM_REGION_SIZE];
+static uint8_t __aligned(PSRAM_MAP_SIZE) psram_backing[PSRAM_REGION_SIZE];
 static struct shared_multi_heap_region psram_region;
 
 static void psram_map_size(size_t size)
