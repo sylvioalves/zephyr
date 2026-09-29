@@ -1377,6 +1377,22 @@ void z_riscv_pmp_usermode_enable(struct k_thread *thread)
 	}
 }
 
+#if defined(CONFIG_SMP) && !defined(CONFIG_PMP_KERNEL_MODE_DYNAMIC)
+/**
+ * @brief Resynchronize the u-mode PMP content of a thread returning to u-mode
+ *
+ * This is called on every exception return to u-mode.
+ */
+void z_riscv_pmp_usermode_sync(struct k_thread *thread)
+{
+	struct k_mem_domain *domain = thread->mem_domain_info.mem_domain;
+
+	if (thread->arch.u_mode_pmp_update_nr != domain->arch.pmp_update_nr) {
+		z_riscv_pmp_usermode_enable(thread);
+	}
+}
+#endif /* CONFIG_SMP && !CONFIG_PMP_KERNEL_MODE_DYNAMIC */
+
 int arch_mem_domain_max_partitions_get(void)
 {
 	int available_pmp_slots = PMP_USABLE_SLOTS;
@@ -1432,6 +1448,10 @@ int arch_mem_domain_partition_add(struct k_mem_domain *domain,
 
 	/* Force resynchronization for every thread using this domain */
 	domain->arch.pmp_update_nr += 1;
+#ifdef CONFIG_SMP
+	/* Threads of the domain running on other CPUs resync on the IPI return */
+	arch_sched_broadcast_ipi();
+#endif
 	return 0;
 }
 
@@ -1442,6 +1462,10 @@ int arch_mem_domain_partition_remove(struct k_mem_domain *domain,
 
 	/* Force resynchronization for every thread using this domain */
 	domain->arch.pmp_update_nr += 1;
+#ifdef CONFIG_SMP
+	/* Threads of the domain running on other CPUs resync on the IPI return */
+	arch_sched_broadcast_ipi();
+#endif
 	return 0;
 }
 

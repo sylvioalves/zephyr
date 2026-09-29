@@ -953,6 +953,10 @@ fp_trap_exit:
 	/* Remove kernel mode configuration and Reconfigure PMP for user mode */
 	lr a0, ___cpu_t_current_OFFSET(s0)
 	call z_riscv_pmp_usermode_enable
+#elif defined(CONFIG_SMP)
+	/* Apply a domain change made by another CPU */
+	lr a0, ___cpu_t_current_OFFSET(s0)
+	call z_riscv_pmp_usermode_sync
 #endif /* CONFIG_PMP_KERNEL_MODE_DYNAMIC */
 
 #ifdef CONFIG_CUSTOM_STACK_GUARD
