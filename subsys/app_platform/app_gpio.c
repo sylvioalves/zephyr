@@ -48,7 +48,7 @@ static const char *const line_name[] = {
 static uint32_t line_grant[MAX_APPS];
 /* Bit N set means this application last drove line N active. */
 static uint32_t line_active[MAX_APPS];
-static K_MUTEX_DEFINE(line_lock);
+static SVC_LOCK_DEFINE(line_lock);
 
 /* Drop every line grant of a slot that is being handed to a new application
  * and drive the lines it last set active back to inactive.

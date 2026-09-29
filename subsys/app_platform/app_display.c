@@ -40,7 +40,7 @@ struct display_slot {
 static struct display_slot slots[MAX_APPS];
 static uint8_t stage[MAX_APPS][XFER_MAX] __aligned(4);
 static struct k_spinlock vp_lock;
-static K_MUTEX_DEFINE(display_lock);
+static SVC_LOCK_DEFINE(display_lock);
 static K_EVENT_DEFINE(vsync_event);
 static bool vsync_ok;
 
@@ -216,12 +216,12 @@ int app_platform_grant_display(int id, const struct app_display_rect *vp)
 
 int app_platform_display_lock(k_timeout_t timeout)
 {
-	return k_mutex_lock(&display_lock, timeout) == 0 ? 0 : -EBUSY;
+	return app_svc_lock(&display_lock, timeout) == 0 ? 0 : -EBUSY;
 }
 
 void app_platform_display_unlock(void)
 {
-	(void)k_mutex_unlock(&display_lock);
+	(void)app_svc_unlock(&display_lock);
 }
 
 int z_impl_svc_display_info(struct svc_display_info *out)

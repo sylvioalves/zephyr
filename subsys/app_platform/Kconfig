@@ -88,7 +88,8 @@ config APP_PLATFORM_STOP_WAIT_MS
 	help
 	  An application stopped while it holds a service lock keeps running
 	  until it releases the last one, so no lock is left owned by a dead
-	  thread. After this long it is stopped anyway.
+	  thread. After this long it is stopped anyway, and each service whose
+	  lock it still holds is disabled.
 
 config APP_PLATFORM_WDT_TIMEOUT_MS
 	int "Application liveness watchdog timeout (ms)"

@@ -40,7 +40,7 @@ static uint32_t dac_grant[MAX_APPS];
 static bool dac_ready[DAC_COUNT];
 /* Bit N set means this application last wrote a non-zero code to channel N. */
 static uint32_t dac_driven[MAX_APPS];
-static K_MUTEX_DEFINE(dac_lock);
+static SVC_LOCK_DEFINE(dac_lock);
 
 void app_platform_grant_dac(int id, uint32_t ch_mask)
 {

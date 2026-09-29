@@ -95,7 +95,7 @@ static struct sensor_svc catalog[] = {
 /* One transaction at a time on the shared device; readers still appear
  * concurrent to the applications calling in.
  */
-static K_MUTEX_DEFINE(sensor_lock);
+static SVC_LOCK_DEFINE(sensor_lock);
 
 int z_impl_svc_sensor_count(void)
 {

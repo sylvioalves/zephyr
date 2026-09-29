@@ -202,7 +202,7 @@ static const struct device *const regulators[] = {
 static uint32_t reg_grant[MAX_APPS];
 /* Outstanding enables each application holds on each regulator. */
 static uint16_t reg_enables[MAX_APPS][REG_COUNT];
-static K_MUTEX_DEFINE(reg_lock);
+static SVC_LOCK_DEFINE(reg_lock);
 
 void app_platform_grant_regulator(int id, uint32_t idx_mask)
 {
@@ -309,7 +309,7 @@ static const struct device *const steppers[] = {
 static uint32_t step_grant[MAX_APPS];
 /* Bit N set means this application issued the last move of stepper N. */
 static uint32_t step_moved[MAX_APPS];
-static K_MUTEX_DEFINE(step_lock);
+static SVC_LOCK_DEFINE(step_lock);
 
 void app_platform_grant_stepper(int id, uint32_t idx_mask)
 {

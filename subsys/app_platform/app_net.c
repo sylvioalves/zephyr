@@ -150,7 +150,7 @@ struct pub_req {
 K_MSGQ_DEFINE(net_pub_q, sizeof(struct pub_req), 8, 4);
 
 static K_SEM_DEFINE(net_ready_sem, 0, 1);
-static K_MUTEX_DEFINE(net_lock);
+static SVC_LOCK_DEFINE(net_lock);
 static struct net_mgmt_event_callback ipv4_cb;
 static struct net_mgmt_event_callback wifi_cb;
 static struct sockaddr_storage broker_addr;
@@ -604,7 +604,11 @@ static void net_serve_requests(void)
 
 		struct net_req *r = &reqs[m.id];
 
-		app_svc_lock(&net_lock, K_FOREVER);
+		if (app_svc_lock(&net_lock, K_FOREVER) != 0) {
+			r->rc = -EIO;
+			k_sem_give(&r->done);
+			continue;
+		}
 		if (r->gen == m.gen) {
 			r->rc = net_run(m.id, r);
 			k_sem_give(&r->done);
@@ -681,7 +685,9 @@ static void net_thread(void *a, void *b, void *c)
 			p.message.payload.data = (uint8_t *)req.payload;
 			p.message.payload.len = strlen(req.payload);
 
-			app_svc_lock(&net_lock, K_FOREVER);
+			if (app_svc_lock(&net_lock, K_FOREVER) != 0) {
+				continue;
+			}
 			int rc = mqtt_publish(&s->client, &p);
 
 			app_svc_unlock(&net_lock);
@@ -698,7 +704,9 @@ static void net_thread(void *a, void *b, void *c)
 		for (int i = 0; i < MAX_SESSIONS; i++) {
 			struct session *s = &sessions[i];
 
-			app_svc_lock(&net_lock, K_FOREVER);
+			if (app_svc_lock(&net_lock, K_FOREVER) != 0) {
+				continue;
+			}
 			if (s->connected) {
 				struct zsock_pollfd fd = {
 					.fd = s->client.transport.tcp.sock,
@@ -720,7 +728,9 @@ static void net_thread(void *a, void *b, void *c)
 		for (int i = 0; i < MAX_SESSIONS; i++) {
 			struct app_sock *sk = &socks[i];
 
-			app_svc_lock(&net_lock, K_FOREVER);
+			if (app_svc_lock(&net_lock, K_FOREVER) != 0) {
+				continue;
+			}
 			if (!sk->used || sk->fd < 0) {
 				app_svc_unlock(&net_lock);
 				continue;
@@ -1247,7 +1257,9 @@ static void net_release(int id)
 		return;
 	}
 
-	app_svc_lock(&net_lock, K_FOREVER);
+	if (app_svc_lock(&net_lock, K_FOREVER) != 0) {
+		return;
+	}
 	if (sessions[id].used) {
 		if (sessions[id].connected) {
 			(void)mqtt_disconnect(&sessions[id].client, false);

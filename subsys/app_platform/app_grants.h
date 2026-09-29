@@ -26,11 +26,24 @@ static inline bool app_has_cap(app_caps_t mask)
 	return (app_platform_caps_current() & mask) == mask;
 }
 
-/* Service lock operations. A stop of an application that holds a service lock
- * takes effect once it releases the last one.
+/* A lock that an application thread takes inside a service. When the thread
+ * dies holding it, the service state it guards may be half updated, so the
+ * lock is marked broken and refuses every later caller.
  */
-int app_svc_lock(struct k_mutex *lock, k_timeout_t timeout);
-int app_svc_unlock(struct k_mutex *lock);
+struct svc_lock {
+	struct k_mutex mutex;
+	atomic_t broken;
+};
+
+#define SVC_LOCK_DEFINE(name) \
+	struct svc_lock name __maybe_unused = { .mutex = Z_MUTEX_INITIALIZER(name.mutex) }
+
+/* Service lock operations. A stop of an application that holds a service lock
+ * takes effect once it releases the last one. Taking a broken lock fails with
+ * -EIO.
+ */
+int app_svc_lock(struct svc_lock *lock, k_timeout_t timeout);
+int app_svc_unlock(struct svc_lock *lock);
 
 /* Per-resource grants live in the service that owns the resource, indexed by
  * application slot. A slot is reused once its previous tenant is reclaimed, so

@@ -107,7 +107,7 @@ static void radio_rx(void *a, void *b, void *c)
 K_THREAD_DEFINE(radio_tx_tid, 2048, radio_tx, NULL, NULL, NULL, 7, 0, 0);
 K_THREAD_DEFINE(radio_rx_tid, 2048, radio_rx, NULL, NULL, NULL, 7, 0, 0);
 
-static K_MUTEX_DEFINE(radio_lock);
+static SVC_LOCK_DEFINE(radio_lock);
 static bool radio_ready;
 
 static int radio_ensure_up(void)

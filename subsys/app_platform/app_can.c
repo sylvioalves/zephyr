@@ -27,7 +27,7 @@
 static const struct device *const can_dev = DEVICE_DT_GET(DT_CHOSEN(zephyr_canbus));
 CAN_MSGQ_DEFINE(app_can_q, 8);
 static bool can_ready;
-static K_MUTEX_DEFINE(can_lock);
+static SVC_LOCK_DEFINE(can_lock);
 
 static void can_tx_done(const struct device *dev, int error, void *arg)
 {

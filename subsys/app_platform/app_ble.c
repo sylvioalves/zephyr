@@ -39,7 +39,7 @@
  */
 #define BLE_LOCK_MARGIN_MS 2000U
 
-static K_MUTEX_DEFINE(ble_lock);
+static SVC_LOCK_DEFINE(ble_lock);
 static K_SEM_DEFINE(found_sem, 0, 1);
 static char want_name[BLE_NAME_MAX];
 static bool bt_started;

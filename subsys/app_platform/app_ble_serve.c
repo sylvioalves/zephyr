@@ -44,7 +44,7 @@
  */
 #define ATTR_MAX (1 + (3 * CHRC_MAX))
 
-static K_MUTEX_DEFINE(serve_lock);
+static SVC_LOCK_DEFINE(serve_lock);
 
 /* Only one application serves at a time: the platform has one controller and
  * one advertising set, and a second service would need its own of both.

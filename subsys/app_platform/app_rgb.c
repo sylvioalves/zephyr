@@ -33,7 +33,7 @@ static struct led_rgb frame[RGB_COUNT];
 static uint32_t rgb_grant[MAX_APPS];
 /* Bit N set means this application last set pixel N to a non-black color. */
 static uint32_t rgb_lit[MAX_APPS];
-static K_MUTEX_DEFINE(rgb_lock);
+static SVC_LOCK_DEFINE(rgb_lock);
 
 static int rgb_refresh(void)
 {

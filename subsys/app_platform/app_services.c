@@ -52,7 +52,7 @@ bool app_platform_log_is_enabled(void)
 
 #define SVC_XFER_MAX 256
 
-static K_MUTEX_DEFINE(flash_lock);
+static SVC_LOCK_DEFINE(flash_lock);
 
 /* A shared, lock-serialized key/value store namespaced by application id. */
 #define KV_SLOTS    16
@@ -65,7 +65,7 @@ struct kv_entry {
 	bool     used;
 };
 static struct kv_entry kv_store[KV_SLOTS];
-static K_MUTEX_DEFINE(kv_lock);
+static SVC_LOCK_DEFINE(kv_lock);
 
 #if defined(CONFIG_SENSOR) && DT_NODE_HAS_STATUS(DT_ALIAS(die_temp0), okay)
 static const struct device *const svc_die_temp = DEVICE_DT_GET(DT_ALIAS(die_temp0));
@@ -106,7 +106,7 @@ SYS_INIT(ipc_mailbox_init, PRE_KERNEL_1, 0);
 
 static char ipc_names[MAX_APPS][IPC_NAME_MAX];
 static char ipc_topics[MAX_APPS][IPC_TOPIC_MAX];
-static K_MUTEX_DEFINE(ipc_dir_lock);
+static SVC_LOCK_DEFINE(ipc_dir_lock);
 
 void app_platform_clear_ipc(int id)
 {
@@ -114,7 +114,9 @@ void app_platform_clear_ipc(int id)
 		return;
 	}
 	k_msgq_purge(&mailbox[id]);
-	app_svc_lock(&ipc_dir_lock, K_FOREVER);
+	if (app_svc_lock(&ipc_dir_lock, K_FOREVER) != 0) {
+		return;
+	}
 	ipc_names[id][0] = '\0';
 	ipc_topics[id][0] = '\0';
 	app_svc_unlock(&ipc_dir_lock);
@@ -789,7 +791,7 @@ int z_impl_svc_timer_wait(uint32_t timeout_ms)
 }
 
 /* A monotonic wall clock: a seed plus elapsed uptime. */
-static K_MUTEX_DEFINE(rtc_lock);
+static SVC_LOCK_DEFINE(rtc_lock);
 static int64_t rtc_seed_sec;
 static int64_t rtc_seed_uptime;
 

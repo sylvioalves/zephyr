@@ -117,7 +117,7 @@ static const struct device *const mcpwm = DEVICE_DT_GET(DT_NODELABEL(mcpwm0));
 static const uint32_t channel_map[MOTOR_CHANNELS] = { 0U, 1U };
 /* Bit N set means this application last drove channel N to a non-zero duty. */
 static uint32_t motor_driven[MAX_APPS];
-static K_MUTEX_DEFINE(motor_lock);
+static SVC_LOCK_DEFINE(motor_lock);
 
 static void motor_release(int id)
 {

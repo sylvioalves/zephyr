@@ -46,7 +46,7 @@ BUILD_ASSERT(CONFIG_PRIVILEGED_STACK_SIZE >= 2048,
 static struct fs_file_t files[OPEN_FILES];
 static int file_owner[OPEN_FILES];
 static bool file_used[OPEN_FILES];
-static K_MUTEX_DEFINE(fs_lock);
+static SVC_LOCK_DEFINE(fs_lock);
 
 /* The application's name, which names its root directory. Only names that are
  * a plain directory component are accepted.
@@ -125,7 +125,9 @@ static int fs_prepare(const char *name)
  */
 void app_platform_clear_fs_handles(int id)
 {
-	app_svc_lock(&fs_lock, K_FOREVER);
+	if (app_svc_lock(&fs_lock, K_FOREVER) != 0) {
+		return;
+	}
 	for (int i = 0; i < OPEN_FILES; i++) {
 		if (file_used[i] && file_owner[i] == id) {
 			fs_close(&files[i]);
@@ -160,7 +162,10 @@ int z_impl_svc_file_open(const char *path, int create)
 		return rc;
 	}
 
-	app_svc_lock(&fs_lock, K_FOREVER);
+	rc = app_svc_lock(&fs_lock, K_FOREVER);
+	if (rc != 0) {
+		return rc;
+	}
 	rc = fs_prepare(name);
 	if (rc != 0) {
 		app_svc_unlock(&fs_lock);
@@ -224,7 +229,10 @@ int z_impl_svc_file_write(int handle, const void *data, size_t len)
 	struct fs_file_t *f;
 	int rc;
 
-	app_svc_lock(&fs_lock, K_FOREVER);
+	rc = app_svc_lock(&fs_lock, K_FOREVER);
+	if (rc != 0) {
+		return rc;
+	}
 	rc = owned_file(handle, &f);
 	if (rc == 0) {
 		rc = (int)fs_write(f, data, len);
@@ -245,7 +253,10 @@ int z_impl_svc_file_read(int handle, void *buf, size_t len)
 	struct fs_file_t *f;
 	int rc;
 
-	app_svc_lock(&fs_lock, K_FOREVER);
+	rc = app_svc_lock(&fs_lock, K_FOREVER);
+	if (rc != 0) {
+		return rc;
+	}
 	rc = owned_file(handle, &f);
 	if (rc == 0) {
 		rc = (int)fs_read(f, buf, len);
@@ -263,7 +274,10 @@ int z_impl_svc_file_seek(int handle, int32_t off, int whence)
 	struct fs_file_t *f;
 	int rc;
 
-	app_svc_lock(&fs_lock, K_FOREVER);
+	rc = app_svc_lock(&fs_lock, K_FOREVER);
+	if (rc != 0) {
+		return rc;
+	}
 	rc = owned_file(handle, &f);
 	if (rc == 0) {
 		rc = fs_seek(f, off, whence);
@@ -281,7 +295,10 @@ int z_impl_svc_file_close(int handle)
 	struct fs_file_t *f;
 	int rc;
 
-	app_svc_lock(&fs_lock, K_FOREVER);
+	rc = app_svc_lock(&fs_lock, K_FOREVER);
+	if (rc != 0) {
+		return rc;
+	}
 	rc = owned_file(handle, &f);
 	if (rc == 0) {
 		fs_close(f);

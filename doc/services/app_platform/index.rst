@@ -71,6 +71,12 @@ are turned off, and a display viewport it drew in is filled with
 application set more recently is left as it is. Other device state an application changed, such as the real-time clock
 or EEPROM contents, is kept.
 
+An application that dies inside a service while it holds the service's lock, through a fault in
+the service or a stop that outlasts :kconfig:option:`CONFIG_APP_PLATFORM_STOP_WAIT_MS`, can leave
+the state behind that lock half updated. The service is then disabled: every later call to it
+fails with ``-EIO`` until the next boot, and the resources it held for the dead application are
+not released. Other services and applications keep running.
+
 Loading and verification
 ========================
 

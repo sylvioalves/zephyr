@@ -46,6 +46,12 @@ LOG_MODULE_REGISTER(app_platform, CONFIG_APP_PLATFORM_LOG_LEVEL);
 #define CLEANUP_WAIT_TRIES 100
 #define CLEANUP_WAIT_MS    2
 
+/* Service locks one application thread can hold at once. */
+#define SVC_HOLD_MAX 4
+
+/* Step of a service lock wait, so a waiter notices a lock that breaks. */
+#define SVC_LOCK_STEP K_MSEC(50)
+
 /* Application name length, including the terminator. An application's name
  * outlives the call that launched it (the fault handler, the watchdog and the
  * thread name all read it), so the slot keeps its own copy rather than the
@@ -69,6 +75,7 @@ struct running_app {
 	bool                stop_requested; /* asked to exit by app_platform_request_stop */
 	bool                stopping;  /* stop requested, deferred while svc_holds > 0 */
 	uint8_t             svc_holds; /* service locks the app thread holds */
+	struct svc_lock    *svc_held[SVC_HOLD_MAX];
 	bool                domain_ready; /* memory domain initialized once per slot */
 	app_entry_t         entry;
 	void               *arg;       /* passed to entry */
@@ -140,11 +147,17 @@ static struct running_app *app_of_self(void)
 	return NULL;
 }
 
-static void drop_hold(struct running_app *a)
+static void drop_hold(struct running_app *a, struct svc_lock *lock)
 {
 	k_spinlock_key_t key = k_spin_lock(&hold_lock);
 	bool stop;
 
+	for (int i = a->svc_holds - 1; i >= 0; i--) {
+		if (a->svc_held[i] == lock) {
+			a->svc_held[i] = a->svc_held[a->svc_holds - 1];
+			break;
+		}
+	}
 	a->svc_holds--;
 	stop = a->stopping && a->svc_holds == 0U;
 	k_spin_unlock(&hold_lock, key);
@@ -153,9 +166,11 @@ static void drop_hold(struct running_app *a)
 	}
 }
 
-int app_svc_lock(struct k_mutex *lock, k_timeout_t timeout)
+int app_svc_lock(struct svc_lock *lock, k_timeout_t timeout)
 {
 	struct running_app *a = app_of_self();
+	k_timepoint_t end = sys_timepoint_calc(timeout);
+	k_timepoint_t step;
 	int rc;
 
 	if (a != NULL) {
@@ -165,24 +180,39 @@ int app_svc_lock(struct k_mutex *lock, k_timeout_t timeout)
 			k_spin_unlock(&hold_lock, key);
 			k_thread_abort(k_current_get());
 		}
-		a->svc_holds++;
+		if (a->svc_holds == SVC_HOLD_MAX) {
+			k_spin_unlock(&hold_lock, key);
+			return -EBUSY;
+		}
+		a->svc_held[a->svc_holds++] = lock;
 		k_spin_unlock(&hold_lock, key);
 	}
 
-	rc = k_mutex_lock(lock, timeout);
+	do {
+		if (atomic_get(&lock->broken) != 0) {
+			rc = -EIO;
+			break;
+		}
+		step = sys_timepoint_calc(SVC_LOCK_STEP);
+		if (sys_timepoint_cmp(end, step) < 0) {
+			step = end;
+		}
+		rc = k_mutex_lock(&lock->mutex, sys_timepoint_timeout(step));
+	} while (rc != 0 && !sys_timepoint_expired(end));
+
 	if (rc != 0 && a != NULL) {
-		drop_hold(a);
+		drop_hold(a, lock);
 	}
 	return rc;
 }
 
-int app_svc_unlock(struct k_mutex *lock)
+int app_svc_unlock(struct svc_lock *lock)
 {
 	struct running_app *a = app_of_self();
-	int rc = k_mutex_unlock(lock);
+	int rc = k_mutex_unlock(&lock->mutex);
 
 	if (a != NULL) {
-		drop_hold(a);
+		drop_hold(a, lock);
 	}
 	return rc;
 }
@@ -501,17 +531,19 @@ static void reaper(void *p1, void *p2, void *p3)
 		if (req.deferred) {
 			(void)k_thread_join(&a->thread, K_MSEC(CONFIG_APP_PLATFORM_STOP_WAIT_MS));
 		}
-		key = k_spin_lock(&hold_lock);
-		holds = a->svc_holds;
-		k_spin_unlock(&hold_lock, key);
-		if (holds != 0U) {
-			LOG_ERR("app '%s' stopped holding %u service lock(s)", a->name, holds);
-		}
 		k_thread_abort(&a->thread);
 		key = k_spin_lock(&hold_lock);
+		holds = a->svc_holds;
+		for (uint8_t i = 0U; i < holds; i++) {
+			atomic_set(&a->svc_held[i]->broken, 1);
+		}
 		a->stopping = false;
 		a->svc_holds = 0U;
 		k_spin_unlock(&hold_lock, key);
+		if (holds != 0U) {
+			LOG_ERR("app '%s' stopped holding %u service lock(s), service disabled",
+				a->name, holds);
+		}
 
 #ifdef CONFIG_LLEXT
 		run_cleanup(req.id, req.full, req.ext);

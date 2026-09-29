@@ -48,7 +48,7 @@
 static uint32_t led_grant[MAX_APPS];
 /* Bit N set means this application last drove LED pin N on. */
 static uint32_t led_on[MAX_APPS];
-static K_MUTEX_DEFINE(led_lock);
+static SVC_LOCK_DEFINE(led_lock);
 
 #if DT_HAS_ALIAS(led0)
 static const struct gpio_dt_spec led[] = {

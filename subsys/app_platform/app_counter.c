@@ -38,7 +38,7 @@ static const struct device *const counters[] = {
 static uint32_t counter_grant[MAX_APPS];
 /* Bit N set means this application issued the last start of counter N. */
 static uint32_t counter_started[MAX_APPS];
-static K_MUTEX_DEFINE(counter_lock);
+static SVC_LOCK_DEFINE(counter_lock);
 
 void app_platform_grant_counter(int id, uint32_t idx_mask)
 {

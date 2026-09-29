@@ -46,7 +46,7 @@ struct ring_region {
 };
 
 static struct ring_region rings[MAX_APPS];
-static K_MUTEX_DEFINE(ring_lock);
+static SVC_LOCK_DEFINE(ring_lock);
 
 static size_t round_pow2(size_t n)
 {

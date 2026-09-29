@@ -35,7 +35,7 @@ struct psram_region {
 	bool                    used;
 };
 static struct psram_region regions[MAX_APPS];
-static K_MUTEX_DEFINE(psram_lock);
+static SVC_LOCK_DEFINE(psram_lock);
 
 /* Smallest power of two at or above @p v, for the NAPOT-style alignment the
  * memory partition needs. The caller bounds v by PSRAM_MAX, so the shift
@@ -57,7 +57,9 @@ static void psram_release(int id)
 		return;
 	}
 
-	app_svc_lock(&psram_lock, K_FOREVER);
+	if (app_svc_lock(&psram_lock, K_FOREVER) != 0) {
+		return;
+	}
 	if (regions[id].used) {
 		struct k_mem_domain *dom = app_platform_domain(id);
 

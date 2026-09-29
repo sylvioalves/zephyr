@@ -29,7 +29,7 @@
 static const struct device *const dma_dev = DEVICE_DT_GET(DT_NODELABEL(dma));
 static uint8_t dma_src[DMA_MAX] __aligned(64);
 static uint8_t dma_dst[DMA_MAX] __aligned(64);
-static K_MUTEX_DEFINE(dma_lock);
+static SVC_LOCK_DEFINE(dma_lock);
 static K_SEM_DEFINE(dma_done_sem, 0, 1);
 
 static void dma_done(const struct device *d, void *arg, uint32_t chan, int status)

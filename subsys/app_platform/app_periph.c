@@ -50,7 +50,7 @@ static const char *const pwm_name[] = {
 static uint32_t pwm_grant[MAX_APPS];
 /* Bit N set means this application last drove channel N to a non-zero duty. */
 static uint32_t pwm_driven[MAX_APPS];
-static K_MUTEX_DEFINE(pwm_lock);
+static SVC_LOCK_DEFINE(pwm_lock);
 
 void app_platform_grant_pwm(int id, uint32_t ch_mask)
 {
