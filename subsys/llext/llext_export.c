@@ -55,6 +55,23 @@ EXPORT_GROUP_SYMBOL(LIBC, __aeabi_memset8);
 EXPORT_GROUP_SYMBOL(LIBC, __aeabi_memclr);
 EXPORT_GROUP_SYMBOL(LIBC, __aeabi_memclr4);
 EXPORT_GROUP_SYMBOL(LIBC, __aeabi_memclr8);
+
+/* Integer division on AArch32 is lowered to these run-time helpers when the
+ * core has no divide instruction, and always for 64-bit operands.
+ */
+extern void __aeabi_idiv(void);
+extern void __aeabi_uidiv(void);
+extern void __aeabi_idivmod(void);
+extern void __aeabi_uidivmod(void);
+extern void __aeabi_ldivmod(void);
+extern void __aeabi_uldivmod(void);
+
+EXPORT_GROUP_SYMBOL(LIBC, __aeabi_idiv);
+EXPORT_GROUP_SYMBOL(LIBC, __aeabi_uidiv);
+EXPORT_GROUP_SYMBOL(LIBC, __aeabi_idivmod);
+EXPORT_GROUP_SYMBOL(LIBC, __aeabi_uidivmod);
+EXPORT_GROUP_SYMBOL(LIBC, __aeabi_ldivmod);
+EXPORT_GROUP_SYMBOL(LIBC, __aeabi_uldivmod);
 #endif /* CONFIG_ARM && !CONFIG_CPU_AARCH32_CORTEX_R */
 
 /* These symbols are used if CCAC is given the flag -Os */
