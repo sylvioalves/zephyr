@@ -16,7 +16,7 @@ static atomic_t hook_runs;
 
 int z_impl_test_svc_locked(int fault)
 {
-	int rc = app_svc_lock(&test_lock, SVC_LOCK_TIMEOUT);
+	int rc = app_service_lock(&test_lock, SVC_LOCK_TIMEOUT);
 
 	if (rc != 0) {
 		return rc;
@@ -24,7 +24,7 @@ int z_impl_test_svc_locked(int fault)
 	if (fault != 0) {
 		k_oops();
 	}
-	(void)app_svc_unlock(&test_lock);
+	(void)app_service_unlock(&test_lock);
 	return 0;
 }
 
@@ -40,8 +40,8 @@ static void locked_hook(int id)
 {
 	ARG_UNUSED(id);
 
-	if (app_svc_lock(&test_lock, K_FOREVER) == 0) {
-		(void)app_svc_unlock(&test_lock);
+	if (app_service_lock(&test_lock, K_FOREVER) == 0) {
+		(void)app_service_unlock(&test_lock);
 	}
 	atomic_inc(&hook_runs);
 }

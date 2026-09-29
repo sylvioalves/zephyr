@@ -42,8 +42,8 @@ struct svc_lock {
  * takes effect once it releases the last one. Taking a broken lock fails with
  * -EIO.
  */
-int app_svc_lock(struct svc_lock *lock, k_timeout_t timeout);
-int app_svc_unlock(struct svc_lock *lock);
+int app_service_lock(struct svc_lock *lock, k_timeout_t timeout);
+int app_service_unlock(struct svc_lock *lock);
 
 /* Per-resource grants live in the service that owns the resource, indexed by
  * application slot. A slot is reused once its previous tenant is reclaimed, so

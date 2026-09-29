@@ -59,7 +59,7 @@ void app_platform_clear_gpio_grants(int id)
 		return;
 	}
 	line_grant[id] = 0U;
-	if (app_svc_lock(&line_lock, SVC_LOCK_TIMEOUT) != 0) {
+	if (app_service_lock(&line_lock, SVC_LOCK_TIMEOUT) != 0) {
 		return;
 	}
 #if DT_NODE_EXISTS(LEDS_NODE)
@@ -70,7 +70,7 @@ void app_platform_clear_gpio_grants(int id)
 	}
 #endif
 	line_active[id] = 0U;
-	(void)app_svc_unlock(&line_lock);
+	(void)app_service_unlock(&line_lock);
 }
 static bool gpio_ready;
 
@@ -171,7 +171,7 @@ int z_impl_svc_gpio_set(int line, int on)
 #if DT_NODE_EXISTS(LEDS_NODE)
 	int rc;
 
-	if (app_svc_lock(&line_lock, SVC_LOCK_TIMEOUT) != 0) {
+	if (app_service_lock(&line_lock, SVC_LOCK_TIMEOUT) != 0) {
 		return -EBUSY;
 	}
 	gpio_ready_init();
@@ -184,7 +184,7 @@ int z_impl_svc_gpio_set(int line, int on)
 			line_active[id] |= BIT(line);
 		}
 	}
-	(void)app_svc_unlock(&line_lock);
+	(void)app_service_unlock(&line_lock);
 	return rc;
 #else
 	ARG_UNUSED(on);

@@ -217,7 +217,7 @@ void app_platform_clear_regulator_grants(int id)
 		return;
 	}
 	reg_grant[id] = 0U;
-	if (app_svc_lock(&reg_lock, SVC_LOCK_TIMEOUT) != 0) {
+	if (app_service_lock(&reg_lock, SVC_LOCK_TIMEOUT) != 0) {
 		return;
 	}
 	for (int i = 0; i < (int)REG_COUNT; i++) {
@@ -225,7 +225,7 @@ void app_platform_clear_regulator_grants(int id)
 			(void)regulator_disable(regulators[i]);
 		}
 	}
-	(void)app_svc_unlock(&reg_lock);
+	(void)app_service_unlock(&reg_lock);
 }
 
 static int granted_regulator(int idx, const struct device **out)
@@ -268,7 +268,7 @@ int z_impl_svc_regulator_enable(int idx, int on)
 		return rc;
 	}
 	count = &reg_enables[app_platform_id_current()][idx];
-	if (app_svc_lock(&reg_lock, SVC_LOCK_TIMEOUT) != 0) {
+	if (app_service_lock(&reg_lock, SVC_LOCK_TIMEOUT) != 0) {
 		return -EBUSY;
 	}
 	if (on != 0) {
@@ -288,7 +288,7 @@ int z_impl_svc_regulator_enable(int idx, int on)
 			(*count)--;
 		}
 	}
-	(void)app_svc_unlock(&reg_lock);
+	(void)app_service_unlock(&reg_lock);
 	return rc;
 }
 #endif /* CONFIG_APP_PLATFORM_REGULATOR */
@@ -324,7 +324,7 @@ void app_platform_clear_stepper_grants(int id)
 		return;
 	}
 	step_grant[id] = 0U;
-	if (app_svc_lock(&step_lock, SVC_LOCK_TIMEOUT) != 0) {
+	if (app_service_lock(&step_lock, SVC_LOCK_TIMEOUT) != 0) {
 		return;
 	}
 	for (int i = 0; i < (int)STEP_COUNT; i++) {
@@ -333,7 +333,7 @@ void app_platform_clear_stepper_grants(int id)
 		}
 	}
 	step_moved[id] = 0U;
-	(void)app_svc_unlock(&step_lock);
+	(void)app_service_unlock(&step_lock);
 }
 
 static int granted_stepper(int idx, const struct device **out)
@@ -377,7 +377,7 @@ int z_impl_svc_stepper_stop(int idx)
 	if (rc != 0) {
 		return rc;
 	}
-	if (app_svc_lock(&step_lock, SVC_LOCK_TIMEOUT) != 0) {
+	if (app_service_lock(&step_lock, SVC_LOCK_TIMEOUT) != 0) {
 		return -EBUSY;
 	}
 	rc = stepper_ctrl_stop(dev);
@@ -386,7 +386,7 @@ int z_impl_svc_stepper_stop(int idx)
 			step_moved[i] &= ~BIT(idx);
 		}
 	}
-	(void)app_svc_unlock(&step_lock);
+	(void)app_service_unlock(&step_lock);
 	return rc;
 }
 
@@ -402,7 +402,7 @@ int z_impl_svc_stepper_move_by(int idx, int32_t micro_steps)
 	if (rc != 0) {
 		return rc;
 	}
-	if (app_svc_lock(&step_lock, SVC_LOCK_TIMEOUT) != 0) {
+	if (app_service_lock(&step_lock, SVC_LOCK_TIMEOUT) != 0) {
 		return -EBUSY;
 	}
 	rc = stepper_ctrl_move_by(dev, micro_steps);
@@ -412,7 +412,7 @@ int z_impl_svc_stepper_move_by(int idx, int32_t micro_steps)
 		}
 		step_moved[app_platform_id_current()] |= BIT(idx);
 	}
-	(void)app_svc_unlock(&step_lock);
+	(void)app_service_unlock(&step_lock);
 	return rc;
 }
 

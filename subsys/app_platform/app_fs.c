@@ -125,7 +125,7 @@ static int fs_prepare(const char *name)
  */
 void app_platform_clear_fs_handles(int id)
 {
-	if (app_svc_lock(&fs_lock, K_FOREVER) != 0) {
+	if (app_service_lock(&fs_lock, K_FOREVER) != 0) {
 		return;
 	}
 	for (int i = 0; i < OPEN_FILES; i++) {
@@ -135,7 +135,7 @@ void app_platform_clear_fs_handles(int id)
 			file_owner[i] = -1;
 		}
 	}
-	app_svc_unlock(&fs_lock);
+	app_service_unlock(&fs_lock);
 }
 
 int z_impl_svc_file_open(const char *path, int create)
@@ -162,13 +162,13 @@ int z_impl_svc_file_open(const char *path, int create)
 		return rc;
 	}
 
-	rc = app_svc_lock(&fs_lock, K_FOREVER);
+	rc = app_service_lock(&fs_lock, K_FOREVER);
 	if (rc != 0) {
 		return rc;
 	}
 	rc = fs_prepare(name);
 	if (rc != 0) {
-		app_svc_unlock(&fs_lock);
+		app_service_unlock(&fs_lock);
 		return rc;
 	}
 
@@ -181,19 +181,19 @@ int z_impl_svc_file_open(const char *path, int create)
 		}
 	}
 	if (h < 0) {
-		app_svc_unlock(&fs_lock);
+		app_service_unlock(&fs_lock);
 		return -EMFILE;
 	}
 
 	fs_file_t_init(&files[h]);
 	rc = fs_open(&files[h], abs, FS_O_RDWR | (create != 0 ? FS_O_CREATE : 0));
 	if (rc != 0) {
-		app_svc_unlock(&fs_lock);
+		app_service_unlock(&fs_lock);
 		return rc;
 	}
 	file_used[h] = true;
 	file_owner[h] = id;
-	app_svc_unlock(&fs_lock);
+	app_service_unlock(&fs_lock);
 	return h;
 }
 
@@ -229,7 +229,7 @@ int z_impl_svc_file_write(int handle, const void *data, size_t len)
 	struct fs_file_t *f;
 	int rc;
 
-	rc = app_svc_lock(&fs_lock, K_FOREVER);
+	rc = app_service_lock(&fs_lock, K_FOREVER);
 	if (rc != 0) {
 		return rc;
 	}
@@ -237,7 +237,7 @@ int z_impl_svc_file_write(int handle, const void *data, size_t len)
 	if (rc == 0) {
 		rc = (int)fs_write(f, data, len);
 	}
-	app_svc_unlock(&fs_lock);
+	app_service_unlock(&fs_lock);
 	return rc;
 }
 
@@ -253,7 +253,7 @@ int z_impl_svc_file_read(int handle, void *buf, size_t len)
 	struct fs_file_t *f;
 	int rc;
 
-	rc = app_svc_lock(&fs_lock, K_FOREVER);
+	rc = app_service_lock(&fs_lock, K_FOREVER);
 	if (rc != 0) {
 		return rc;
 	}
@@ -261,7 +261,7 @@ int z_impl_svc_file_read(int handle, void *buf, size_t len)
 	if (rc == 0) {
 		rc = (int)fs_read(f, buf, len);
 	}
-	app_svc_unlock(&fs_lock);
+	app_service_unlock(&fs_lock);
 	return rc;
 }
 
@@ -274,7 +274,7 @@ int z_impl_svc_file_seek(int handle, int32_t off, int whence)
 	struct fs_file_t *f;
 	int rc;
 
-	rc = app_svc_lock(&fs_lock, K_FOREVER);
+	rc = app_service_lock(&fs_lock, K_FOREVER);
 	if (rc != 0) {
 		return rc;
 	}
@@ -282,7 +282,7 @@ int z_impl_svc_file_seek(int handle, int32_t off, int whence)
 	if (rc == 0) {
 		rc = fs_seek(f, off, whence);
 	}
-	app_svc_unlock(&fs_lock);
+	app_service_unlock(&fs_lock);
 	return rc;
 }
 
@@ -295,7 +295,7 @@ int z_impl_svc_file_close(int handle)
 	struct fs_file_t *f;
 	int rc;
 
-	rc = app_svc_lock(&fs_lock, K_FOREVER);
+	rc = app_service_lock(&fs_lock, K_FOREVER);
 	if (rc != 0) {
 		return rc;
 	}
@@ -305,7 +305,7 @@ int z_impl_svc_file_close(int handle)
 		file_used[handle] = false;
 		file_owner[handle] = -1;
 	}
-	app_svc_unlock(&fs_lock);
+	app_service_unlock(&fs_lock);
 	return rc;
 }
 

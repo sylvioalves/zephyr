@@ -63,7 +63,7 @@ int z_impl_svc_rgb_set(int pixel, uint8_t r, uint8_t g, uint8_t b)
 	if (!device_is_ready(strip)) {
 		return -ENODEV;
 	}
-	if (app_svc_lock(&rgb_lock, SVC_LOCK_TIMEOUT) != 0) {
+	if (app_service_lock(&rgb_lock, SVC_LOCK_TIMEOUT) != 0) {
 		return -EBUSY;
 	}
 
@@ -83,7 +83,7 @@ int z_impl_svc_rgb_set(int pixel, uint8_t r, uint8_t g, uint8_t b)
 	} else {
 		pixels[pixel] = prev;
 	}
-	(void)app_svc_unlock(&rgb_lock);
+	(void)app_service_unlock(&rgb_lock);
 	return rc;
 }
 
@@ -98,7 +98,7 @@ void app_platform_clear_rgb_grants(int id)
 		return;
 	}
 	rgb_grant[id] = 0U;
-	if (app_svc_lock(&rgb_lock, SVC_LOCK_TIMEOUT) != 0) {
+	if (app_service_lock(&rgb_lock, SVC_LOCK_TIMEOUT) != 0) {
 		return;
 	}
 	if (rgb_lit[id] != 0U) {
@@ -112,7 +112,7 @@ void app_platform_clear_rgb_grants(int id)
 		}
 	}
 	rgb_lit[id] = 0U;
-	(void)app_svc_unlock(&rgb_lock);
+	(void)app_service_unlock(&rgb_lock);
 }
 
 #ifdef CONFIG_USERSPACE

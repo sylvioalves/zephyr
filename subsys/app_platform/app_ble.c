@@ -166,17 +166,17 @@ int z_impl_svc_ble_scan(const char *name, uint32_t timeout_ms)
 	strncpy(req.name, name, sizeof(req.name) - 1);
 	req.name[sizeof(req.name) - 1] = '\0';
 
-	if (app_svc_lock(&ble_lock, K_MSEC(timeout_ms + BLE_LOCK_MARGIN_MS)) != 0) {
+	if (app_service_lock(&ble_lock, K_MSEC(timeout_ms + BLE_LOCK_MARGIN_MS)) != 0) {
 		return -EBUSY;
 	}
 	(void)k_msgq_put(&ble_req_q, &req, K_NO_WAIT);
 	if (k_sem_take(&ble_done, K_MSEC(timeout_ms + BLE_LOCK_MARGIN_MS)) != 0) {
-		app_svc_unlock(&ble_lock);
+		app_service_unlock(&ble_lock);
 		return -ETIMEDOUT;
 	}
 	int rc = ble_result;
 
-	app_svc_unlock(&ble_lock);
+	app_service_unlock(&ble_lock);
 	return rc;
 }
 
@@ -704,18 +704,18 @@ int z_impl_svc_ble_hr_read(uint32_t timeout_ms, uint8_t *out_bpm)
 
 	struct ble_req req = { .op = BLE_OP_HR_READ, .timeout_ms = timeout_ms };
 
-	if (app_svc_lock(&ble_lock, K_MSEC(timeout_ms + BLE_LOCK_MARGIN_MS)) != 0) {
+	if (app_service_lock(&ble_lock, K_MSEC(timeout_ms + BLE_LOCK_MARGIN_MS)) != 0) {
 		return -EBUSY;
 	}
 	(void)k_msgq_put(&ble_req_q, &req, K_NO_WAIT);
 	if (k_sem_take(&ble_done, K_MSEC(timeout_ms + BLE_LOCK_MARGIN_MS)) != 0) {
-		app_svc_unlock(&ble_lock);
+		app_service_unlock(&ble_lock);
 		return -ETIMEDOUT;
 	}
 	int rc = ble_result;
 	uint8_t bpm = ble_bpm;
 
-	app_svc_unlock(&ble_lock);
+	app_service_unlock(&ble_lock);
 	if (rc == 0) {
 		*out_bpm = bpm;
 	}
@@ -1113,18 +1113,18 @@ int z_impl_svc_ble_ota_fetch(const char *name, uint32_t timeout_ms,
 	strncpy(req.name, name, sizeof(req.name) - 1);
 	req.name[sizeof(req.name) - 1] = '\0';
 
-	if (app_svc_lock(&ble_lock, K_MSEC(timeout_ms + BLE_LOCK_MARGIN_MS)) != 0) {
+	if (app_service_lock(&ble_lock, K_MSEC(timeout_ms + BLE_LOCK_MARGIN_MS)) != 0) {
 		return -EBUSY;
 	}
 	(void)k_msgq_put(&ble_req_q, &req, K_NO_WAIT);
 	if (k_sem_take(&ble_done, K_MSEC(timeout_ms + BLE_LOCK_MARGIN_MS)) != 0) {
-		app_svc_unlock(&ble_lock);
+		app_service_unlock(&ble_lock);
 		return -ETIMEDOUT;
 	}
 	int rc = ble_result;
 	uint32_t len = (uint32_t)ble_ota_len;
 
-	app_svc_unlock(&ble_lock);
+	app_service_unlock(&ble_lock);
 	if (rc == 0 && out_len != NULL) {
 		*out_len = len;
 	}
@@ -1162,7 +1162,7 @@ static int gatt_request(bool is_write, const char *name,
 	strncpy(req.name, name, sizeof(req.name) - 1);
 	req.name[sizeof(req.name) - 1] = '\0';
 
-	if (app_svc_lock(&ble_lock, K_MSEC(timeout_ms + BLE_LOCK_MARGIN_MS)) != 0) {
+	if (app_service_lock(&ble_lock, K_MSEC(timeout_ms + BLE_LOCK_MARGIN_MS)) != 0) {
 		return -EBUSY;
 	}
 
@@ -1177,7 +1177,7 @@ static int gatt_request(bool is_write, const char *name,
 
 	(void)k_msgq_put(&ble_req_q, &req, K_NO_WAIT);
 	if (k_sem_take(&ble_done, K_MSEC(timeout_ms + BLE_LOCK_MARGIN_MS)) != 0) {
-		app_svc_unlock(&ble_lock);
+		app_service_unlock(&ble_lock);
 		return -ETIMEDOUT;
 	}
 
@@ -1189,7 +1189,7 @@ static int gatt_request(bool is_write, const char *name,
 		memcpy(buf, gatt_value, n);
 		rc = (int)n;
 	}
-	app_svc_unlock(&ble_lock);
+	app_service_unlock(&ble_lock);
 	return rc;
 }
 

@@ -41,7 +41,7 @@ static int can_ensure_up(void)
 	if (can_ready) {
 		return 0;
 	}
-	if (app_svc_lock(&can_lock, SVC_LOCK_TIMEOUT) != 0) {
+	if (app_service_lock(&can_lock, SVC_LOCK_TIMEOUT) != 0) {
 		return -EBUSY;
 	}
 	int rc = 0;
@@ -67,7 +67,7 @@ static int can_ensure_up(void)
 		can_ready = true;
 	}
 out:
-	app_svc_unlock(&can_lock);
+	app_service_unlock(&can_lock);
 	return rc;
 }
 #endif

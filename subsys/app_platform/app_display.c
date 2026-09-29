@@ -160,12 +160,12 @@ static int blit(int id, const struct app_display_rect *vp, uint16_t x, uint16_t 
 					       &src[(r + i) * row_bytes + c * bpp], cw * bpp);
 				}
 			}
-			if (app_svc_lock(&display_lock, SVC_LOCK_TIMEOUT) != 0) {
+			if (app_service_lock(&display_lock, SVC_LOCK_TIMEOUT) != 0) {
 				return -EBUSY;
 			}
 			slots[id].drew = true;
 			rc = display_write(panel, vp->x + x + c, vp->y + y + r, &desc, buf);
-			(void)app_svc_unlock(&display_lock);
+			(void)app_service_unlock(&display_lock);
 			if (rc != 0) {
 				return -EIO;
 			}
@@ -216,12 +216,12 @@ int app_platform_grant_display(int id, const struct app_display_rect *vp)
 
 int app_platform_display_lock(k_timeout_t timeout)
 {
-	return app_svc_lock(&display_lock, timeout) == 0 ? 0 : -EBUSY;
+	return app_service_lock(&display_lock, timeout) == 0 ? 0 : -EBUSY;
 }
 
 void app_platform_display_unlock(void)
 {
-	(void)app_svc_unlock(&display_lock);
+	(void)app_service_unlock(&display_lock);
 }
 
 int z_impl_svc_display_info(struct svc_display_info *out)

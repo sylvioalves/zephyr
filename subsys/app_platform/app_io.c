@@ -109,7 +109,7 @@ int z_impl_svc_led_set(int pin, int on)
 	if (!gpio_is_ready_dt(&led[pin])) {
 		return -ENODEV;
 	}
-	if (app_svc_lock(&led_lock, SVC_LOCK_TIMEOUT) != 0) {
+	if (app_service_lock(&led_lock, SVC_LOCK_TIMEOUT) != 0) {
 		return -EBUSY;
 	}
 
@@ -123,7 +123,7 @@ int z_impl_svc_led_set(int pin, int on)
 			led_on[id] |= BIT(pin);
 		}
 	}
-	(void)app_svc_unlock(&led_lock);
+	(void)app_service_unlock(&led_lock);
 	return rc;
 }
 
@@ -182,7 +182,7 @@ void app_platform_clear_led_grants(int id)
 		return;
 	}
 	led_grant[id] = 0U;
-	if (app_svc_lock(&led_lock, SVC_LOCK_TIMEOUT) != 0) {
+	if (app_service_lock(&led_lock, SVC_LOCK_TIMEOUT) != 0) {
 		return;
 	}
 #if DT_HAS_ALIAS(led0)
@@ -193,7 +193,7 @@ void app_platform_clear_led_grants(int id)
 	}
 #endif
 	led_on[id] = 0U;
-	(void)app_svc_unlock(&led_lock);
+	(void)app_service_unlock(&led_lock);
 }
 
 /* ---- button / input events ---- */

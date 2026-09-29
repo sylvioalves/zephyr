@@ -53,7 +53,7 @@ void app_platform_clear_counter_grants(int id)
 		return;
 	}
 	counter_grant[id] = 0U;
-	if (app_svc_lock(&counter_lock, SVC_LOCK_TIMEOUT) != 0) {
+	if (app_service_lock(&counter_lock, SVC_LOCK_TIMEOUT) != 0) {
 		return;
 	}
 	for (int i = 0; i < (int)COUNTER_COUNT; i++) {
@@ -62,7 +62,7 @@ void app_platform_clear_counter_grants(int id)
 		}
 	}
 	counter_started[id] = 0U;
-	(void)app_svc_unlock(&counter_lock);
+	(void)app_service_unlock(&counter_lock);
 }
 
 /* Resolve a granted counter index to its device, separating "no capability"
@@ -105,7 +105,7 @@ int z_impl_svc_counter_start(int idx)
 	if (rc != 0) {
 		return rc;
 	}
-	if (app_svc_lock(&counter_lock, SVC_LOCK_TIMEOUT) != 0) {
+	if (app_service_lock(&counter_lock, SVC_LOCK_TIMEOUT) != 0) {
 		return -EBUSY;
 	}
 	rc = counter_start(dev);
@@ -115,7 +115,7 @@ int z_impl_svc_counter_start(int idx)
 		}
 		counter_started[app_platform_id_current()] |= BIT(idx);
 	}
-	(void)app_svc_unlock(&counter_lock);
+	(void)app_service_unlock(&counter_lock);
 	return rc;
 }
 
@@ -127,7 +127,7 @@ int z_impl_svc_counter_stop(int idx)
 	if (rc != 0) {
 		return rc;
 	}
-	if (app_svc_lock(&counter_lock, SVC_LOCK_TIMEOUT) != 0) {
+	if (app_service_lock(&counter_lock, SVC_LOCK_TIMEOUT) != 0) {
 		return -EBUSY;
 	}
 	rc = counter_stop(dev);
@@ -136,7 +136,7 @@ int z_impl_svc_counter_stop(int idx)
 			counter_started[i] &= ~BIT(idx);
 		}
 	}
-	(void)app_svc_unlock(&counter_lock);
+	(void)app_service_unlock(&counter_lock);
 	return rc;
 }
 

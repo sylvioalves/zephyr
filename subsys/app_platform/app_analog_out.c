@@ -55,7 +55,7 @@ void app_platform_clear_dac_grants(int id)
 		return;
 	}
 	dac_grant[id] = 0U;
-	if (app_svc_lock(&dac_lock, SVC_LOCK_TIMEOUT) != 0) {
+	if (app_service_lock(&dac_lock, SVC_LOCK_TIMEOUT) != 0) {
 		return;
 	}
 	for (int i = 0; i < (int)DAC_COUNT; i++) {
@@ -64,7 +64,7 @@ void app_platform_clear_dac_grants(int id)
 		}
 	}
 	dac_driven[id] = 0U;
-	(void)app_svc_unlock(&dac_lock);
+	(void)app_service_unlock(&dac_lock);
 }
 
 int z_impl_svc_dac_count(void)
@@ -96,7 +96,7 @@ int z_impl_svc_dac_write(int ch, uint32_t value)
 		return -ENODEV;
 	}
 
-	if (app_svc_lock(&dac_lock, SVC_LOCK_TIMEOUT) != 0) {
+	if (app_service_lock(&dac_lock, SVC_LOCK_TIMEOUT) != 0) {
 		return -EBUSY;
 	}
 
@@ -126,7 +126,7 @@ int z_impl_svc_dac_write(int ch, uint32_t value)
 			dac_driven[id] |= BIT(ch);
 		}
 	}
-	(void)app_svc_unlock(&dac_lock);
+	(void)app_service_unlock(&dac_lock);
 	return rc;
 }
 #endif /* CONFIG_APP_PLATFORM_DAC */

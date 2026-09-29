@@ -124,7 +124,7 @@ static void motor_release(int id)
 	if (id < 0 || id >= MAX_APPS) {
 		return;
 	}
-	if (app_svc_lock(&motor_lock, SVC_LOCK_TIMEOUT) != 0) {
+	if (app_service_lock(&motor_lock, SVC_LOCK_TIMEOUT) != 0) {
 		return;
 	}
 	for (uint32_t ch = 0U; ch < MOTOR_CHANNELS; ch++) {
@@ -133,7 +133,7 @@ static void motor_release(int id)
 		}
 	}
 	motor_driven[id] = 0U;
-	(void)app_svc_unlock(&motor_lock);
+	(void)app_service_unlock(&motor_lock);
 }
 
 static int motor_init(void)
@@ -158,7 +158,7 @@ int z_impl_svc_motor_set(uint32_t channel, uint32_t duty_pct)
 	uint32_t pulse = (uint32_t)(((uint64_t)MOTOR_PERIOD * duty_pct) / 100U);
 	int rc;
 
-	if (app_svc_lock(&motor_lock, SVC_LOCK_TIMEOUT) != 0) {
+	if (app_service_lock(&motor_lock, SVC_LOCK_TIMEOUT) != 0) {
 		return -EBUSY;
 	}
 	rc = pwm_set(mcpwm, channel_map[channel], MOTOR_PERIOD, pulse, 0);
@@ -170,7 +170,7 @@ int z_impl_svc_motor_set(uint32_t channel, uint32_t duty_pct)
 			motor_driven[id] |= BIT(channel);
 		}
 	}
-	(void)app_svc_unlock(&motor_lock);
+	(void)app_service_unlock(&motor_lock);
 	return rc;
 }
 #else  /* no mcpwm0 node */

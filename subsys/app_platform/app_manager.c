@@ -166,7 +166,7 @@ static void drop_hold(struct running_app *a, struct svc_lock *lock)
 	}
 }
 
-int app_svc_lock(struct svc_lock *lock, k_timeout_t timeout)
+int app_service_lock(struct svc_lock *lock, k_timeout_t timeout)
 {
 	struct running_app *a = app_of_self();
 	k_timepoint_t end = sys_timepoint_calc(timeout);
@@ -206,7 +206,7 @@ int app_svc_lock(struct svc_lock *lock, k_timeout_t timeout)
 	return rc;
 }
 
-int app_svc_unlock(struct svc_lock *lock)
+int app_service_unlock(struct svc_lock *lock)
 {
 	struct running_app *a = app_of_self();
 	int rc = k_mutex_unlock(&lock->mutex);

@@ -58,7 +58,7 @@ int z_impl_svc_dma_copy(const uint8_t *src, uint8_t *dst, size_t len)
 	}
 
 	memcpy(tmp, src, len);
-	if (app_svc_lock(&dma_lock, SVC_LOCK_TIMEOUT) != 0) {
+	if (app_service_lock(&dma_lock, SVC_LOCK_TIMEOUT) != 0) {
 		return -EBUSY;
 	}
 
@@ -92,7 +92,7 @@ int z_impl_svc_dma_copy(const uint8_t *src, uint8_t *dst, size_t len)
 			rc = -EIO;
 		}
 	}
-	app_svc_unlock(&dma_lock);
+	app_service_unlock(&dma_lock);
 	if (rc == 0) {
 		memcpy(dst, tmp, len);
 	}

@@ -114,7 +114,7 @@ static int radio_ensure_up(void)
 {
 	int rc = 0;
 
-	if (app_svc_lock(&radio_lock, SVC_LOCK_TIMEOUT) != 0) {
+	if (app_service_lock(&radio_lock, SVC_LOCK_TIMEOUT) != 0) {
 		return -EBUSY;
 	}
 	if (!radio_ready) {
@@ -125,7 +125,7 @@ static int radio_ensure_up(void)
 			k_sem_give(&radio_up);
 		}
 	}
-	app_svc_unlock(&radio_lock);
+	app_service_unlock(&radio_lock);
 	return rc;
 }
 

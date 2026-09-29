@@ -604,7 +604,7 @@ static void net_serve_requests(void)
 
 		struct net_req *r = &reqs[m.id];
 
-		if (app_svc_lock(&net_lock, K_FOREVER) != 0) {
+		if (app_service_lock(&net_lock, K_FOREVER) != 0) {
 			r->rc = -EIO;
 			k_sem_give(&r->done);
 			continue;
@@ -613,7 +613,7 @@ static void net_serve_requests(void)
 			r->rc = net_run(m.id, r);
 			k_sem_give(&r->done);
 		}
-		app_svc_unlock(&net_lock);
+		app_service_unlock(&net_lock);
 	}
 }
 
@@ -685,12 +685,12 @@ static void net_thread(void *a, void *b, void *c)
 			p.message.payload.data = (uint8_t *)req.payload;
 			p.message.payload.len = strlen(req.payload);
 
-			if (app_svc_lock(&net_lock, K_FOREVER) != 0) {
+			if (app_service_lock(&net_lock, K_FOREVER) != 0) {
 				continue;
 			}
 			int rc = mqtt_publish(&s->client, &p);
 
-			app_svc_unlock(&net_lock);
+			app_service_unlock(&net_lock);
 			printk("mqtt: '%s' published '%s' rc=%d\n",
 			       s->client_id, req.payload, rc);
 		}
@@ -704,7 +704,7 @@ static void net_thread(void *a, void *b, void *c)
 		for (int i = 0; i < MAX_SESSIONS; i++) {
 			struct session *s = &sessions[i];
 
-			if (app_svc_lock(&net_lock, K_FOREVER) != 0) {
+			if (app_service_lock(&net_lock, K_FOREVER) != 0) {
 				continue;
 			}
 			if (s->connected) {
@@ -717,7 +717,7 @@ static void net_thread(void *a, void *b, void *c)
 				}
 				mqtt_live(&s->client);
 			}
-			app_svc_unlock(&net_lock);
+			app_service_unlock(&net_lock);
 		}
 
 		/* Pump each open raw socket: drain ready bytes into its inbox.
@@ -728,18 +728,18 @@ static void net_thread(void *a, void *b, void *c)
 		for (int i = 0; i < MAX_SESSIONS; i++) {
 			struct app_sock *sk = &socks[i];
 
-			if (app_svc_lock(&net_lock, K_FOREVER) != 0) {
+			if (app_service_lock(&net_lock, K_FOREVER) != 0) {
 				continue;
 			}
 			if (!sk->used || sk->fd < 0) {
-				app_svc_unlock(&net_lock);
+				app_service_unlock(&net_lock);
 				continue;
 			}
 			struct zsock_pollfd fd = { .fd = sk->fd,
 						   .events = ZSOCK_POLLIN };
 
 			if (zsock_poll(&fd, 1, 0) <= 0) {
-				app_svc_unlock(&net_lock);
+				app_service_unlock(&net_lock);
 				continue;
 			}
 			static struct sock_msg m;
@@ -750,7 +750,7 @@ static void net_thread(void *a, void *b, void *c)
 			bool is_tcp = sk->is_tcp;
 			struct k_msgq *inbox = &sk->inbox;
 
-			app_svc_unlock(&net_lock);
+			app_service_unlock(&net_lock);
 
 			if (n > 0) {
 				m.len = (uint16_t)n;
@@ -800,11 +800,11 @@ int z_impl_svc_net_ready(void)
 	/* Ask the supervisor net thread to bring the shared link up, then wait
 	 * for the result. The connect itself must not run on this app thread.
 	 */
-	if (app_svc_lock(&net_lock, SVC_LOCK_TIMEOUT) != 0) {
+	if (app_service_lock(&net_lock, SVC_LOCK_TIMEOUT) != 0) {
 		return -EBUSY;
 	}
 	link_started = true;
-	app_svc_unlock(&net_lock);
+	app_service_unlock(&net_lock);
 
 	/* Wait for the net thread's own budget to run out, not less: it makes
 	 * WIFI_CONNECT_TRIES attempts, each up to WIFI_IP_WAIT_S plus the pause
@@ -950,7 +950,7 @@ int z_impl_svc_wifi_connect(const char *ssid, const char *psk)
 		return -EINVAL;
 	}
 
-	if (app_svc_lock(&net_lock, SVC_LOCK_TIMEOUT) != 0) {
+	if (app_service_lock(&net_lock, SVC_LOCK_TIMEOUT) != 0) {
 		return -EBUSY;
 	}
 	strncpy(wifi_ssid, ssid, sizeof(wifi_ssid) - 1);
@@ -960,7 +960,7 @@ int z_impl_svc_wifi_connect(const char *ssid, const char *psk)
 	creds_save();
 	k_sem_reset(&link_change_sem);
 	reconnect_req = true;
-	app_svc_unlock(&net_lock);
+	app_service_unlock(&net_lock);
 
 	(void)k_sem_take(&link_change_sem, K_SECONDS(90));
 	return link_ready ? 0 : -EIO;
@@ -972,12 +972,12 @@ int z_impl_svc_wifi_disconnect(void)
 		return -EPERM;
 	}
 
-	if (app_svc_lock(&net_lock, SVC_LOCK_TIMEOUT) != 0) {
+	if (app_service_lock(&net_lock, SVC_LOCK_TIMEOUT) != 0) {
 		return -EBUSY;
 	}
 	k_sem_reset(&link_change_sem);
 	disconnect_req = true;
-	app_svc_unlock(&net_lock);
+	app_service_unlock(&net_lock);
 
 	(void)k_sem_take(&link_change_sem, K_SECONDS(10));
 	return 0;
@@ -1257,7 +1257,7 @@ static void net_release(int id)
 		return;
 	}
 
-	if (app_svc_lock(&net_lock, K_FOREVER) != 0) {
+	if (app_service_lock(&net_lock, K_FOREVER) != 0) {
 		return;
 	}
 	if (sessions[id].used) {
@@ -1277,7 +1277,7 @@ static void net_release(int id)
 	reqs[id].gen++;
 	k_mutex_init(&reqs[id].lock);
 	k_sem_init(&reqs[id].done, 0, 1);
-	app_svc_unlock(&net_lock);
+	app_service_unlock(&net_lock);
 }
 
 static int net_service_init(void)

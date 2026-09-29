@@ -80,7 +80,7 @@ int z_impl_svc_pwm_set(int ch, uint32_t permille)
 	uint32_t period = pwm_ch[ch].period;
 	int rc;
 
-	if (app_svc_lock(&pwm_lock, SVC_LOCK_TIMEOUT) != 0) {
+	if (app_service_lock(&pwm_lock, SVC_LOCK_TIMEOUT) != 0) {
 		return -EBUSY;
 	}
 	rc = pwm_set_dt(&pwm_ch[ch], period, (uint32_t)(((uint64_t)period * permille) / 1000U));
@@ -92,7 +92,7 @@ int z_impl_svc_pwm_set(int ch, uint32_t permille)
 			pwm_driven[id] |= BIT(ch);
 		}
 	}
-	(void)app_svc_unlock(&pwm_lock);
+	(void)app_service_unlock(&pwm_lock);
 	return rc;
 #else
 	ARG_UNUSED(permille);
@@ -146,7 +146,7 @@ void app_platform_clear_periph_grants(int id)
 	}
 	pwm_grant[id] = 0U;
 	adc_grant[id] = 0U;
-	if (app_svc_lock(&pwm_lock, SVC_LOCK_TIMEOUT) != 0) {
+	if (app_service_lock(&pwm_lock, SVC_LOCK_TIMEOUT) != 0) {
 		return;
 	}
 #if DT_HAS_ALIAS(app_pwm0)
@@ -157,7 +157,7 @@ void app_platform_clear_periph_grants(int id)
 	}
 #endif
 	pwm_driven[id] = 0U;
-	(void)app_svc_unlock(&pwm_lock);
+	(void)app_service_unlock(&pwm_lock);
 }
 #if ADC_HAS_CH
 static bool adc_ready;

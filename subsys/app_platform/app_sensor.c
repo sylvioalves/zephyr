@@ -139,7 +139,7 @@ int z_impl_svc_sensor_read(int idx, int32_t *milli_value)
 	if (!device_is_ready(die_temp)) {
 		return -ENODEV;
 	}
-	if (app_svc_lock(&sensor_lock, SVC_LOCK_TIMEOUT) != 0) {
+	if (app_service_lock(&sensor_lock, SVC_LOCK_TIMEOUT) != 0) {
 		return -EBUSY;
 	}
 
@@ -153,7 +153,7 @@ int z_impl_svc_sensor_read(int idx, int32_t *milli_value)
 			*milli_value = val.val1 * 1000 + val.val2 / 1000;
 		}
 	}
-	app_svc_unlock(&sensor_lock);
+	app_service_unlock(&sensor_lock);
 	return rc;
 #else
 	return -ENODEV;
