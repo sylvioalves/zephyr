@@ -221,10 +221,14 @@ app_caps_t app_platform_caps_current(void);
 int app_platform_id_current(void);
 
 /**
- * @brief The memory domain of an application group, or NULL if not active.
+ * @brief The memory domain of an application group.
  *
  * Lets a service map memory into an application's domain - for example a region
- * of external RAM the application accesses directly.
+ * of external RAM the application accesses directly. Without
+ * @kconfig{CONFIG_USERSPACE} applications have no memory domain.
+ *
+ * @return The domain, or NULL if the group is not active or the kernel has no
+ *         user mode.
  */
 struct k_mem_domain *app_platform_domain(int id);
 

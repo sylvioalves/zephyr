@@ -32,6 +32,20 @@ so an application cannot present itself as another one. When a slot is reused,
 the per-resource grants of the previous tenant are dropped before the new
 application starts.
 
+Without user mode
+=================
+
+The platform also builds without :kconfig:option:`CONFIG_USERSPACE`, for targets
+that have no memory protection hardware or cannot spare its cost. Applications
+then run as supervisor threads without memory domains, and a loaded module calls
+the services directly instead of through system calls. Signed loading,
+supervision, the restart budget, reclaim and the capability and grant checks all
+work as before, but only as a contract: nothing stops an application from
+writing any memory or calling kernel functions directly, and a fault the
+hardware does not report goes unnoticed. Run only trusted applications this way.
+A module built for one mode is refused by a firmware of the other, because the
+firmware ABI identifier covers the mode.
+
 Capabilities and grants
 =======================
 

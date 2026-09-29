@@ -59,7 +59,9 @@ LOG_MODULE_REGISTER(app_platform, CONFIG_APP_PLATFORM_LOG_LEVEL);
  */
 #define APP_NAME_LEN APP_PLATFORM_NAME_LEN
 
-/* A running app: an isolated user-mode group with its own memory domain. */
+/* A running app: a supervised thread group, isolated in user mode with its own
+ * memory domain when the kernel provides user mode.
+ */
 struct running_app {
 	char                name[APP_NAME_LEN];
 	bool                active;    /* slot occupied (running or stopped) */
@@ -67,7 +69,9 @@ struct running_app {
 	bool                restart;   /* relaunch (built-in) after a fault */
 	bool                monitored; /* opt-in liveness watchdog for hangs */
 	struct k_thread     thread;
+#ifdef CONFIG_USERSPACE
 	struct k_mem_domain domain;
+#endif
 	int                 wdt_chan;  /* -1 unless monitored */
 	bool                faulted;   /* reclaimed due to a crash or hang */
 	uint32_t            restarts;  /* relaunches after a fault, for statistics */
@@ -236,7 +240,11 @@ struct k_mem_domain *app_platform_domain(int id)
 	if (id < 0 || id >= MAX_APPS || !apps[id].active) {
 		return NULL;
 	}
+#ifdef CONFIG_USERSPACE
 	return &apps[id].domain;
+#else
+	return NULL;
+#endif
 }
 
 /* A hook a service registers to release per-app resources on reclaim. */
@@ -471,12 +479,14 @@ static void run_cleanup(int id, bool full, struct llext *ext)
 			 * partition left behind would be inherited by whichever
 			 * application takes the slot next.
 			 */
+#ifdef CONFIG_USERSPACE
 			for (int i = 0; i < LLEXT_MEM_PARTITIONS; i++) {
 				if (ext->mem_parts[i].size != 0) {
 					(void)k_mem_domain_remove_partition(
 						&apps[id].domain, &ext->mem_parts[i]);
 				}
 			}
+#endif
 			app_loader_forget(ext);
 			llext_unload(&ext);
 		}
@@ -649,7 +659,9 @@ static int restart_thread(struct running_app *a)
 				    APP_PRIO, K_USER, K_FOREVER);
 
 	k_thread_name_set(t, a->name);
+#ifdef CONFIG_USERSPACE
 	k_mem_domain_add_thread(&a->domain, t);
+#endif
 	a->faulted = false;
 	a->stop_requested = false;
 	a->running = true;
@@ -868,6 +880,7 @@ static int launch(const char *name, app_entry_t entry, void *arg, app_caps_t cap
 		 * re-initializing a live domain is a fatal error on some
 		 * architectures rather than a fresh start.
 		 */
+#ifdef CONFIG_USERSPACE
 		if (!a->domain_ready) {
 			k_mem_domain_init(&a->domain, 0, NULL);
 #ifdef Z_LIBC_PARTITION_EXISTS
@@ -875,30 +888,35 @@ static int launch(const char *name, app_entry_t entry, void *arg, app_caps_t cap
 #endif
 			a->domain_ready = true;
 		}
-
-		if (IS_ENABLED(CONFIG_LLEXT) && ext != NULL) {
-#ifdef CONFIG_LLEXT
-			a->module_bytes = ext->alloc_size;
-			if (llext_add_domain(ext, &a->domain) != 0) {
-				LOG_ERR("could not map '%s' into its domain", name);
-				/* The slot never went active, so release the
-				 * extension here: the caller only sees the
-				 * error and drops its reference.
-				 */
-				app_loader_forget(ext);
-				(void)llext_unload(&ext);
-				a->ext = NULL;
-				a->module_bytes = 0;
-				return -ENOSPC;
-			}
 #endif
+
+#ifdef CONFIG_LLEXT
+		if (ext != NULL) {
+			a->module_bytes = ext->alloc_size;
 		}
+#endif
+#if defined(CONFIG_USERSPACE) && defined(CONFIG_LLEXT)
+		if (ext != NULL && llext_add_domain(ext, &a->domain) != 0) {
+			LOG_ERR("could not map '%s' into its domain", name);
+			/* The slot never went active, so release the extension
+			 * here: the caller only sees the error and drops its
+			 * reference.
+			 */
+			app_loader_forget(ext);
+			(void)llext_unload(&ext);
+			a->ext = NULL;
+			a->module_bytes = 0;
+			return -ENOSPC;
+		}
+#endif
 
 		k_tid_t t = k_thread_create(&a->thread, app_stacks[i], APP_STACK,
 					    trampoline, (void *)entry, arg, NULL,
 					    APP_PRIO, K_USER, K_FOREVER);
 		k_thread_name_set(t, name);
+#ifdef CONFIG_USERSPACE
 		k_mem_domain_add_thread(&a->domain, t);
+#endif
 		a->active = true;
 		a->running = true;
 

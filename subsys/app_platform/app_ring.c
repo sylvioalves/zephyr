@@ -41,7 +41,9 @@ struct ring_region {
 	uint8_t                *base;  /* supervisor view of the buffer */
 	size_t                  size;  /* whole mapping, header included */
 	size_t                  cap;   /* usable data bytes */
+#ifdef CONFIG_USERSPACE
 	struct k_mem_partition  part;
+#endif
 	bool                    used;
 };
 
@@ -99,12 +101,14 @@ static void ring_release(int id)
 		return;
 	}
 	if (rings[id].used) {
+#ifdef CONFIG_USERSPACE
 		struct k_mem_domain *dom = app_platform_domain(id);
 
 		if (dom != NULL) {
 			(void)k_mem_domain_remove_partition(dom,
 							    &rings[id].part);
 		}
+#endif
 		k_free(rings[id].base);
 		rings[id] = (struct ring_region){0};
 	}
@@ -120,7 +124,7 @@ int z_impl_app_svc_ring_bind(size_t bytes, uintptr_t *out_addr, size_t *out_cap)
 	int id = app_platform_id_current();
 	struct k_mem_domain *dom = app_platform_domain(id);
 
-	if (id < 0 || id >= MAX_APPS || dom == NULL) {
+	if (id < 0 || id >= MAX_APPS || (IS_ENABLED(CONFIG_USERSPACE) && dom == NULL)) {
 		return -EINVAL;
 	}
 	if (bytes == 0U || bytes > RING_MAX_BYTES) {
@@ -153,6 +157,7 @@ int z_impl_app_svc_ring_bind(size_t bytes, uintptr_t *out_addr, size_t *out_cap)
 	rings[id].base = base;
 	rings[id].size = want;
 	rings[id].cap = want - sizeof(struct app_ring_hdr);
+#ifdef CONFIG_USERSPACE
 	rings[id].part = (struct k_mem_partition){
 		.start = (uintptr_t)base,
 		.size = want,
@@ -167,6 +172,7 @@ int z_impl_app_svc_ring_bind(size_t bytes, uintptr_t *out_addr, size_t *out_cap)
 		app_service_unlock(&ring_lock);
 		return rc;
 	}
+#endif
 	rings[id].used = true;
 	app_service_unlock(&ring_lock);
 

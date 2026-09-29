@@ -31,7 +31,9 @@
 struct psram_region {
 	void                   *base;
 	size_t                  size;
+#ifdef CONFIG_USERSPACE
 	struct k_mem_partition  part;
+#endif
 	bool                    used;
 };
 static struct psram_region regions[MAX_APPS];
@@ -61,11 +63,13 @@ static void psram_release(int id)
 		return;
 	}
 	if (regions[id].used) {
+#ifdef CONFIG_USERSPACE
 		struct k_mem_domain *dom = app_platform_domain(id);
 
 		if (dom != NULL) {
 			(void)k_mem_domain_remove_partition(dom, &regions[id].part);
 		}
+#endif
 		shared_multi_heap_free(regions[id].base);
 		regions[id] = (struct psram_region){0};
 	}
@@ -81,7 +85,7 @@ int z_impl_app_svc_psram_map(size_t size, uintptr_t *out_addr, size_t *out_size)
 	int id = app_platform_id_current();
 	struct k_mem_domain *dom = app_platform_domain(id);
 
-	if (id < 0 || id >= MAX_APPS || dom == NULL) {
+	if (id < 0 || id >= MAX_APPS || (IS_ENABLED(CONFIG_USERSPACE) && dom == NULL)) {
 		return -EINVAL;
 	}
 	/* Bound the request before any rounding, so a wild size cannot spin the
@@ -117,6 +121,7 @@ int z_impl_app_svc_psram_map(size_t size, uintptr_t *out_addr, size_t *out_size)
 
 	regions[id].base = base;
 	regions[id].size = want;
+#ifdef CONFIG_USERSPACE
 	regions[id].part = (struct k_mem_partition){
 		.start = (uintptr_t)base,
 		.size = want,
@@ -131,6 +136,7 @@ int z_impl_app_svc_psram_map(size_t size, uintptr_t *out_addr, size_t *out_size)
 		app_service_unlock(&psram_lock);
 		return rc;
 	}
+#endif
 	regions[id].used = true;
 	app_service_unlock(&psram_lock);
 

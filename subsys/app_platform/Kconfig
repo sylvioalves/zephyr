@@ -3,14 +3,18 @@
 
 menuconfig APP_PLATFORM
 	bool "Application platform"
-	depends on USERSPACE
 	depends on TASK_WDT
 	help
-	  A runtime that launches applications as isolated, supervised groups:
-	  each application runs as a user-mode thread in its own memory domain,
-	  reaches the system only through application-provided services, and is
-	  reclaimed if it faults or hangs without affecting the system or the
-	  other applications.
+	  A runtime that launches applications as supervised groups that reach
+	  the system only through application-provided services and are
+	  reclaimed if they fault or hang.
+
+	  With USERSPACE each application runs as a user-mode thread in its own
+	  memory domain, isolated from the system and the other applications.
+	  Without it applications run as supervisor threads: capabilities and
+	  grants still gate the services, but nothing stops an application
+	  from reaching memory or kernel functions directly, so only trusted
+	  applications should be run.
 
 if APP_PLATFORM
 
@@ -19,7 +23,7 @@ config APP_PLATFORM_MAX_APPS
 	default 4
 	help
 	  Number of application groups that can run at once. Each reserves a
-	  thread stack and a memory domain.
+	  thread stack, and a memory domain with USERSPACE.
 
 config APP_PLATFORM_MAX_RESTARTS
 	int "Times a resilient application may be relaunched after a fault"
@@ -49,8 +53,8 @@ config APP_PLATFORM_SUPERVISOR_STACK_SIZE
 	default 2048
 	help
 	  Stack for the thread that launches applications and acts on fault
-	  and watchdog reports. Launching builds a memory domain and creates
-	  threads, so this is not a trivial frame.
+	  and watchdog reports. Launching creates threads, and a memory domain
+	  with USERSPACE, so this is not a trivial frame.
 
 config APP_PLATFORM_WATCHER_STACK_SIZE
 	int "Per-application death-watcher stack size"
