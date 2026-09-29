@@ -200,8 +200,12 @@ void z_arm_configure_static_mpu_regions(void)
  *
  * This function is not inherently thread-safe, but the memory domain
  * spinlock needs to be held anyway.
+ *
+ * A domain partition equal to @p skip is left out, so a partition that is
+ * being removed from the domain is no longer mapped.
  */
-void z_arm_configure_dynamic_mpu_regions(struct k_thread *thread)
+static void configure_dynamic_mpu_regions(struct k_thread *thread,
+					  const struct k_mem_partition *skip)
 {
 	/* Define an array of z_arm_mpu_partition objects to hold the configuration
 	 * of the respective dynamic MPU regions to be programmed for
@@ -247,6 +251,10 @@ void z_arm_configure_dynamic_mpu_regions(struct k_thread *thread)
 				/* Zero size indicates a non-existing
 				 * memory partition.
 				 */
+				continue;
+			}
+			if (partition == skip) {
+				num_partitions--;
 				continue;
 			}
 			LOG_DBG("set region 0x%lx 0x%x",
@@ -344,7 +352,57 @@ void z_arm_configure_dynamic_mpu_regions(struct k_thread *thread)
 #endif
 }
 
+void z_arm_configure_dynamic_mpu_regions(struct k_thread *thread)
+{
+	configure_dynamic_mpu_regions(thread, NULL);
+}
+
 #if defined(CONFIG_USERSPACE)
+/* Only the running thread's regions are in the MPU; other threads get theirs
+ * when switched in. The pre-kernel dummy thread has no stack to map.
+ */
+static bool domain_is_live(const struct k_mem_domain *domain)
+{
+	return ((_current->base.thread_state & _THREAD_DUMMY) == 0U) &&
+	       (_current->mem_domain_info.mem_domain == domain);
+}
+
+int arch_mem_domain_thread_add(struct k_thread *thread)
+{
+	if (thread == _current && domain_is_live(thread->mem_domain_info.mem_domain)) {
+		z_arm_configure_dynamic_mpu_regions(thread);
+	}
+
+	return 0;
+}
+
+int arch_mem_domain_thread_remove(struct k_thread *thread)
+{
+	ARG_UNUSED(thread);
+
+	return 0;
+}
+
+int arch_mem_domain_partition_add(struct k_mem_domain *domain, uint32_t partition_id)
+{
+	ARG_UNUSED(partition_id);
+
+	if (domain_is_live(domain)) {
+		z_arm_configure_dynamic_mpu_regions(_current);
+	}
+
+	return 0;
+}
+
+int arch_mem_domain_partition_remove(struct k_mem_domain *domain, uint32_t partition_id)
+{
+	if (domain_is_live(domain)) {
+		configure_dynamic_mpu_regions(_current, &domain->partitions[partition_id]);
+	}
+
+	return 0;
+}
+
 int arch_mem_domain_max_partitions_get(void)
 {
 	int available_regions = arm_core_mpu_get_max_available_dyn_regions();
