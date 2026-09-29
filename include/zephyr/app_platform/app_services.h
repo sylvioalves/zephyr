@@ -108,6 +108,54 @@ __syscall int app_svc_thread_spawn(app_thread_entry_t entry, void *arg, int prio
 __syscall int app_svc_thread_join(int handle, int32_t timeout_ms);
 
 /**
+ * @brief Create a semaphore the threads of the calling application share.
+ *        Needs @ref APP_CAP_THREAD.
+ *
+ * The semaphore lasts until the application ends. Up to
+ * CONFIG_APP_PLATFORM_APP_SEMS exist per application.
+ *
+ * @param initial Initial count.
+ * @param limit   Maximum count.
+ *
+ * @return A non-negative handle on success.
+ * @retval -EPERM without @ref APP_CAP_THREAD.
+ * @retval -EINVAL @p limit is 0 or @p initial is above it.
+ * @retval -ENOMEM every semaphore of the application is in use.
+ * @retval -ENOTSUP the platform was built without application semaphores.
+ */
+__syscall int app_svc_sem_init(uint32_t initial, uint32_t limit);
+
+/**
+ * @brief Give a semaphore of the calling application. Needs
+ *        @ref APP_CAP_THREAD.
+ *
+ * @param handle Handle returned by @ref app_svc_sem_init.
+ *
+ * @retval 0 Success.
+ * @retval -EPERM without @ref APP_CAP_THREAD.
+ * @retval -EINVAL @p handle names no semaphore of the application.
+ * @retval -ENOTSUP the platform was built without application semaphores.
+ */
+__syscall int app_svc_sem_give(int handle);
+
+/**
+ * @brief Take a semaphore of the calling application. Needs
+ *        @ref APP_CAP_THREAD.
+ *
+ * @param handle     Handle returned by @ref app_svc_sem_init.
+ * @param timeout_ms Milliseconds to wait, 0 to poll, or negative to wait
+ *                   forever.
+ *
+ * @retval 0 The semaphore was taken.
+ * @retval -EPERM without @ref APP_CAP_THREAD.
+ * @retval -EINVAL @p handle names no semaphore of the application.
+ * @retval -EBUSY the count is 0 and @p timeout_ms is 0.
+ * @retval -EAGAIN the count stayed 0 for @p timeout_ms.
+ * @retval -ENOTSUP the platform was built without application semaphores.
+ */
+__syscall int app_svc_sem_take(int handle, int32_t timeout_ms);
+
+/**
  * @brief Compute a SHA-256 digest. Needs @ref APP_CAP_CRYPTO.
  *
  * Stateless: safe to call concurrently from any number of applications.

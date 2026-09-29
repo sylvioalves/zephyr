@@ -67,6 +67,16 @@ config APP_PLATFORM_APP_THREAD_STACK_SIZE
 	help
 	  Stack reserved for each worker thread of each application slot.
 
+config APP_PLATFORM_APP_SEMS
+	int "Semaphores per application"
+	default 4 if APP_PLATFORM_APP_THREADS > 0
+	default 0
+	range 0 16
+	help
+	  Semaphores an application with APP_CAP_THREAD can create to
+	  coordinate its threads. They are reserved per slot at build time and
+	  released when the application ends.
+
 config APP_PLATFORM_SUPERVISOR_STACK_SIZE
 	int "Supervisor thread stack size"
 	default 2048
