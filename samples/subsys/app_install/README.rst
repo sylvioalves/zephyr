@@ -19,7 +19,7 @@ private key. The upload lands two files in the device's storage:
 * ``/lfs/<name>.manifest.new``  - the signed manifest (name, version, module
                                   hash) followed by its signature
 
-The shell command ``app install <name>`` then verifies the manifest, binds the
+The shell command ``store install <name>`` then verifies the manifest, binds the
 module to it, moves both over the installed copies (refusing a version older
 than the installed one), records it in the registry, and launches it - streamed from
 flash, never held whole in RAM.
@@ -47,10 +47,10 @@ On the device shell:
 
 .. code-block:: console
 
-   uart:~$ app install myapp
+   uart:~$ store install myapp
    installed and launched 'myapp' v1 (isolated app 0)
-   uart:~$ app list
+   uart:~$ store list
      myapp  v1  (autostart)
 
 A tampered upload is rejected: if the module bytes do not match the signed
-manifest hash, ``app install`` fails and the app is never launched.
+manifest hash, ``store install`` fails and the app is never launched.

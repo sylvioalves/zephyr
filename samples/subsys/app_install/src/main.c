@@ -11,11 +11,11 @@
  * the shell's mcumgr transport into the device's storage:
  *   mcumgr ... fs upload app.llext     /lfs/<name>.llext.new
  *   mcumgr ... fs upload app.manifest  /lfs/<name>.manifest.new
- * The shell command "app install <name>" then verifies the signed manifest
+ * The shell command "store install <name>" then verifies the signed manifest
  * against the public key compiled into the firmware, binds the module to it,
  * moves both over the installed copies unless that would be a downgrade,
  * records it in the registry, and launches it as an isolated user-mode app -
- * streamed from flash, never held whole in RAM. "app list" shows what is
+ * streamed from flash, never held whole in RAM. "store list" shows what is
  * installed. The same cable carries both the upload and the shell, so no extra
  * wiring or second port is needed.
  */
@@ -136,6 +136,6 @@ int main(void)
 		printk("registry load failed\n");
 		return 0;
 	}
-	printk("ready. upload a signed app, then: app install <name>\n");
+	printk("ready. upload a signed app, then: store install <name>\n");
 	return 0;
 }
