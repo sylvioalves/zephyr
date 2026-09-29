@@ -172,6 +172,18 @@ int app_loader_verify_load_manifest_file(const struct app_manifest *mf,
 bool app_loader_is_verified(const struct llext *ext);
 
 /**
+ * @brief Heap size the signed manifest of a verified extension declares.
+ *
+ * The platform launch path gives the application a heap of this size. An
+ * extension verified without a manifest has none.
+ *
+ * @param ext Extension to query.
+ * @return The heap size in bytes, or 0 when @p ext declares no heap or is not
+ *         verified.
+ */
+size_t app_loader_heap_size(const struct llext *ext);
+
+/**
  * @brief Drop an extension from the verified set.
  *
  * Call when unloading a verified extension so its handle does not linger as

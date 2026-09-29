@@ -27,6 +27,9 @@
  * same identifier, since a module built for another numbering would invoke the
  * wrong system calls.
  *
+ * The heap size is part of the signed body, so the memory an application is
+ * given at launch is decided by the signer, not by whoever launches it.
+ *
  * The layout is a fixed binary struct with explicit-width fields and no
  * padding, so the bytes signed on the build host are the bytes verified on the
  * device regardless of build configuration.
@@ -35,8 +38,8 @@
 /** Fixed name field width, independent of the registry's runtime maximum. */
 #define APP_MANIFEST_NAME_MAX 32
 
-/** Manifest magic: 'A' 'M' 'F' '2', little-endian. */
-#define APP_MANIFEST_MAGIC 0x32464d41U
+/** Manifest magic: 'A' 'M' 'F' '3', little-endian. */
+#define APP_MANIFEST_MAGIC 0x33464d41U
 
 /** ABI identifier length. */
 #define APP_MANIFEST_ABI_ID_LEN 16
@@ -52,10 +55,11 @@ struct app_manifest {
 	char     name[APP_MANIFEST_NAME_MAX];    /**< authenticated app name */
 	uint8_t  module_sha256[32];              /**< SHA-256 of the module */
 	uint8_t  abi_id[APP_MANIFEST_ABI_ID_LEN]; /**< ABI the module was built for */
+	uint32_t heap_size;                      /**< per-application heap bytes, 0 for none */
 } __packed;
 
 BUILD_ASSERT(sizeof(struct app_manifest) ==
-	     4 + 4 + 4 + APP_MANIFEST_NAME_MAX + 32 + APP_MANIFEST_ABI_ID_LEN,
+	     4 + 4 + 4 + APP_MANIFEST_NAME_MAX + 32 + APP_MANIFEST_ABI_ID_LEN + 4,
 	     "app_manifest must be tightly packed with no padding");
 
 /** @} */

@@ -136,22 +136,30 @@ static int elf_bounds_ok(const uint8_t *buf, size_t len)
 	return elf_bounds_chk(buf, len, len);
 }
 
-/* Set of extensions this loader verified. The launch path checks membership so
- * an unverified extension cannot be run even if a caller hands one in. Sized to
- * the number of concurrent applications the platform supports.
+/* Set of extensions this loader verified, with the heap size their signed
+ * manifest declares. The launch path checks membership so an unverified
+ * extension cannot be run even if a caller hands one in. Sized to the number of
+ * concurrent applications the platform supports.
  */
 #define VERIFIED_MAX CONFIG_APP_PLATFORM_MAX_APPS
-static const struct llext *verified[VERIFIED_MAX];
+
+struct verified_ext {
+	const struct llext *ext;
+	size_t heap_size;
+};
+
+static struct verified_ext verified[VERIFIED_MAX];
 static K_MUTEX_DEFINE(verified_lock);
 
-static void verified_add(const struct llext *ext)
+static void verified_add(const struct llext *ext, size_t heap_size)
 {
 	bool placed = false;
 
 	k_mutex_lock(&verified_lock, K_FOREVER);
 	for (int i = 0; i < VERIFIED_MAX; i++) {
-		if (verified[i] == NULL) {
-			verified[i] = ext;
+		if (verified[i].ext == NULL) {
+			verified[i].ext = ext;
+			verified[i].heap_size = heap_size;
 			placed = true;
 			break;
 		}
@@ -172,7 +180,7 @@ bool app_loader_is_verified(const struct llext *ext)
 	}
 	k_mutex_lock(&verified_lock, K_FOREVER);
 	for (int i = 0; i < VERIFIED_MAX; i++) {
-		if (verified[i] == ext) {
+		if (verified[i].ext == ext) {
 			found = true;
 			break;
 		}
@@ -181,12 +189,30 @@ bool app_loader_is_verified(const struct llext *ext)
 	return found;
 }
 
+size_t app_loader_heap_size(const struct llext *ext)
+{
+	size_t heap_size = 0U;
+
+	if (ext == NULL) {
+		return 0U;
+	}
+	k_mutex_lock(&verified_lock, K_FOREVER);
+	for (int i = 0; i < VERIFIED_MAX; i++) {
+		if (verified[i].ext == ext) {
+			heap_size = verified[i].heap_size;
+			break;
+		}
+	}
+	k_mutex_unlock(&verified_lock);
+	return heap_size;
+}
+
 void app_loader_forget(const struct llext *ext)
 {
 	k_mutex_lock(&verified_lock, K_FOREVER);
 	for (int i = 0; i < VERIFIED_MAX; i++) {
-		if (verified[i] == ext) {
-			verified[i] = NULL;
+		if (verified[i].ext == ext) {
+			verified[i] = (struct verified_ext){0};
 			break;
 		}
 	}
@@ -196,9 +222,10 @@ void app_loader_forget(const struct llext *ext)
 /* Resolve the entry symbol and enforce the per-application memory budget on a
  * freshly loaded extension. A module whose footprint exceeds the budget is
  * unloaded and rejected, so one module cannot exhaust the shared loadable-
- * extension heap. On success the extension is recorded as verified.
+ * extension heap. On success the extension is recorded as verified, with the
+ * heap size its manifest declares.
  */
-static int finish_load(const char *name, struct llext *loaded,
+static int finish_load(const char *name, struct llext *loaded, size_t heap_size,
 		       const char *entry_sym, struct llext **ext, void **entry)
 {
 	/* The lookup hands back a const pointer into the extension's export
@@ -223,7 +250,7 @@ static int finish_load(const char *name, struct llext *loaded,
 	}
 
 	/* Reached only after the caller's signature/hash check passed. */
-	verified_add(loaded);
+	verified_add(loaded, heap_size);
 
 	*ext = loaded;
 	*entry = fn;
@@ -231,7 +258,7 @@ static int finish_load(const char *name, struct llext *loaded,
 }
 
 static int load_checked(const char *name, const uint8_t *buf, size_t len, bool copy,
-			const char *entry_sym, struct llext **ext, void **entry)
+			size_t heap_size, const char *entry_sym, struct llext **ext, void **entry)
 {
 	struct llext_buf_loader bl = LLEXT_BUF_LOADER(buf, len);
 
@@ -256,7 +283,7 @@ static int load_checked(const char *name, const uint8_t *buf, size_t len, bool c
 		return rc;
 	}
 
-	return finish_load(name, loaded, entry_sym, ext, entry);
+	return finish_load(name, loaded, heap_size, entry_sym, ext, entry);
 }
 
 int app_loader_verify_load(const char *name, const uint8_t *buf, size_t len,
@@ -281,7 +308,7 @@ int app_loader_verify_load(const char *name, const uint8_t *buf, size_t len,
 	}
 	LOG_INF("verify OK for '%s' (sha-256 matches)", name);
 
-	return load_checked(name, buf, len, false, entry_sym, ext, entry);
+	return load_checked(name, buf, len, false, 0U, entry_sym, ext, entry);
 }
 
 int app_loader_verify_load_signed(const char *name, const uint8_t *buf,
@@ -311,7 +338,7 @@ int app_loader_verify_load_signed(const char *name, const uint8_t *buf,
 	}
 	LOG_INF("verify OK for '%s' (ecdsa-p256 signature authentic)", name);
 
-	return load_checked(name, buf, len, false, entry_sym, ext, entry);
+	return load_checked(name, buf, len, false, 0U, entry_sym, ext, entry);
 }
 
 int app_loader_verify_load_manifest(const struct app_manifest *mf,
@@ -374,7 +401,7 @@ int app_loader_verify_load_manifest(const struct app_manifest *mf,
 	LOG_INF("verify OK for '%s' v%u (manifest authentic, module bound)",
 		mf->name, mf->version);
 
-	return load_checked(mf->name, buf, len, false, entry_sym, ext, entry);
+	return load_checked(mf->name, buf, len, false, mf->heap_size, entry_sym, ext, entry);
 }
 
 /* Streaming SHA-256 over a file: hashes the whole file in small chunks without
@@ -443,9 +470,8 @@ static int sha256_file(const char *path, uint8_t out[32], size_t *out_len,
 	return 0;
 }
 
-static int fs_load_checked(const char *name, const char *path,
-			   const char *entry_sym, struct llext **ext,
-			   void **entry)
+static int fs_load_checked(const char *name, const char *path, size_t heap_size,
+			   const char *entry_sym, struct llext **ext, void **entry)
 {
 	struct llext_fs_loader fl = LLEXT_FS_LOADER(path);
 	struct llext_load_param parm = LLEXT_LOAD_PARAM_DEFAULT;
@@ -465,7 +491,7 @@ static int fs_load_checked(const char *name, const char *path,
 		return rc;
 	}
 
-	return finish_load(name, loaded, entry_sym, ext, entry);
+	return finish_load(name, loaded, heap_size, entry_sym, ext, entry);
 }
 
 /* Read exactly @p len bytes from @p path; a longer or shorter file fails. */
@@ -531,7 +557,8 @@ static int verify_load_copy(const struct app_manifest *mf, const char *path,
 	} else {
 		LOG_INF("verify OK for '%s' v%u (manifest authentic, module bound)",
 			mf->name, mf->version);
-		rc = load_checked(mf->name, buf, mf->module_len, true, entry_sym, ext, entry);
+		rc = load_checked(mf->name, buf, mf->module_len, true, mf->heap_size, entry_sym,
+				  ext, entry);
 	}
 
 	k_free(buf);
@@ -602,7 +629,7 @@ int app_loader_verify_load_manifest_file(const struct app_manifest *mf,
 	/* 3. Load the extension from the same file. The loader re-opens the
 	 * path, so the bytes it links are not provably the bytes just hashed.
 	 */
-	int rc = fs_load_checked(mf->name, path, entry_sym, ext, entry);
+	int rc = fs_load_checked(mf->name, path, mf->heap_size, entry_sym, ext, entry);
 
 	if (rc != 0) {
 		return rc;
