@@ -14,9 +14,13 @@ common:
     - mps2/an521/cpu0
     - mps3/corstone300/an547
     - qemu_cortex_a53
+    - esp32_devkitc/esp32/procpu
 tests:
   app_platform.core:
     timeout: 60
+    # The Xtensa ESP32 has no user mode.
+    platform_exclude:
+      - esp32_devkitc/esp32/procpu
     extra_configs:
       - CONFIG_USERSPACE=y
       - CONFIG_MAX_THREAD_BYTES=3
