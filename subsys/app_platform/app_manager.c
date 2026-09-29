@@ -506,6 +506,27 @@ static void clear_grants(int id)
 	app_platform_clear_sems(id);
 }
 
+#if defined(CONFIG_USERSPACE) && defined(CONFIG_LLEXT)
+/* Remove the partitions of @p ext that are in @p dom. */
+static void unmap_module(struct k_mem_domain *dom, struct llext *ext)
+{
+	for (int i = 0; i < LLEXT_MEM_PARTITIONS; i++) {
+		struct k_mem_partition *part = &ext->mem_parts[i];
+
+		if (part->size == 0U) {
+			continue;
+		}
+		for (int j = 0; j < CONFIG_MAX_DOMAIN_PARTITIONS; j++) {
+			if (dom->partitions[j].size == part->size &&
+			    dom->partitions[j].start == part->start) {
+				(void)k_mem_domain_remove_partition(dom, part);
+				break;
+			}
+		}
+	}
+}
+#endif
+
 static void run_cleanup(int id, bool full, struct llext *ext)
 {
 	if (full) {
@@ -528,12 +549,7 @@ static void run_cleanup(int id, bool full, struct llext *ext)
 			 * application takes the slot next.
 			 */
 #ifdef CONFIG_USERSPACE
-			for (int i = 0; i < LLEXT_MEM_PARTITIONS; i++) {
-				if (ext->mem_parts[i].size != 0) {
-					(void)k_mem_domain_remove_partition(
-						&apps[id].domain, &ext->mem_parts[i]);
-				}
-			}
+			unmap_module(&apps[id].domain, ext);
 #endif
 			app_loader_forget(ext);
 			llext_unload(&ext);
@@ -1101,6 +1117,7 @@ static int launch(const char *name, app_entry_t entry, void *arg, app_caps_t cap
 			 * here: the caller only sees the error and drops its
 			 * reference.
 			 */
+			unmap_module(&a->domain, ext);
 			app_platform_heap_release(i, slot_domain(a));
 			app_loader_forget(ext);
 			(void)llext_unload(&ext);
