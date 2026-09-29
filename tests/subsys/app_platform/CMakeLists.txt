@@ -9,6 +9,9 @@ set(APP_VERSION 1)
 
 target_sources(app PRIVATE src/main.c src/loader_neg.c)
 target_sources_ifdef(CONFIG_USERSPACE app PRIVATE src/hostile.c)
+if(CONFIG_APP_PLATFORM_APP_THREADS GREATER 0)
+  target_sources(app PRIVATE src/threads.c)
+endif()
 
 set(ext_src ${PROJECT_SOURCE_DIR}/module/src/test_mod.c)
 set(bin ${PROJECT_BINARY_DIR}/llext/test_mod.llext)
