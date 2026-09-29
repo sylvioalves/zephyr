@@ -4,12 +4,16 @@ common:
   ignore_faults: true
   # The suites launch real user-mode applications and load signed llext
   # modules from a filesystem, so a target needs userspace, llext, a storage
-  # partition and PSA crypto, and the module fixtures are built as 32-bit
-  # ELF. That is what limits the platform list rather than any board detail.
+  # partition and PSA crypto. The Arm targets cover an Armv7-M and an Armv8-M
+  # MPU, an Armv8.1-M MPU with more regions, and an AArch64 MMU.
   platform_allow:
     - esp32c5_devkitc/esp32c5/hpcore
     - esp32c6_devkitc/esp32c6/hpcore
     - esp32p4x_function_ev_board/esp32p4/hpcore
+    - mps2/an385
+    - mps2/an521/cpu0
+    - mps3/corstone300/an547
+    - qemu_cortex_a53
 tests:
   app_platform.core:
     timeout: 60

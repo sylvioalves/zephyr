@@ -1,0 +1,12 @@
+/*
+ * Copyright (c) 2026 Espressif Systems (Shanghai) Co., Ltd.
+ *
+ * SPDX-License-Identifier: Apache-2.0
+ */
+
+/ {
+	app_platform {
+		compatible = "zephyr,app-platform";
+		counters = <&timer0 &timer1>;
+	};
+};

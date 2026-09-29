@@ -15,11 +15,16 @@
 #include <zephyr/app_platform/app_caps.h>
 #include <zephyr/fs/fs.h>
 #include <zephyr/app_memory/app_memdomain.h>
-#include <zephyr/arch/riscv/syscall.h>
+#include <zephyr/arch/syscall.h>
 #include <zephyr/kernel.h>
 #include <zephyr/devicetree.h>
 #include <string.h>
 #include <errno.h>
+
+#define HAS_GPIO0 DT_NODE_EXISTS(DT_NODELABEL(gpio0))
+#define HAS_PRIV_PROBES \
+	(IS_ENABLED(CONFIG_RISCV) || IS_ENABLED(CONFIG_CPU_CORTEX_M) || IS_ENABLED(CONFIG_ARM64))
+#define COUNTERS DT_PROP_LEN_OR(DT_COMPAT_GET_ANY_STATUS_OKAY(zephyr_app_platform), counters, 0)
 
 /* Data owned by the canary app's domain only. */
 K_APPMEM_PARTITION_DEFINE(victim_part);
@@ -240,9 +245,11 @@ ZTEST(zhostile, test_4_2_write_syscall_table)
 static void write_gpio_mmio(void *a)
 {
 	ARG_UNUSED(a);
-	/* GPIO_OUT_W1TS_REG */
+#if HAS_GPIO0
 	volatile uint32_t *reg = (volatile uint32_t *)(DT_REG_ADDR(DT_NODELABEL(gpio0)) + 0x8U);
+
 	*reg = BIT(2);
+#endif
 	report_done = 1;
 }
 
@@ -257,6 +264,9 @@ static void write_uart_mmio(void *a)
 
 ZTEST(zhostile, test_4_3_gpio_mmio)
 {
+	if (!HAS_GPIO0) {
+		ztest_test_skip();
+	}
 	expect_reclaimed("h_gpio", write_gpio_mmio, APP_CAP_LOG | APP_CAP_GPIO);
 }
 
@@ -272,7 +282,19 @@ static void csrr_mstatus(void *a)
 	ARG_UNUSED(a);
 	uint32_t v;
 
+#if defined(CONFIG_RISCV)
 	__asm__ volatile("csrr %0, mstatus" : "=r"(v));
+#elif defined(CONFIG_CPU_CORTEX_M)
+	/* SCB->VTOR: the System Control Space is privileged-only. */
+	v = *(volatile uint32_t *)0xE000ED08U;
+#elif defined(CONFIG_ARM64)
+	uint64_t v64;
+
+	__asm__ volatile("mrs %0, sctlr_el1" : "=r"(v64));
+	v = (uint32_t)v64;
+#else
+	v = 0U;
+#endif
 	report_rc = (int)v;
 	report_done = 1;
 }
@@ -288,7 +310,14 @@ static void do_wfi(void *a)
 static void do_mret(void *a)
 {
 	ARG_UNUSED(a);
+#if defined(CONFIG_RISCV)
 	__asm__ volatile("mret");
+#elif defined(CONFIG_CPU_CORTEX_M)
+	/* An exception return from thread mode is an invalid state. */
+	__asm__ volatile("bx %0" : : "r"(0xFFFFFFF9U));
+#elif defined(CONFIG_ARM64)
+	__asm__ volatile("eret");
+#endif
 	report_done = 1;
 }
 
@@ -301,19 +330,25 @@ static void bad_ecall(void *a)
 
 ZTEST(zhostile, test_4_4_csrr_mstatus)
 {
+	if (!HAS_PRIV_PROBES) {
+		ztest_test_skip();
+	}
 	expect_reclaimed("h_csr", csrr_mstatus, APP_CAP_LOG);
 }
 
 ZTEST(zhostile, test_4_4_mret)
 {
+	if (!HAS_PRIV_PROBES) {
+		ztest_test_skip();
+	}
 	expect_reclaimed("h_mret", do_mret, APP_CAP_LOG);
 }
 
 ZTEST(zhostile, test_4_4_wfi)
 {
-	/* mstatus.TW is not set on this core: wfi from U-mode either traps or
-	 * completes on the next interrupt; either outcome keeps the kernel intact.
-	 * Record which one happened.
+	/* wfi from user mode either traps or completes on the next interrupt,
+	 * depending on the core; either outcome keeps the kernel intact. Record
+	 * which one happened.
 	 */
 	const struct app_def def = {
 		.name = "h_wfi", .source = APP_BUILTIN, .entry = do_wfi,
@@ -324,8 +359,8 @@ ZTEST(zhostile, test_4_4_wfi)
 	zassert_true(id >= 0);
 	add_report_part(id);
 	zassert_true(wait_slot_free("h_wfi", 2000), "wfi app never finished");
-	printk("  wfi from U-mode: %s\n", report_done ? "executed (TW=0), app continued"
-						     : "trapped, app reclaimed");
+	printk("  wfi from user mode: %s\n", report_done ? "executed, app continued"
+							 : "trapped, app reclaimed");
 }
 
 ZTEST(zhostile, test_4_4_bad_ecall_id)
@@ -859,6 +894,9 @@ ZTEST(zhostile, test_4_16_counter_ungranted)
 
 ZTEST(zhostile, test_4_16_counter_instance_ungranted)
 {
+	if (COUNTERS < 2) {
+		ztest_test_skip();
+	}
 	int id = slot_of("canary");
 
 	ARG_UNUSED(id);
@@ -870,6 +908,9 @@ ZTEST(zhostile, test_4_16_counter_instance_ungranted)
 
 ZTEST(zhostile, test_4_16_counter_runs)
 {
+	if (COUNTERS < 2) {
+		ztest_test_skip();
+	}
 	/* Grant instance 0 to every slot and leave instance 1 ungranted. */
 	for (int i = 0; i < CONFIG_APP_PLATFORM_MAX_APPS; i++) {
 		app_platform_grant_counter(i, BIT(0));
