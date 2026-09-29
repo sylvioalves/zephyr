@@ -77,6 +77,28 @@ config APP_PLATFORM_APP_SEMS
 	  coordinate its threads. They are reserved per slot at build time and
 	  released when the application ends.
 
+config APP_PLATFORM_APP_HEAP_POOL_SIZE
+	int "Internal RAM for per-application heaps (bytes)"
+	default 0
+	help
+	  Pool the heaps applications declare are carved from: the heap_size
+	  of a loaded module's signed manifest, or app_def.heap_size for a
+	  built-in application. A heap is carved at launch, zeroed, mapped
+	  into the application's memory domain, and zeroed and returned when
+	  the application is removed. A region is rounded up to what the
+	  memory protection hardware maps, a naturally aligned power of two
+	  with an MPU or whole pages with an MMU, so leave room for that.
+	  Zero leaves the feature out, and an application that declares a
+	  heap then fails to launch.
+
+config APP_PLATFORM_APP_HEAP_MAX_BYTES
+	int "Largest heap one application may declare (bytes)"
+	default 16384
+	range 256 16777216
+	depends on APP_PLATFORM_APP_HEAP_POOL_SIZE > 0
+	help
+	  An application that declares a larger heap is refused at launch.
+
 config APP_PLATFORM_SUPERVISOR_STACK_SIZE
 	int "Supervisor thread stack size"
 	default 2048

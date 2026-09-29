@@ -192,6 +192,15 @@ static inline void app_platform_clear_fs_handles(int id)
 
 void app_platform_clear_sems(int id);
 
+/* Per-application heap regions. A carve maps the region into @p dom, which is
+ * NULL without user mode; a release unmaps, zeroes and frees it; a reset zeroes
+ * and re-initializes the heap of a stopped application.
+ */
+int app_platform_heap_carve(int id, struct k_mem_domain *dom, size_t heap_size);
+void app_platform_heap_reset(int id);
+void app_platform_heap_release(int id, struct k_mem_domain *dom);
+size_t app_platform_heap_bytes(int id);
+
 #ifdef CONFIG_APP_PLATFORM_EVENTS
 void app_events_clear(int id);
 #else

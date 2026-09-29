@@ -57,6 +57,7 @@ struct app_def {
 	app_caps_t      caps;    /**< per-app grant mask (application-defined) */
 	bool            monitored; /**< opt in to hang detection (see heartbeat) */
 	void           *arg;     /**< argument passed to entry, see below */
+	size_t          heap_size; /**< per-application heap bytes, 0 for none */
 };
 
 /**
@@ -71,9 +72,16 @@ int app_platform_init(void);
 /**
  * @brief Launch a built-in application as an isolated, supervised group.
  *
+ * A non-zero @ref app_def.heap_size gives the application a heap region, see
+ * @kconfig{CONFIG_APP_PLATFORM_APP_HEAP_POOL_SIZE}.
+ *
  * @param def Catalog entry with a non-NULL @ref app_def.entry.
  * @retval >=0 the application's group id, or negative errno on failure.
  * @retval -EEXIST An application with this name is already running.
+ * @retval -E2BIG The heap size is above
+ *         @kconfig{CONFIG_APP_PLATFORM_APP_HEAP_MAX_BYTES}.
+ * @retval -ENOMEM The heap pool has no room for the heap.
+ * @retval -ENOTSUP A heap is declared and the platform has no heap pool.
  */
 int app_platform_launch(const struct app_def *def);
 
@@ -81,6 +89,8 @@ int app_platform_launch(const struct app_def *def);
  * @brief Launch a loaded llext application as an isolated, supervised group.
  *
  * The module is mapped into its own memory domain and run as a user-mode thread.
+ * It gets a heap of the size its signed manifest declares, see
+ * @ref app_loader_heap_size.
  *
  * @param name Application name.
  * @param ext  Loaded extension (see @ref app_platform_load).
@@ -89,6 +99,10 @@ int app_platform_launch(const struct app_def *def);
  * @param caps Per-app grant mask.
  * @retval >=0 the application's group id, or negative errno on failure.
  * @retval -EEXIST An application with this name is already running.
+ * @retval -E2BIG The heap size is above
+ *         @kconfig{CONFIG_APP_PLATFORM_APP_HEAP_MAX_BYTES}.
+ * @retval -ENOMEM The heap pool has no room for the heap.
+ * @retval -ENOTSUP A heap is declared and the platform has no heap pool.
  */
 int app_platform_launch_llext(const char *name, struct llext *ext,
 			      app_entry_t entry, void *arg, app_caps_t caps);
@@ -287,6 +301,7 @@ struct app_platform_status {
 	size_t      stack_size;    /**< usable stack bytes */
 	size_t      stack_used;    /**< stack high-water mark in bytes */
 	size_t      module_bytes;  /**< loadable-extension footprint (0 if built-in) */
+	size_t      heap_bytes;    /**< heap region size (0 without a heap) */
 	uint64_t    cpu_cycles;    /**< non-idle cycles attributed to this app */
 	uint64_t    cpu_total;     /**< non-idle cycles across the whole system */
 };

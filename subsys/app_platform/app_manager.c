@@ -97,6 +97,7 @@ struct running_app {
 	void               *arg;       /* passed to entry */
 	app_caps_t          caps;
 	size_t              module_bytes; /* loadable-extension footprint, 0 if built-in */
+	size_t              heap_size; /* heap bytes declared at launch */
 #ifdef CONFIG_LLEXT
 	struct llext       *ext;       /* retained so a stopped app can restart */
 #endif
@@ -267,6 +268,16 @@ app_caps_t app_platform_caps_current(void)
 	return (id >= 0 && id < MAX_APPS) ? apps[id].caps : 0U;
 }
 
+static struct k_mem_domain *slot_domain(struct running_app *a)
+{
+#ifdef CONFIG_USERSPACE
+	return &a->domain;
+#else
+	ARG_UNUSED(a);
+	return NULL;
+#endif
+}
+
 struct k_mem_domain *app_platform_domain(int id)
 {
 	if (id < 0 || id >= MAX_APPS || !apps[id].active) {
@@ -317,6 +328,7 @@ int app_platform_status(int id, struct app_platform_status *out)
 		.faulted = a->faulted,
 		.restarts = a->restarts,
 		.module_bytes = a->module_bytes,
+		.heap_bytes = app_platform_heap_bytes(id),
 	};
 
 	/* Thread-level stats are only meaningful while the app is running. */
@@ -496,6 +508,9 @@ static void clear_grants(int id)
 
 static void run_cleanup(int id, bool full, struct llext *ext)
 {
+	if (full) {
+		app_platform_heap_release(id, slot_domain(&apps[id]));
+	}
 	for (int i = 0; i < CONFIG_APP_PLATFORM_RECLAIM_HOOKS; i++) {
 		if (reclaim_hooks[i] != NULL) {
 			reclaim_hooks[i](id);
@@ -532,6 +547,7 @@ static void run_cleanup(int id, bool full, struct llext *ext)
 		 */
 		apps[id].active = false;
 		apps[id].module_bytes = 0;
+		apps[id].heap_size = 0;
 		LOG_DBG("app slot %d cleaned up; resources freed", id);
 	}
 
@@ -706,6 +722,7 @@ static int restart_thread(struct running_app *a)
 	if (!wait_cleanup_done(a)) {
 		return -EBUSY;
 	}
+	app_platform_heap_reset(id);
 
 	k_tid_t t = k_thread_create(&a->threads[0].thread, app_stacks[id], APP_STACK,
 				    trampoline, (void *)a->entry, a->arg, NULL,
@@ -796,7 +813,7 @@ int app_platform_remove(int id)
 }
 
 static int launch(const char *name, app_entry_t entry, void *arg, app_caps_t caps,
-		  struct llext *ext, bool restart, bool monitored);
+		  struct llext *ext, bool restart, bool monitored, size_t heap_size);
 
 static void supervisor(void *p1, void *p2, void *p3)
 {
@@ -827,6 +844,7 @@ static void supervisor(void *p1, void *p2, void *p3)
 		void *arg = a->arg;
 		app_caps_t caps = a->caps;
 		bool monitored = a->monitored;
+		size_t heap_size = a->heap_size;
 		uint32_t restarts = a->restarts;
 
 		/* Restart only a resilient built-in app that crashed or hung,
@@ -854,7 +872,7 @@ static void supervisor(void *p1, void *p2, void *p3)
 				LOG_ERR("app '%s' not restarted: cleanup stuck", name);
 				continue;
 			}
-			int nid = launch(name, entry, arg, caps, NULL, true, monitored);
+			int nid = launch(name, entry, arg, caps, NULL, true, monitored, heap_size);
 
 			if (nid < 0) {
 				LOG_ERR("app '%s' could not be restarted", name);
@@ -1016,7 +1034,7 @@ int app_platform_init(void)
 
 /* Common launch: find a free slot, set up the domain, start a user-mode thread. */
 static int launch(const char *name, app_entry_t entry, void *arg, app_caps_t caps,
-		  struct llext *ext, bool restart, bool monitored)
+		  struct llext *ext, bool restart, bool monitored, size_t heap_size)
 {
 	for (int i = 0; i < MAX_APPS; i++) {
 		if (apps[i].active && strncmp(apps[i].name, name, APP_NAME_LEN) == 0) {
@@ -1029,6 +1047,7 @@ static int launch(const char *name, app_entry_t entry, void *arg, app_caps_t cap
 			continue;   /* in use or pending reaper cleanup */
 		}
 		struct running_app *a = &apps[i];
+		int rc;
 
 		(void)strncpy(a->name, name, sizeof(a->name) - 1);
 		a->name[sizeof(a->name) - 1] = '\0';
@@ -1042,6 +1061,7 @@ static int launch(const char *name, app_entry_t entry, void *arg, app_caps_t cap
 		a->restarts = 0;
 		a->wdt_chan = -1;
 		a->module_bytes = 0;
+		a->heap_size = heap_size;
 #ifdef CONFIG_LLEXT
 		a->ext = ext;
 #endif
@@ -1059,6 +1079,16 @@ static int launch(const char *name, app_entry_t entry, void *arg, app_caps_t cap
 		}
 #endif
 
+		rc = app_platform_heap_carve(i, slot_domain(a), heap_size);
+		if (rc != 0) {
+			LOG_ERR("no %zu-byte heap for '%s': %d", heap_size, name, rc);
+#ifdef CONFIG_LLEXT
+			a->ext = NULL;
+#endif
+			a->heap_size = 0;
+			return rc;
+		}
+
 #ifdef CONFIG_LLEXT
 		if (ext != NULL) {
 			a->module_bytes = ext->alloc_size;
@@ -1071,10 +1101,12 @@ static int launch(const char *name, app_entry_t entry, void *arg, app_caps_t cap
 			 * here: the caller only sees the error and drops its
 			 * reference.
 			 */
+			app_platform_heap_release(i, slot_domain(a));
 			app_loader_forget(ext);
 			(void)llext_unload(&ext);
 			a->ext = NULL;
 			a->module_bytes = 0;
+			a->heap_size = 0;
 			return -ENOSPC;
 		}
 #endif
@@ -1112,7 +1144,8 @@ static int launch(const char *name, app_entry_t entry, void *arg, app_caps_t cap
 
 int app_platform_launch(const struct app_def *def)
 {
-	return launch(def->name, def->entry, def->arg, def->caps, NULL, false, def->monitored);
+	return launch(def->name, def->entry, def->arg, def->caps, NULL, false, def->monitored,
+		      def->heap_size);
 }
 
 #ifdef CONFIG_LLEXT
@@ -1127,8 +1160,10 @@ int app_platform_launch_llext(const char *name, struct llext *ext,
 		LOG_ERR("refusing to launch '%s': extension not verified", name);
 		return -EPERM;
 	}
+	return launch(name, entry, arg, caps, ext, false, false, app_loader_heap_size(ext));
+#else
+	return launch(name, entry, arg, caps, ext, false, false, 0U);
 #endif
-	return launch(name, entry, arg, caps, ext, false, false);
 }
 #endif
 
