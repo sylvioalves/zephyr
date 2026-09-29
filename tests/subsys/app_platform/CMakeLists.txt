@@ -15,6 +15,7 @@ endif()
 if(CONFIG_APP_PLATFORM_APP_HEAP_POOL_SIZE GREATER 0)
   target_sources(app PRIVATE src/heap.c)
 endif()
+target_sources_ifdef(CONFIG_APP_PLATFORM_CPU_AFFINITY app PRIVATE src/smp.c)
 
 set(ext_src ${PROJECT_SOURCE_DIR}/module/src/test_mod.c)
 set(bin ${PROJECT_BINARY_DIR}/llext/test_mod.llext)
