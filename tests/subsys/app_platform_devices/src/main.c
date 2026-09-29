@@ -33,6 +33,7 @@
 #include <errno.h>
 
 #include "display_capture.h"
+#include "locked_svc.h"
 
 /* The fake regulator and stepper drivers are FFF-based, so the test image owns
  * the framework's globals.
@@ -1312,6 +1313,52 @@ ZTEST(devices, test_fault_is_contained)
 		zassert_true(atomic_get(&own_handler_calls) > calls,
 			     "the system handler was not the one called");
 	}
+}
+
+/* ---- Fault inside a service ---- */
+
+static void locked_fault(void *a)
+{
+	ARG_UNUSED(a);
+
+	report_rc = test_svc_locked(1);
+	report_done = 1;
+}
+
+static void locked_use(void *a)
+{
+	ARG_UNUSED(a);
+
+	report_rc = test_svc_locked(0);
+	report_done = 1;
+}
+
+/* An application that faults inside a service leaves that service's lock owned
+ * by a dead thread. Its slot must still be reclaimed, and the service must
+ * refuse later callers instead of parking them on the lock.
+ */
+ZTEST(devices, test_service_fault_breaks_only_its_lock)
+{
+	const struct app_def def = {
+		.name = "lk_flt", .source = APP_BUILTIN, .entry = locked_fault,
+		.caps = APP_CAP_LOG,
+	};
+	int runs;
+	int id;
+
+	zassert_equal(test_svc_locked_hook_register(), 0, "hook registration failed");
+	runs = test_svc_locked_hook_runs();
+
+	report_done = 0;
+	id = app_platform_launch(&def);
+	zassert_true(id >= 0, "lk_flt launch failed");
+	k_mem_domain_add_partition(app_platform_domain(id), &report_part);
+	zassert_true(wait_slot_free("lk_flt", 2000), "faulted slot never reclaimed");
+	zassert_equal(report_done, 0, "lk_flt did not fault");
+	zassert_true(test_svc_locked_hook_runs() > runs, "reclaim hook did not run");
+
+	expect_rc("lk_use", locked_use, APP_CAP_LOG, -EIO);
+	expect_rc("lk_other", eeprom_no_window, APP_CAP_LOG | APP_CAP_EEPROM, -EACCES);
 }
 
 /* ---- External RAM mapping ---- */
