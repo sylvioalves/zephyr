@@ -36,6 +36,8 @@ source "$(KCONFIG_BINARY_DIR)/soc/Kconfig.defconfig"
 osource "$(TOOLCHAIN_KCONFIG_DIR)/Kconfig.defconfig"
 # This loads the testsuite defconfig
 source "subsys/testsuite/Kconfig.defconfig"
+# This loads the application platform defconfig
+source "subsys/app_platform/Kconfig.defconfig"
 
 menu "Modules"
 

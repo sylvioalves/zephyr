@@ -1,0 +1,11 @@
+# Copyright (c) 2026 Espressif Systems (Shanghai) Co., Ltd.
+# SPDX-License-Identifier: Apache-2.0
+
+if APP_PLATFORM && USERSPACE
+
+configdefault MAX_THREAD_BYTES
+	default 13 if APP_PLATFORM_MAX_APPS > 10
+	default 9 if APP_PLATFORM_MAX_APPS > 6
+	default 4
+
+endif # APP_PLATFORM && USERSPACE

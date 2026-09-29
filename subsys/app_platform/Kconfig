@@ -4,6 +4,7 @@
 menuconfig APP_PLATFORM
 	bool "Application platform"
 	depends on TASK_WDT
+	imply USERSPACE
 	help
 	  A runtime that launches applications as supervised groups that reach
 	  the system only through application-provided services and are
@@ -14,7 +15,8 @@ menuconfig APP_PLATFORM
 	  Without it applications run as supervisor threads: capabilities and
 	  grants still gate the services, but nothing stops an application
 	  from reaching memory or kernel functions directly, so only trusted
-	  applications should be run.
+	  applications should be run. USERSPACE is enabled by default where the
+	  architecture supports it.
 
 if APP_PLATFORM
 
