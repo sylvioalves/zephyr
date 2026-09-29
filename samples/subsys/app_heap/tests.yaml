@@ -1,0 +1,23 @@
+sample:
+  name: Per-application heap
+  description: >
+    Run an application that builds and frees a linked list in a heap the
+    platform maps for it.
+common:
+  tags: app_platform
+  platform_allow:
+    - qemu_x86
+    - mps2/an385
+    - esp32c5_devkitc/esp32c5/hpcore
+  integration_platforms:
+    - qemu_x86
+  harness: console
+  harness_config:
+    type: one_line
+    regex:
+      - "done: a list of 10 nodes on the app heap, sum 385, heap reusable"
+tests:
+  sample.app_platform.heap: {}
+  sample.app_platform.heap.no_userspace:
+    extra_configs:
+      - CONFIG_USERSPACE=n
