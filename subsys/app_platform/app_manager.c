@@ -59,16 +59,27 @@ LOG_MODULE_REGISTER(app_platform, CONFIG_APP_PLATFORM_LOG_LEVEL);
  */
 #define APP_NAME_LEN APP_PLATFORM_NAME_LEN
 
+/* Threads of one application; the first is the one its entry point runs on. */
+#define APP_THREADS 1
+
+/* One thread of an application and the service locks it holds. */
+struct app_thread {
+	struct k_thread     thread;
+	bool                live;      /* created and not yet reaped */
+	uint8_t             svc_holds; /* service locks this thread holds */
+	struct svc_lock    *svc_held[SVC_HOLD_MAX];
+};
+
 /* A running app: a supervised thread group, isolated in user mode with its own
  * memory domain when the kernel provides user mode.
  */
 struct running_app {
 	char                name[APP_NAME_LEN];
 	bool                active;    /* slot occupied (running or stopped) */
-	bool                running;   /* thread is alive */
+	bool                running;   /* main thread is alive */
 	bool                restart;   /* relaunch (built-in) after a fault */
 	bool                monitored; /* opt-in liveness watchdog for hangs */
-	struct k_thread     thread;
+	struct app_thread   threads[APP_THREADS];
 #ifdef CONFIG_USERSPACE
 	struct k_mem_domain domain;
 #endif
@@ -77,9 +88,7 @@ struct running_app {
 	uint32_t            restarts;  /* relaunches after a fault, for statistics */
 	bool                cleaning;  /* reaper is releasing this slot's resources */
 	bool                stop_requested; /* asked to exit by app_platform_request_stop */
-	bool                stopping;  /* stop requested, deferred while svc_holds > 0 */
-	uint8_t             svc_holds; /* service locks the app thread holds */
-	struct svc_lock    *svc_held[SVC_HOLD_MAX];
+	bool                stopping;  /* stop requested, deferred while a thread holds a lock */
 	bool                domain_ready; /* memory domain initialized once per slot */
 	app_entry_t         entry;
 	void               *arg;       /* passed to entry */
@@ -111,7 +120,7 @@ static K_THREAD_STACK_DEFINE(sup_stack, CONFIG_APP_PLATFORM_SUPERVISOR_STACK_SIZ
 struct cleanup_req {
 	int   id;        /* application slot to release service resources for */
 	bool  full;      /* also unload the module captured in ext */
-	bool  deferred;  /* the app thread still holds a service lock */
+	bool  deferred;  /* an app thread still holds a service lock */
 #ifdef CONFIG_LLEXT
 	struct llext *ext;
 #endif
@@ -123,10 +132,20 @@ static char cleanup_buf[MAX_APPS * sizeof(struct cleanup_req)];
 static struct k_thread reaper_thread;
 static K_THREAD_STACK_DEFINE(reaper_stack, CONFIG_APP_PLATFORM_REAPER_STACK_SIZE);
 
+static struct app_thread *thread_of(struct running_app *a, k_tid_t t)
+{
+	for (int j = 0; j < APP_THREADS; j++) {
+		if (&a->threads[j].thread == t) {
+			return &a->threads[j];
+		}
+	}
+	return NULL;
+}
+
 static struct running_app *app_of_thread(k_tid_t t)
 {
 	for (int i = 0; i < MAX_APPS; i++) {
-		if (apps[i].running && &apps[i].thread == t) {
+		if (apps[i].running && thread_of(&apps[i], t) != NULL) {
 			return &apps[i];
 		}
 	}
@@ -139,31 +158,34 @@ static struct running_app *app_of_thread(k_tid_t t)
  * there could be rewritten by the app to borrow another app's capabilities.
  * The thread pointer is owned by the kernel, so it is the identity.
  */
-static struct running_app *app_of_self(void)
+static struct running_app *app_of_self(struct app_thread **thread)
 {
 	k_tid_t self = k_current_get();
 
 	for (int i = 0; i < MAX_APPS; i++) {
-		if (apps[i].active && &apps[i].thread == self) {
+		struct app_thread *t = apps[i].active ? thread_of(&apps[i], self) : NULL;
+
+		if (t != NULL) {
+			*thread = t;
 			return &apps[i];
 		}
 	}
 	return NULL;
 }
 
-static void drop_hold(struct running_app *a, struct svc_lock *lock)
+static void drop_hold(struct running_app *a, struct app_thread *t, struct svc_lock *lock)
 {
 	k_spinlock_key_t key = k_spin_lock(&hold_lock);
 	bool stop;
 
-	for (int i = a->svc_holds - 1; i >= 0; i--) {
-		if (a->svc_held[i] == lock) {
-			a->svc_held[i] = a->svc_held[a->svc_holds - 1];
+	for (int i = t->svc_holds - 1; i >= 0; i--) {
+		if (t->svc_held[i] == lock) {
+			t->svc_held[i] = t->svc_held[t->svc_holds - 1];
 			break;
 		}
 	}
-	a->svc_holds--;
-	stop = a->stopping && a->svc_holds == 0U;
+	t->svc_holds--;
+	stop = a->stopping && t->svc_holds == 0U;
 	k_spin_unlock(&hold_lock, key);
 	if (stop) {
 		k_thread_abort(k_current_get());
@@ -172,7 +194,8 @@ static void drop_hold(struct running_app *a, struct svc_lock *lock)
 
 int app_service_lock(struct svc_lock *lock, k_timeout_t timeout)
 {
-	struct running_app *a = app_of_self();
+	struct app_thread *t = NULL;
+	struct running_app *a = app_of_self(&t);
 	k_timepoint_t end = sys_timepoint_calc(timeout);
 	k_timepoint_t step;
 	int rc;
@@ -180,15 +203,15 @@ int app_service_lock(struct svc_lock *lock, k_timeout_t timeout)
 	if (a != NULL) {
 		k_spinlock_key_t key = k_spin_lock(&hold_lock);
 
-		if (a->stopping && a->svc_holds == 0U) {
+		if (a->stopping && t->svc_holds == 0U) {
 			k_spin_unlock(&hold_lock, key);
 			k_thread_abort(k_current_get());
 		}
-		if (a->svc_holds == SVC_HOLD_MAX) {
+		if (t->svc_holds == SVC_HOLD_MAX) {
 			k_spin_unlock(&hold_lock, key);
 			return -EBUSY;
 		}
-		a->svc_held[a->svc_holds++] = lock;
+		t->svc_held[t->svc_holds++] = lock;
 		k_spin_unlock(&hold_lock, key);
 	}
 
@@ -205,18 +228,19 @@ int app_service_lock(struct svc_lock *lock, k_timeout_t timeout)
 	} while (rc != 0 && !sys_timepoint_expired(end));
 
 	if (rc != 0 && a != NULL) {
-		drop_hold(a, lock);
+		drop_hold(a, t, lock);
 	}
 	return rc;
 }
 
 int app_service_unlock(struct svc_lock *lock)
 {
-	struct running_app *a = app_of_self();
+	struct app_thread *t = NULL;
+	struct running_app *a = app_of_self(&t);
 	int rc = k_mutex_unlock(&lock->mutex);
 
 	if (a != NULL) {
-		drop_hold(a, lock);
+		drop_hold(a, t, lock);
 	}
 	return rc;
 }
@@ -296,8 +320,8 @@ int app_platform_status(int id, struct app_platform_status *out)
 	{
 		size_t unused = 0;
 
-		if (k_thread_stack_space_get(&a->thread, &unused) == 0) {
-			out->stack_size = a->thread.stack_info.size;
+		if (k_thread_stack_space_get(&a->threads[0].thread, &unused) == 0) {
+			out->stack_size = a->threads[0].thread.stack_info.size;
 			out->stack_used = out->stack_size - unused;
 		}
 	}
@@ -307,7 +331,7 @@ int app_platform_status(int id, struct app_platform_status *out)
 	{
 		k_thread_runtime_stats_t mine, all;
 
-		if (k_thread_runtime_stats_get(&a->thread, &mine) == 0) {
+		if (k_thread_runtime_stats_get(&a->threads[0].thread, &mine) == 0) {
 			out->cpu_cycles = mine.total_cycles;
 		}
 		if (k_thread_runtime_stats_all_get(&all) == 0) {
@@ -400,7 +424,7 @@ static void death_watch(void *p_app, void *p_id, void *u)
 	struct running_app *a = p_app;
 	uint8_t id = (uint8_t)(uintptr_t)p_id;
 
-	k_thread_join(&a->thread, K_FOREVER);
+	k_thread_join(&a->threads[0].thread, K_FOREVER);
 	(void)k_msgq_put(&reclaim_q, &id, K_NO_WAIT);
 }
 
@@ -532,23 +556,37 @@ static void reaper(void *p1, void *p2, void *p3)
 		}
 
 		struct running_app *a = &apps[req.id];
+		k_timepoint_t end = sys_timepoint_calc(K_MSEC(CONFIG_APP_PLATFORM_STOP_WAIT_MS));
 		k_spinlock_key_t key;
-		uint8_t holds;
+		uint8_t holds = 0U;
 
-		/* A stopped app inside a service ends itself when it releases its
+		/* A stopped thread inside a service ends itself when it releases its
 		 * last service lock, so no lock is left owned by a dead thread.
 		 */
-		if (req.deferred) {
-			(void)k_thread_join(&a->thread, K_MSEC(CONFIG_APP_PLATFORM_STOP_WAIT_MS));
+		for (int j = 0; j < APP_THREADS; j++) {
+			struct app_thread *t = &a->threads[j];
+
+			if (req.deferred && t->live && t->svc_holds != 0U) {
+				(void)k_thread_join(&t->thread, sys_timepoint_timeout(end));
+			}
 		}
-		k_thread_abort(&a->thread);
+		for (int j = 0; j < APP_THREADS; j++) {
+			if (a->threads[j].live) {
+				k_thread_abort(&a->threads[j].thread);
+			}
+		}
 		key = k_spin_lock(&hold_lock);
-		holds = a->svc_holds;
-		for (uint8_t i = 0U; i < holds; i++) {
-			atomic_set(&a->svc_held[i]->broken, 1);
+		for (int j = 0; j < APP_THREADS; j++) {
+			struct app_thread *t = &a->threads[j];
+
+			for (uint8_t i = 0U; i < t->svc_holds; i++) {
+				atomic_set(&t->svc_held[i]->broken, 1);
+			}
+			holds += t->svc_holds;
+			t->svc_holds = 0U;
+			t->live = false;
 		}
 		a->stopping = false;
-		a->svc_holds = 0U;
 		k_spin_unlock(&hold_lock, key);
 		if (holds != 0U) {
 			LOG_ERR("app '%s' stopped holding %u service lock(s), service disabled",
@@ -575,6 +613,7 @@ static void reclaim_ex(struct running_app *a, bool full)
 {
 	int id = a - apps;
 	struct cleanup_req req = { .id = id, .full = full };
+	bool holding[APP_THREADS];
 	k_spinlock_key_t key;
 
 	if (!a->running) {
@@ -593,16 +632,21 @@ static void reclaim_ex(struct running_app *a, bool full)
 		a->wdt_chan = -1;
 	}
 
-	/* An app inside a service keeps running until it releases its last
+	/* A thread inside a service keeps running until it releases its last
 	 * service lock, and ends itself there.
 	 */
 	key = k_spin_lock(&hold_lock);
 	a->stopping = true;
-	req.deferred = a->svc_holds != 0U;
+	for (int j = 0; j < APP_THREADS; j++) {
+		holding[j] = a->threads[j].live && a->threads[j].svc_holds != 0U;
+		req.deferred = req.deferred || holding[j];
+	}
 	k_spin_unlock(&hold_lock, key);
 
-	if (!req.deferred) {
-		k_thread_abort(&a->thread);
+	for (int j = 0; j < APP_THREADS; j++) {
+		if (a->threads[j].live && !holding[j]) {
+			k_thread_abort(&a->threads[j].thread);
+		}
 	}
 	k_thread_abort(&watchers[id]);
 	LOG_DBG("app '%s' stopped; system + other apps alive", a->name);
@@ -654,9 +698,11 @@ static int restart_thread(struct running_app *a)
 		return -EBUSY;
 	}
 
-	k_tid_t t = k_thread_create(&a->thread, app_stacks[id], APP_STACK,
+	k_tid_t t = k_thread_create(&a->threads[0].thread, app_stacks[id], APP_STACK,
 				    trampoline, (void *)a->entry, a->arg, NULL,
 				    APP_PRIO, K_USER, K_FOREVER);
+
+	a->threads[0].live = true;
 
 	k_thread_name_set(t, a->name);
 #ifdef CONFIG_USERSPACE
@@ -716,7 +762,7 @@ int app_platform_request_stop(int id, uint32_t grace_ms)
 
 	a->stop_requested = true;
 	app_events_post(id, &evt);
-	if (k_thread_join(&a->thread, K_MSEC(grace_ms)) == 0) {
+	if (k_thread_join(&a->threads[0].thread, K_MSEC(grace_ms)) == 0) {
 		return 0;
 	}
 	LOG_WRN("app '%s' did not exit within %u ms, removing it", a->name, grace_ms);
@@ -910,9 +956,11 @@ static int launch(const char *name, app_entry_t entry, void *arg, app_caps_t cap
 		}
 #endif
 
-		k_tid_t t = k_thread_create(&a->thread, app_stacks[i], APP_STACK,
+		k_tid_t t = k_thread_create(&a->threads[0].thread, app_stacks[i], APP_STACK,
 					    trampoline, (void *)entry, arg, NULL,
 					    APP_PRIO, K_USER, K_FOREVER);
+
+		a->threads[0].live = true;
 		k_thread_name_set(t, name);
 #ifdef CONFIG_USERSPACE
 		k_mem_domain_add_thread(&a->domain, t);
