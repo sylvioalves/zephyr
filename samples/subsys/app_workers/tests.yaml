@@ -1,0 +1,24 @@
+sample:
+  name: Application worker threads
+  description: >
+    Run one application on two threads that hand items to each other through
+    platform semaphores.
+common:
+  tags: app_platform
+  platform_allow:
+    - qemu_x86
+    - mps2/an385
+    - esp32c5_devkitc/esp32c5/hpcore
+    - esp32c6_devkitc/esp32c6/hpcore
+  integration_platforms:
+    - qemu_x86
+  harness: console
+  harness_config:
+    type: one_line
+    regex:
+      - "done: 2 threads of one app passed 5 items, sum 55"
+tests:
+  sample.app_platform.workers: {}
+  sample.app_platform.workers.no_userspace:
+    extra_configs:
+      - CONFIG_USERSPACE=n
