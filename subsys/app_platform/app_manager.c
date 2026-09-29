@@ -93,6 +93,7 @@ struct running_app {
 	bool                stop_requested; /* asked to exit by app_platform_request_stop */
 	bool                stopping;  /* stop requested, deferred while a thread holds a lock */
 	bool                domain_ready; /* memory domain initialized once per slot */
+	uint8_t             gen;       /* instance of the slot, bumped at each start */
 	app_entry_t         entry;
 	void               *arg;       /* passed to entry */
 	app_caps_t          caps;
@@ -114,8 +115,13 @@ static SVC_LOCK_DEFINE(spawn_lock);
 static void trampoline(void *entry, void *arg, void *u2);
 
 /* Reclaim requests from the wdt callback / fatal handler -> supervisor thread. */
+struct reclaim_req {
+	uint8_t id;
+	uint8_t gen; /* instance the request is about */
+};
+
 static struct k_msgq reclaim_q;
-static uint8_t reclaim_buf[MAX_APPS];
+static struct reclaim_req reclaim_buf[MAX_APPS];
 static struct k_thread sup_thread;
 static K_THREAD_STACK_DEFINE(sup_stack, CONFIG_APP_PLATFORM_SUPERVISOR_STACK_SIZE);
 
@@ -378,11 +384,11 @@ bool app_platform_handle_fatal_error(unsigned int reason, const struct arch_esf 
 		return false;
 	}
 
-	uint8_t id = a - apps;
+	struct reclaim_req req = { .id = a - apps, .gen = a->gen };
 
 	LOG_WRN("app '%s' faulted (reason %u) - reclaiming", a->name, reason);
 	a->faulted = true;
-	(void)k_msgq_put(&reclaim_q, &id, K_NO_WAIT);
+	(void)k_msgq_put(&reclaim_q, &req, K_NO_WAIT);
 	return true;
 }
 
@@ -401,11 +407,11 @@ static void wdt_cb(int chan, void *user)
 {
 	ARG_UNUSED(chan);
 	struct running_app *a = user;
-	uint8_t id = a - apps;
+	struct reclaim_req req = { .id = a - apps, .gen = a->gen };
 
 	LOG_WRN("app '%s' is not responding (hang) - reclaiming", a->name);
 	a->faulted = true;
-	(void)k_msgq_put(&reclaim_q, &id, K_NO_WAIT);
+	(void)k_msgq_put(&reclaim_q, &req, K_NO_WAIT);
 }
 
 void app_platform_heartbeat(void)
@@ -438,14 +444,16 @@ static void name_watcher(int id)
 	k_thread_name_set(&watchers[id], watcher_names[id]);
 }
 
-static void death_watch(void *p_app, void *p_id, void *u)
+static void death_watch(void *p_app, void *p_id, void *p_gen)
 {
-	ARG_UNUSED(u);
 	struct running_app *a = p_app;
-	uint8_t id = (uint8_t)(uintptr_t)p_id;
+	struct reclaim_req req = {
+		.id = (uint8_t)(uintptr_t)p_id,
+		.gen = (uint8_t)(uintptr_t)p_gen,
+	};
 
 	k_thread_join(&a->threads[0].thread, K_FOREVER);
-	(void)k_msgq_put(&reclaim_q, &id, K_NO_WAIT);
+	(void)k_msgq_put(&reclaim_q, &req, K_NO_WAIT);
 }
 
 /* The heavy, driver-touching part of reclaim: run each service's reclaim hook
@@ -757,9 +765,10 @@ static int restart_thread(struct running_app *a)
 	if (a->monitored) {
 		a->wdt_chan = task_wdt_add(WDT_TIMEOUT, wdt_cb, a);
 	}
+	a->gen++;
 	k_thread_create(&watchers[id], watch_stacks[id],
 			K_THREAD_STACK_SIZEOF(watch_stacks[id]), death_watch,
-			a, (void *)(uintptr_t)id, NULL,
+			a, (void *)(uintptr_t)id, (void *)(uintptr_t)a->gen,
 			CONFIG_APP_PLATFORM_SUPERVISOR_PRIORITY, 0, K_NO_WAIT);
 	name_watcher(id);
 	k_thread_start(t);
@@ -836,16 +845,19 @@ static void supervisor(void *p1, void *p2, void *p3)
 	ARG_UNUSED(p1); ARG_UNUSED(p2); ARG_UNUSED(p3);
 
 	for (;;) {
-		uint8_t id;
+		struct reclaim_req req;
 
-		if (k_msgq_get(&reclaim_q, &id, K_FOREVER) != 0 || id >= MAX_APPS) {
+		if (k_msgq_get(&reclaim_q, &req, K_FOREVER) != 0 || req.id >= MAX_APPS) {
 			continue;
 		}
 
-		struct running_app *a = &apps[id];
+		struct running_app *a = &apps[req.id];
 
-		if (!a->running) {
-			continue;   /* already reclaimed (e.g. double signal) */
+		/* Skip a slot already reclaimed (e.g. double signal) or a request
+		 * about an earlier instance than the one now in the slot.
+		 */
+		if (!a->running || req.gen != a->gen) {
+			continue;
 		}
 
 		/* Copy the name out: a relaunch writes it back into this same
@@ -1029,7 +1041,7 @@ static inline int z_vrfy_app_svc_thread_join(int handle, int32_t timeout_ms)
 
 int app_platform_init(void)
 {
-	k_msgq_init(&reclaim_q, reclaim_buf, sizeof(uint8_t), MAX_APPS);
+	k_msgq_init(&reclaim_q, (char *)reclaim_buf, sizeof(struct reclaim_req), MAX_APPS);
 	k_msgq_init(&cleanup_q, cleanup_buf, sizeof(struct cleanup_req), MAX_APPS);
 	if (task_wdt_init(NULL) != 0) {
 		return -EIO;
@@ -1146,9 +1158,10 @@ static int launch(const char *name, app_entry_t entry, void *arg, app_caps_t cap
 		}
 
 		/* A death-watcher gives passive crash/exit detection for every app. */
+		a->gen++;
 		k_thread_create(&watchers[i], watch_stacks[i],
 				K_THREAD_STACK_SIZEOF(watch_stacks[i]), death_watch,
-				a, (void *)(uintptr_t)i, NULL,
+				a, (void *)(uintptr_t)i, (void *)(uintptr_t)a->gen,
 				CONFIG_APP_PLATFORM_SUPERVISOR_PRIORITY, 0, K_NO_WAIT);
 		name_watcher(i);
 
