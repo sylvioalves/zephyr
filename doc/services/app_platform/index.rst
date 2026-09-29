@@ -75,6 +75,40 @@ application, whatever else the board describes.
            counters = <&timer0 &timer1>;
    };
 
+Configuring an application before it starts
+============================================
+
+A launched application can run on another CPU, or preempt its launcher, before the launch call
+returns, so a memory partition or a grant added after a plain launch can arrive after the
+application first needs it. A launch with :c:member:`app_def.stopped` set, or with
+:c:member:`app_launch_opts.stopped` for :c:func:`app_platform_launch_llext_opts`, returns the group
+id of an application that is set up but not running: its memory domain already maps its module and
+heap, and :c:func:`app_platform_status` reports it inactive. The launcher adds partitions to
+:c:func:`app_platform_domain`, grants resources to that id and then starts the application with
+:c:func:`app_platform_start`. :c:func:`app_platform_remove` releases an application that never
+started like any other.
+
+.. code-block:: c
+
+   const struct app_def def = {
+           .name = "sensor",
+           .source = APP_BUILTIN,
+           .entry = sensor_main,
+           .caps = APP_CAP_LOG | APP_CAP_GPIO,
+           .stopped = true,
+   };
+   int id = app_platform_launch(&def);
+
+   k_mem_domain_add_partition(app_platform_domain(id), &shared_part);
+   app_platform_grant_gpio(id, BIT(0));
+   app_platform_start(id);
+
+A partition added to a domain belongs to the slot: it stays when the application is stopped,
+started again, relaunched after a fault, which reuses its slot, or removed, and a later application
+in the same slot inherits it unless the launcher removes it. Grants are dropped whenever the
+application stops or is reclaimed, so a launcher grants them again before starting a stopped
+application, and an application relaunched after a fault runs without them.
+
 Supervision
 ===========
 
