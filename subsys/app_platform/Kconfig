@@ -327,6 +327,13 @@ config APP_PLATFORM_SERVICES
 	  callers. The crypto service needs a PSA provider (CONFIG_PSA_CRYPTO
 	  with CONFIG_PSA_WANT_ALG_SHA_256); without it the rest still build.
 
+config APP_PLATFORM_HAS_RANDOM
+	bool
+	default y if ENTROPY_HAS_DRIVER || TEST_RANDOM_GENERATOR || ARM64_RNG
+	help
+	  The system provides a random number generator, which the random
+	  service needs. Without one the service returns -ENOTSUP.
+
 config APP_PLATFORM_RING
 	bool "Bulk transfer through an application-owned ring"
 	depends on APP_PLATFORM_SERVICES

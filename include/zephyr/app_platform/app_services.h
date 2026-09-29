@@ -83,6 +83,7 @@ __syscall int app_svc_sha256(const uint8_t *in, size_t len, uint8_t *out32);
  * @param buf Receives the random bytes.
  * @param len Number of bytes (bounded by the platform).
  * @retval 0 on success, -EPERM without the capability, negative errno otherwise.
+ * @retval -ENOTSUP The system has no random number generator.
  */
 __syscall int app_svc_random(uint8_t *buf, size_t len);
 

@@ -188,6 +188,9 @@ int z_impl_app_svc_random(uint8_t *buf, size_t len)
 	if (len > SVC_XFER_MAX) {
 		return -EINVAL;
 	}
+	if (!IS_ENABLED(CONFIG_APP_PLATFORM_HAS_RANDOM)) {
+		return -ENOTSUP;
+	}
 	sys_rand_get(buf, len);
 	return 0;
 }
