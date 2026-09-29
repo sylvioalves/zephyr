@@ -43,7 +43,7 @@ static void add_report_part(int id)
 		return;
 	}
 
-	for (int i = 0; i < dom->num_partitions; i++) {
+	for (int i = 0; i < CONFIG_MAX_DOMAIN_PARTITIONS; i++) {
 		if (dom->partitions[i].start == report_part.start &&
 		    dom->partitions[i].size == report_part.size) {
 			return;

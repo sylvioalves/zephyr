@@ -60,6 +60,23 @@ static int slot_of(const char *name)
 	return -1;
 }
 
+/* A slot keeps its memory domain across launches, so the report partition is
+ * added to it only once.
+ */
+static void add_report_part(int id)
+{
+	struct k_mem_domain *dom = app_platform_domain(id);
+
+	for (int i = 0; i < CONFIG_MAX_DOMAIN_PARTITIONS; i++) {
+		if (dom->partitions[i].start == report_part.start &&
+		    dom->partitions[i].size == report_part.size) {
+			return;
+		}
+	}
+	zassert_equal(k_mem_domain_add_partition(dom, &report_part), 0,
+		      "report partition not added");
+}
+
 static bool wait_slot_free(const char *name, int ms)
 {
 	for (int i = 0; i < ms / 5; i++) {
@@ -87,7 +104,7 @@ static void expect_rc(const char *name, app_entry_t entry, app_caps_t caps,
 	int id = app_platform_launch(&def);
 
 	zassert_true(id >= 0, "%s launch failed", name);
-	k_mem_domain_add_partition(app_platform_domain(id), &report_part);
+	add_report_part(id);
 	zassert_true(wait_slot_free(name, 2000), "%s never exited", name);
 	zassert_equal(report_done, 1, "%s trapped instead of reporting", name);
 	zassert_equal(report_rc, expected_rc, "%s rc %d != %d", name, report_rc,
@@ -478,7 +495,7 @@ static void launch_held(const char *name, app_entry_t entry, app_caps_t caps)
 
 	id = app_platform_launch(&def);
 	zassert_true(id >= 0, "%s launch failed", name);
-	k_mem_domain_add_partition(app_platform_domain(id), &report_part);
+	add_report_part(id);
 	for (int i = 0; i < 400 && holding == 0; i++) {
 		k_msleep(5);
 	}
@@ -1079,7 +1096,7 @@ ZTEST(devices, test_display_bad_buffer_leaves_lock_free)
 	report_done = 0;
 	id = app_platform_launch(&def);
 	zassert_true(id >= 0, "launch failed");
-	k_mem_domain_add_partition(app_platform_domain(id), &report_part);
+	add_report_part(id);
 	zassert_true(wait_slot_free("d_bp", 2000), "d_bp was not reclaimed");
 	zassert_equal(report_done, 0, "a kernel pointer was accepted");
 
@@ -1103,7 +1120,7 @@ ZTEST(devices, test_display_supervisor_lock_excludes_apps)
 	zassert_ok(app_platform_display_lock(K_NO_WAIT));
 	id = app_platform_launch(&def);
 	zassert_true(id >= 0, "launch failed");
-	k_mem_domain_add_partition(app_platform_domain(id), &report_part);
+	add_report_part(id);
 	k_msleep(50);
 	zassert_equal(report_done, 0, "an application drew under the supervisor lock");
 	app_platform_display_unlock();
@@ -1127,7 +1144,7 @@ ZTEST(devices, test_display_vsync_wakes_waiter)
 	report_done = 0;
 	id = app_platform_launch(&def);
 	zassert_true(id >= 0, "launch failed");
-	k_mem_domain_add_partition(app_platform_domain(id), &report_part);
+	add_report_part(id);
 	k_msleep(20);
 	zassert_equal(report_done, 0, "the wait returned before a refresh");
 	capture_vsync();
@@ -1300,7 +1317,7 @@ ZTEST(devices, test_fault_is_contained)
 	report_done = 0;
 	id = app_platform_launch(&def);
 	zassert_true(id >= 0, "flt launch failed");
-	k_mem_domain_add_partition(app_platform_domain(id), &report_part);
+	add_report_part(id);
 	zassert_equal(app_platform_set_restart(id, true), 0);
 
 	for (int i = 0; i < 400 && report_done == 0; i++) {
@@ -1353,7 +1370,7 @@ ZTEST(devices, test_service_fault_breaks_only_its_lock)
 	report_done = 0;
 	id = app_platform_launch(&def);
 	zassert_true(id >= 0, "lk_flt launch failed");
-	k_mem_domain_add_partition(app_platform_domain(id), &report_part);
+	add_report_part(id);
 	zassert_true(wait_slot_free("lk_flt", 2000), "faulted slot never reclaimed");
 	zassert_equal(report_done, 0, "lk_flt did not fault");
 	zassert_true(test_svc_locked_hook_runs() > runs, "reclaim hook did not run");
