@@ -14,8 +14,10 @@
 
 #include <zephyr/app_platform/app_heap.h>
 #include <zephyr/app_platform/app_platform.h>
+#include <zephyr/app_platform/app_services.h>
 
 #include <zephyr/kernel.h>
+#include <zephyr/internal/syscall_handler.h>
 #include <zephyr/sys/sys_heap.h>
 #include <zephyr/sys/util.h>
 #include <errno.h>
@@ -160,6 +162,21 @@ size_t app_platform_heap_bytes(int id)
 	return slots[id].size;
 }
 
+int z_impl_app_svc_heap_info(uintptr_t *base, size_t *size)
+{
+	int id = app_platform_id_current();
+
+	if (id < 0 || id >= MAX_APPS) {
+		return -EPERM;
+	}
+	if (slots[id].base == NULL) {
+		return -ENOENT;
+	}
+	*base = (uintptr_t)slots[id].base;
+	*size = slots[id].size;
+	return 0;
+}
+
 #else /* POOL_SIZE > 0 */
 
 int app_platform_heap_carve(int id, struct k_mem_domain *dom, size_t heap_size)
@@ -186,4 +203,21 @@ size_t app_platform_heap_bytes(int id)
 	return 0U;
 }
 
+int z_impl_app_svc_heap_info(uintptr_t *base, size_t *size)
+{
+	ARG_UNUSED(base);
+	ARG_UNUSED(size);
+	return -ENOTSUP;
+}
+
 #endif /* POOL_SIZE > 0 */
+
+#ifdef CONFIG_USERSPACE
+static inline int z_vrfy_app_svc_heap_info(uintptr_t *base, size_t *size)
+{
+	K_OOPS(K_SYSCALL_MEMORY_WRITE(base, sizeof(*base)));
+	K_OOPS(K_SYSCALL_MEMORY_WRITE(size, sizeof(*size)));
+	return z_impl_app_svc_heap_info(base, size);
+}
+#include <zephyr/syscalls/app_svc_heap_info_mrsh.c>
+#endif

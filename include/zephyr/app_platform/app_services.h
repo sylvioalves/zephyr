@@ -156,6 +156,23 @@ __syscall int app_svc_sem_give(int handle);
 __syscall int app_svc_sem_take(int handle, int32_t timeout_ms);
 
 /**
+ * @brief Locate the calling application's heap region.
+ *
+ * Needs no capability: the region is the application's own memory, sized by
+ * its signed manifest or its catalog entry. It starts with a
+ * @ref app_heap_region, which the allocator in app_heap.h uses.
+ *
+ * @param base Receives the address of the region.
+ * @param size Receives the size of the region in bytes.
+ *
+ * @retval 0 Success.
+ * @retval -EPERM The caller is not an application.
+ * @retval -ENOENT The application declared no heap.
+ * @retval -ENOTSUP The platform was built without a heap pool.
+ */
+__syscall int app_svc_heap_info(uintptr_t *base, size_t *size);
+
+/**
  * @brief Compute a SHA-256 digest. Needs @ref APP_CAP_CRYPTO.
  *
  * Stateless: safe to call concurrently from any number of applications.
