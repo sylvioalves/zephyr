@@ -94,6 +94,7 @@ int main(void)
 		.source = APP_BUILTIN,
 		.entry = io_app,
 		.caps = APP_CAP_LOG | APP_CAP_LED | APP_CAP_INPUT,
+		.stopped = true,
 	};
 
 	int id = app_platform_launch(&def);
@@ -105,6 +106,7 @@ int main(void)
 
 	/* Grant LED pins 0 and 1 to this application; pin 2 stays denied. */
 	app_platform_grant_led(id, BIT(0) | BIT(1));
+	(void)app_platform_start(id);
 
 	printk("*** launched isolated io app (group %d) ***\n", id);
 	return 0;

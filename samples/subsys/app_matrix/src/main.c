@@ -141,6 +141,7 @@ static int run_case(int idx, app_caps_t caps)
 {
 	const struct app_def def = {
 		.name = "probe", .source = APP_BUILTIN, .entry = probe_app, .caps = caps,
+		.stopped = true,
 	};
 
 	res_rc = -9999;
@@ -152,6 +153,7 @@ static int run_case(int idx, app_caps_t caps)
 		return -9998;
 	}
 	k_mem_domain_add_partition(app_platform_domain(id), &res_part);
+	(void)app_platform_start(id);
 	if (!wait_free(id)) {
 		return -9997;
 	}

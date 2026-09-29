@@ -137,12 +137,14 @@ int main(void)
 		.source = APP_BUILTIN,
 		.entry = owner_app,
 		.caps = APP_CAP_LOG | APP_CAP_KV,
+		.stopped = true,
 	};
 	struct app_def other = {
 		.name = "kvother",
 		.source = APP_BUILTIN,
 		.entry = other_app,
 		.caps = APP_CAP_LOG | APP_CAP_KV,
+		.stopped = true,
 	};
 
 	int a = app_platform_launch(&owner);
@@ -152,6 +154,7 @@ int main(void)
 		return 0;
 	}
 	k_mem_domain_add_partition(app_platform_domain(a), &kv_part);
+	(void)app_platform_start(a);
 
 	/* Let the first application finish writing before the second looks for
 	 * the same key name, so the namespacing check is not a race.
@@ -165,6 +168,7 @@ int main(void)
 		return 0;
 	}
 	k_mem_domain_add_partition(app_platform_domain(b), &kv_part);
+	(void)app_platform_start(b);
 
 	printk("*** launched kv apps (groups %d and %d) ***\n", a, b);
 	return 0;

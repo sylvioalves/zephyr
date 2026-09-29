@@ -74,6 +74,7 @@ int main(void)
 		.entry = list_app,
 		.caps = APP_CAP_LOG,
 		.heap_size = HEAP_SIZE,
+		.stopped = true,
 	};
 	struct app_platform_status st;
 	int id;
@@ -91,6 +92,7 @@ int main(void)
 #ifdef CONFIG_USERSPACE
 	k_mem_domain_add_partition(app_platform_domain(id), &result_part);
 #endif
+	(void)app_platform_start(id);
 	if (app_platform_status(id, &st) == 0) {
 		printk("heap region of %zu bytes for %u requested\n", st.heap_bytes, HEAP_SIZE);
 	}

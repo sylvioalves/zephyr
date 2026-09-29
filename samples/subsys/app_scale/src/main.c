@@ -200,7 +200,7 @@ static void mode_storm(void)
 {
 	const struct app_def def = {
 		.name = "storm", .source = APP_BUILTIN, .entry = storm_app,
-		.caps = APP_CAP_LOG,
+		.caps = APP_CAP_LOG, .stopped = true,
 	};
 
 	printk("== 5.3 fault storm: app crashes at launch, restart policy on, until %d restarts\n",
@@ -211,6 +211,7 @@ static void mode_storm(void)
 	int id = app_platform_launch(&def);
 
 	app_platform_set_restart(id, true);
+	(void)app_platform_start(id);
 	uint32_t last = 0;
 
 	int64_t tp = t0;

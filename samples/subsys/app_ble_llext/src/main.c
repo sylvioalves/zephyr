@@ -28,6 +28,7 @@ static const uint8_t svc_uuid[16] = {
 
 int main(void)
 {
+	const struct app_launch_opts opts = { .stopped = true };
 	struct llext *ext = NULL;
 	void *entry = NULL;
 	int rc;
@@ -44,14 +45,15 @@ int main(void)
 		return 0;
 	}
 
-	rc = app_platform_launch_llext("ble_llext", ext, (app_entry_t)entry, NULL,
-				       APP_CAP_LOG | APP_CAP_BLE | APP_CAP_INPUT);
+	rc = app_platform_launch_llext_opts("ble_llext", ext, (app_entry_t)entry, NULL,
+					    APP_CAP_LOG | APP_CAP_BLE | APP_CAP_INPUT, &opts);
 	if (rc < 0) {
 		printk("launch failed (%d)\n", rc);
 		return 0;
 	}
 
 	app_platform_grant_ble_gatt(rc, svc_uuid, sizeof(svc_uuid));
+	(void)app_platform_start(rc);
 	printk("launched loadable peripheral app %d\n", rc);
 	return 0;
 }

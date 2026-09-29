@@ -65,6 +65,7 @@ int main(void)
 		.source = APP_BUILTIN,
 		.entry = consumer_app,
 		.caps = APP_CAP_LOG | APP_CAP_THREAD,
+		.stopped = true,
 	};
 	struct app_platform_status st;
 	int id;
@@ -82,6 +83,7 @@ int main(void)
 #ifdef CONFIG_USERSPACE
 	k_mem_domain_add_partition(app_platform_domain(id), &work_part);
 #endif
+	(void)app_platform_start(id);
 
 	do {
 		k_msleep(10);

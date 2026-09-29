@@ -140,6 +140,7 @@ int main(void)
 		.source = APP_BUILTIN,
 		.entry = uart_app,
 		.caps = APP_CAP_LOG | APP_CAP_TIME | APP_CAP_UART,
+		.stopped = true,
 	};
 
 	int id = app_platform_launch(&def);
@@ -149,6 +150,7 @@ int main(void)
 		return 0;
 	}
 	k_mem_domain_add_partition(app_platform_domain(id), &uart_part);
+	(void)app_platform_start(id);
 
 	printk("*** launched isolated uart app (group %d) ***\n", id);
 	return 0;

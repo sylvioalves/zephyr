@@ -252,16 +252,17 @@ int main(void)
 
 	const struct app_def crypto_app = {
 		.name = "bench0", .source = APP_BUILTIN, .entry = bench_user,
-		.caps = APP_CAP_LOG | APP_CAP_TIME | APP_CAP_CRYPTO,
+		.caps = APP_CAP_LOG | APP_CAP_TIME | APP_CAP_CRYPTO, .stopped = true,
 	};
 	const struct app_def denied_app = {
 		.name = "bench1", .source = APP_BUILTIN, .entry = bench_denied,
-		.caps = APP_CAP_LOG | APP_CAP_TIME,
+		.caps = APP_CAP_LOG | APP_CAP_TIME, .stopped = true,
 	};
 
 	int id0 = app_platform_launch(&crypto_app);
 
 	k_mem_domain_add_partition(app_platform_domain(id0), &res_part);
+	(void)app_platform_start(id0);
 	wait_done(1);
 	printk("-- user-mode app (bench0, caps LOG|TIME|CRYPTO)\n");
 	report("user empty loop", ures.empty, N_CALL);
@@ -273,6 +274,7 @@ int main(void)
 	int id1 = app_platform_launch(&denied_app);
 
 	k_mem_domain_add_partition(app_platform_domain(id1), &res_part);
+	(void)app_platform_start(id1);
 	wait_done(2);
 	printk("-- user-mode app (bench1, caps LOG|TIME, no CRYPTO)\n");
 	report("user app_svc_sha256 denied", ures.sha_denied, N_CALL);

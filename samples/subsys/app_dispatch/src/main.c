@@ -122,6 +122,7 @@ int main(void)
 		.source = APP_BUILTIN,
 		.entry = dispatch_app,
 		.caps = APP_CAP_LOG | APP_CAP_INPUT | APP_CAP_GPIO,
+		.stopped = true,
 	};
 
 	int id = app_platform_launch(&def);
@@ -132,6 +133,7 @@ int main(void)
 	}
 	app_platform_grant_gpio(id, BIT(WATCH_LINE));
 	k_mem_domain_add_partition(app_platform_domain(id), &disp_part);
+	(void)app_platform_start(id);
 
 	struct app_def denied = {
 		.name = "nodispatch",

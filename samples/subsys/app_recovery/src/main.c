@@ -33,11 +33,13 @@ int main(void)
 		.source = APP_BUILTIN,
 		.entry = app_worker,
 		.caps = APP_CAP_LOG,
+		.stopped = true,
 	};
 	int id = app_platform_launch(&worker);
 
 	/* Make the worker resilient: the platform restarts it after a fault. */
 	app_platform_set_restart(id, true);
+	(void)app_platform_start(id);
 
 	k_msleep(6000);
 

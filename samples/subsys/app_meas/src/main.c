@@ -235,7 +235,7 @@ static void phase_fault(void)
 {
 	const struct app_def def = {
 		.name = "crasher", .source = APP_BUILTIN, .entry = crasher,
-		.caps = APP_CAP_LOG,
+		.caps = APP_CAP_LOG, .stopped = true,
 	};
 
 	printk("== 3.3 crash: NULL write in a built-in user app\n");
@@ -244,6 +244,7 @@ static void phase_fault(void)
 	int id = app_platform_launch(&def);
 
 	k_mem_domain_add_partition(app_platform_domain(id), &shared_part);
+	(void)app_platform_start(id);
 	bool freed = wait_slot_free(id, 2000);
 
 	printk("  slot free: %s\n", freed ? "yes" : "TIMEOUT");
@@ -257,7 +258,7 @@ static void phase_hang(void)
 {
 	const struct app_def def = {
 		.name = "hanger", .source = APP_BUILTIN, .entry = hanger,
-		.caps = APP_CAP_LOG, .monitored = true,
+		.caps = APP_CAP_LOG, .monitored = true, .stopped = true,
 	};
 
 	printk("== 3.3 hang: monitored app stops heartbeating (WDT %d ms)\n",
@@ -267,6 +268,7 @@ static void phase_hang(void)
 	int id = app_platform_launch(&def);
 
 	k_mem_domain_add_partition(app_platform_domain(id), &shared_part);
+	(void)app_platform_start(id);
 	bool freed = wait_slot_free(id, 6000);
 
 	printk("  slot free: %s\n", freed ? "yes" : "TIMEOUT");
@@ -295,7 +297,7 @@ static void phase_kptr(void)
 {
 	const struct app_def def = {
 		.name = "kptr", .source = APP_BUILTIN, .entry = kptr_app,
-		.caps = APP_CAP_LOG,
+		.caps = APP_CAP_LOG, .stopped = true,
 	};
 
 	printk("== 4.6 app_svc_log with kernel/wild pointers (NLEN validate %s)\n",
@@ -304,6 +306,7 @@ static void phase_kptr(void)
 	int id = app_platform_launch(&def);
 
 	k_mem_domain_add_partition(app_platform_domain(id), &shared_part);
+	(void)app_platform_start(id);
 	bool freed = wait_slot_free(id, 2000);
 
 	printk("  app finished normally: %s, slot free: %s\n",

@@ -128,6 +128,7 @@ int main(void)
 		.source = APP_BUILTIN,
 		.entry = gatt_app,
 		.caps = APP_CAP_LOG | APP_CAP_BLE,
+		.stopped = true,
 	};
 
 	int id = app_platform_launch(&def);
@@ -141,6 +142,7 @@ int main(void)
 	 * reach even though the application holds APP_CAP_BLE.
 	 */
 	app_platform_grant_ble_gatt(id, sensor_svc, sizeof(sensor_svc));
+	(void)app_platform_start(id);
 
 	struct app_def denied = {
 		.name = "nogatt",
