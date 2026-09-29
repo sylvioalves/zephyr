@@ -15,6 +15,8 @@
 #include <string.h>
 #include <errno.h>
 
+#include "launch.h"
+
 #define WORKERS  CONFIG_APP_PLATFORM_APP_THREADS
 #define SEMS     CONFIG_APP_PLATFORM_APP_SEMS
 #define THR_CAPS (APP_CAP_LOG | APP_CAP_THREAD)
@@ -64,7 +66,7 @@ static int launch(const char *name, app_entry_t entry, app_caps_t caps)
 		.entry = entry,
 		.caps = caps,
 	};
-	int id = app_platform_launch(&def);
+	int id = launch_app(&def);
 
 #ifdef CONFIG_USERSPACE
 	if (id >= 0) {

@@ -5,7 +5,8 @@ common:
   # The suites launch real user-mode applications and load signed llext
   # modules from a filesystem, so a target needs userspace, llext, a storage
   # partition and PSA crypto. The Arm targets cover an Armv7-M and an Armv8-M
-  # MPU, an Armv8.1-M MPU with more regions, and an AArch64 MMU.
+  # MPU, an Armv8.1-M MPU with more regions, and an AArch64 MMU. The SMP
+  # targets run the applications on two CPUs, with an MMU and with a PMP.
   platform_allow:
     - esp32c5_devkitc/esp32c5/hpcore
     - esp32c6_devkitc/esp32c6/hpcore
@@ -14,6 +15,8 @@ common:
     - mps2/an521/cpu0
     - mps3/corstone300/an547
     - qemu_cortex_a53
+    - qemu_cortex_a53/qemu_cortex_a53/smp
+    - qemu_riscv32/qemu_virt_riscv32/smp
     - esp32_devkitc/esp32/procpu
 tests:
   app_platform.core:
@@ -23,7 +26,7 @@ tests:
       - esp32_devkitc/esp32/procpu
     extra_configs:
       - CONFIG_USERSPACE=y
-      - CONFIG_MAX_THREAD_BYTES=3
+      - CONFIG_MAX_THREAD_BYTES=4
       - CONFIG_PRIVILEGED_STACK_SIZE=3072
   # Supervisor-mode applications: the suites that pit an application against
   # memory protection are left out.

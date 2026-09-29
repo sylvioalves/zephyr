@@ -19,6 +19,8 @@
 #include <string.h>
 #include <errno.h>
 
+#include "launch.h"
+
 #define HEAP_SZ  992U
 #define POOL_SZ  CONFIG_APP_PLATFORM_APP_HEAP_POOL_SIZE
 #define HEAP_MAX CONFIG_APP_PLATFORM_APP_HEAP_MAX_BYTES
@@ -113,7 +115,7 @@ static int launch(const char *name, app_entry_t entry, app_caps_t caps, size_t h
 		.caps = caps,
 		.heap_size = heap_size,
 	};
-	int id = app_platform_launch(&def);
+	int id = launch_app(&def);
 
 #ifdef CONFIG_USERSPACE
 	if (id >= 0) {

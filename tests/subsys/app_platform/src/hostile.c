@@ -21,6 +21,8 @@
 #include <string.h>
 #include <errno.h>
 
+#include "launch.h"
+
 #define HAS_GPIO0 DT_NODE_EXISTS(DT_NODELABEL(gpio0))
 #define HAS_PRIV_PROBES \
 	(IS_ENABLED(CONFIG_RISCV) || IS_ENABLED(CONFIG_CPU_CORTEX_M) || IS_ENABLED(CONFIG_ARM64))
@@ -120,7 +122,7 @@ static void *hostile_setup(void)
 		.caps = APP_CAP_LOG,
 	};
 
-	canary_id = app_platform_launch(&def);
+	canary_id = launch_app(&def);
 	zassert_true(canary_id >= 0, "canary launch failed");
 	k_mem_domain_add_partition(app_platform_domain(canary_id), &victim_part);
 	k_msleep(50);
@@ -141,7 +143,7 @@ static void expect_reclaimed(const char *name, app_entry_t entry, app_caps_t cap
 		.name = name, .source = APP_BUILTIN, .entry = entry, .caps = caps,
 	};
 	uint32_t before = victim_data;
-	int id = app_platform_launch(&def);
+	int id = launch_app(&def);
 
 	zassert_true(id >= 0, "launch failed");
 	add_report_part(id);
@@ -163,7 +165,7 @@ static void expect_refused(const char *name, app_entry_t entry, app_caps_t caps,
 	const struct app_def def = {
 		.name = name, .source = APP_BUILTIN, .entry = entry, .caps = caps,
 	};
-	int id = app_platform_launch(&def);
+	int id = launch_app(&def);
 
 	zassert_true(id >= 0, "launch failed");
 	add_report_part(id);
@@ -355,7 +357,7 @@ ZTEST(zhostile, test_4_4_wfi)
 		.name = "h_wfi", .source = APP_BUILTIN, .entry = do_wfi,
 		.caps = APP_CAP_LOG,
 	};
-	int id = app_platform_launch(&def);
+	int id = launch_app(&def);
 
 	zassert_true(id >= 0);
 	add_report_part(id);
@@ -580,7 +582,7 @@ ZTEST(zhostile, test_4_11_forged_identity)
 		.entry = canary_app,
 		.caps = APP_CAP_LOG | APP_CAP_CRYPTO,
 	};
-	int rid = app_platform_launch(&rich);
+	int rid = launch_app(&rich);
 
 	zassert_true(rid >= 0, "neighbour launch failed");
 	k_mem_domain_add_partition(app_platform_domain(rid), &victim_part);
@@ -644,7 +646,7 @@ ZTEST(zhostile, test_4_13_capability_above_bit31)
 		.name = "h_hi", .source = APP_BUILTIN, .entry = sensor_probe,
 		.caps = APP_CAP_LOG | APP_CAP_SENSOR | CAP_HIGH,
 	};
-	int id = app_platform_launch(&granted);
+	int id = launch_app(&granted);
 
 	zassert_true(id >= 0, "launch failed");
 	add_report_part(id);
@@ -742,7 +744,7 @@ ZTEST(zhostile, test_4_14_control_self_refused)
 	};
 	self_id = -1;
 
-	int id = app_platform_launch(&def);
+	int id = launch_app(&def);
 
 	zassert_true(id >= 0, "launch failed");
 	add_report_part(id);
@@ -761,7 +763,7 @@ ZTEST(zhostile, test_4_14_control_stops_another_app)
 
 	target_id = -1;
 
-	int tid = app_platform_launch(&tgt);
+	int tid = launch_app(&tgt);
 
 	zassert_true(tid >= 0, "target launch failed");
 	k_msleep(30);
@@ -775,7 +777,7 @@ ZTEST(zhostile, test_4_14_control_stops_another_app)
 		.name = "h_ctl", .source = APP_BUILTIN, .entry = stop_target,
 		.caps = APP_CAP_LOG | APP_CAP_CONTROL,
 	};
-	int id = app_platform_launch(&ctl);
+	int id = launch_app(&ctl);
 
 	zassert_true(id >= 0, "controller launch failed");
 	add_report_part(id);
@@ -799,7 +801,7 @@ ZTEST(zhostile, test_4_14_control_stops_another_app)
 
 	report_rc = 0;
 	report_done = 0;
-	int rid = app_platform_launch(&re);
+	int rid = launch_app(&re);
 
 	zassert_true(rid >= 0, "restarter launch failed");
 	add_report_part(rid);
@@ -1013,7 +1015,7 @@ ZTEST(zhostile, test_4_16_deep_service_calls_do_not_kill_the_system)
 		.name = "h_deep", .source = APP_BUILTIN, .entry = priv_stack_pressure,
 		.caps = APP_CAP_LOG | APP_CAP_FS,
 	};
-	int id = app_platform_launch(&def);
+	int id = launch_app(&def);
 
 	zassert_true(id >= 0, "launch failed");
 	add_report_part(id);
@@ -1086,8 +1088,7 @@ ZTEST(zhostile, test_4_17_running_name_is_unique)
 		.caps = APP_CAP_LOG,
 	};
 
-	zassert_equal(app_platform_launch(&def), -EEXIST,
-		      "a second application ran under a running name");
+	zassert_equal(launch_app(&def), -EEXIST, "a second application ran under a running name");
 }
 
 /* ---- 4.18 another application's heap ---- */
@@ -1125,7 +1126,7 @@ static int launch_heap_owner(void)
 	int id;
 
 	report_addr = 0U;
-	id = app_platform_launch(&def);
+	id = launch_app(&def);
 	zassert_true(id >= 0, "owner launch rc %d", id);
 	add_report_part(id);
 	for (int i = 0; i < 100 && report_addr == 0U; i++) {
@@ -1170,7 +1171,7 @@ ZTEST(zhostile, test_4_18_heap_unmapped_after_reclaim)
 	zassert_true(wait_slot_free("h_owner", 2000));
 	k_msleep(20);
 
-	id2 = app_platform_launch(&def);
+	id2 = launch_app(&def);
 	zassert_equal(id2, id, "not the same slot (%d, %d)", id2, id);
 	add_report_part(id2);
 	zassert_true(wait_slot_free("h_heap2", 2000), "h_heap2 was not reclaimed");
