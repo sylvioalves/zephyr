@@ -740,6 +740,7 @@ ZTEST(devices, test_led_off_on_reclaim)
 }
 
 /* ---- addressable RGB LED ---- */
+#ifdef CONFIG_APP_PLATFORM_RGB
 
 static const struct device *const strip = DEVICE_DT_GET(DT_NODELABEL(test_strip));
 static const struct device *const strip_uart = DEVICE_DT_GET(DT_NODELABEL(strip_uart));
@@ -841,6 +842,7 @@ ZTEST(devices, test_rgb_off_on_reclaim)
 	zassert_true(n >= len, "reclaim did not refresh the strip");
 	zassert_mem_equal(&strip_bytes[n - len], off, len, "reclaim left the pixel lit");
 }
+#endif /* CONFIG_APP_PLATFORM_RGB */
 
 /* ---- shared display ---- */
 

@@ -1,0 +1,21 @@
+/*
+ * Copyright (c) 2026 Espressif Systems (Shanghai) Co., Ltd.
+ *
+ * SPDX-License-Identifier: Apache-2.0
+ */
+
+/* The suite stands in its own motor-control PWM for the SoC one. */
+/delete-node/ &mcpwm0;
+
+#include "../app.overlay"
+
+/* The WS2812 UART backend needs the asynchronous UART API, which the ESP32
+ * UART driver does not support.
+ */
+/delete-node/ &strip_uart;
+
+/ {
+	aliases {
+		/delete-property/ led-strip;
+	};
+};

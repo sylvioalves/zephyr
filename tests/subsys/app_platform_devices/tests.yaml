@@ -12,11 +12,17 @@ common:
     - mps2/an521/cpu0
     - mps3/corstone300/an547
     - qemu_cortex_a53
+    - esp32_devkitc/esp32/procpu
 tests:
+  # The Xtensa ESP32 has no user mode, so it runs only the no_userspace case.
   app_platform.devices:
     timeout: 60
+    platform_exclude:
+      - esp32_devkitc/esp32/procpu
   app_platform.devices.own_fatal_handler:
     timeout: 60
+    platform_exclude:
+      - esp32_devkitc/esp32/procpu
     extra_configs:
       - CONFIG_APP_PLATFORM_FATAL_HANDLER=n
   app_platform.devices.no_userspace:
