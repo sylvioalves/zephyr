@@ -35,7 +35,7 @@
 
 static const struct device *const rtc_dev = DEVICE_DT_GET(DT_CHOSEN(zephyr_rtc));
 
-int z_impl_svc_rtcdev_get(struct svc_rtc_time *out)
+int z_impl_app_svc_rtcdev_get(struct app_svc_rtc_time *out)
 {
 	if (!app_has_cap(APP_CAP_RTC)) {
 		return -EPERM;
@@ -50,7 +50,7 @@ int z_impl_svc_rtcdev_get(struct svc_rtc_time *out)
 	if (rc != 0) {
 		return rc;
 	}
-	*out = (struct svc_rtc_time){
+	*out = (struct app_svc_rtc_time){
 		.year = t.tm_year + 1900,
 		.month = (uint8_t)(t.tm_mon + 1),
 		.day = (uint8_t)t.tm_mday,
@@ -64,7 +64,7 @@ int z_impl_svc_rtcdev_get(struct svc_rtc_time *out)
 /* Setting the clock is device-wide, so it takes a capability of its own rather
  * than riding on the one that only reads it.
  */
-int z_impl_svc_rtcdev_set(const struct svc_rtc_time *in)
+int z_impl_app_svc_rtcdev_set(const struct app_svc_rtc_time *in)
 {
 	if (!app_has_cap(APP_CAP_RTC_SET)) {
 		return -EPERM;
@@ -102,7 +102,7 @@ int z_impl_svc_rtcdev_set(const struct svc_rtc_time *in)
 
 static const struct device *const w1_dev = DEVICE_DT_GET(DT_CHOSEN(zephyr_w1));
 
-int z_impl_svc_w1_reset(void)
+int z_impl_app_svc_w1_reset(void)
 {
 	if (!app_has_cap(APP_CAP_W1)) {
 		return -EPERM;
@@ -113,7 +113,7 @@ int z_impl_svc_w1_reset(void)
 	return w1_reset_bus(w1_dev);
 }
 
-int z_impl_svc_w1_read_byte(void)
+int z_impl_app_svc_w1_read_byte(void)
 {
 	if (!app_has_cap(APP_CAP_W1)) {
 		return -EPERM;
@@ -124,7 +124,7 @@ int z_impl_svc_w1_read_byte(void)
 	return w1_read_byte(w1_dev);
 }
 
-int z_impl_svc_w1_write_byte(uint8_t byte)
+int z_impl_app_svc_w1_write_byte(uint8_t byte)
 {
 	if (!app_has_cap(APP_CAP_W1)) {
 		return -EPERM;
@@ -150,7 +150,7 @@ static const struct device *const gauge_dev =
 /* Read-only by design: an application observes the battery, and changing the
  * charge policy stays with the system.
  */
-int z_impl_svc_charger_online(void)
+int z_impl_app_svc_charger_online(void)
 {
 	if (!app_has_cap(APP_CAP_POWER)) {
 		return -EPERM;
@@ -165,7 +165,7 @@ int z_impl_svc_charger_online(void)
 	return rc != 0 ? rc : (int)val.online;
 }
 
-int z_impl_svc_battery_percent(void)
+int z_impl_app_svc_battery_percent(void)
 {
 	if (!app_has_cap(APP_CAP_POWER)) {
 		return -EPERM;
@@ -249,7 +249,7 @@ static int granted_regulator(int idx, const struct device **out)
 	return 0;
 }
 
-int z_impl_svc_regulator_count(void)
+int z_impl_app_svc_regulator_count(void)
 {
 	if (!app_has_cap(APP_CAP_REGULATOR)) {
 		return -EPERM;
@@ -258,7 +258,7 @@ int z_impl_svc_regulator_count(void)
 }
 
 /* A disable only releases an enable this application holds. */
-int z_impl_svc_regulator_enable(int idx, int on)
+int z_impl_app_svc_regulator_enable(int idx, int on)
 {
 	const struct device *dev;
 	uint16_t *count;
@@ -357,7 +357,7 @@ static int granted_stepper(int idx, const struct device **out)
 	return 0;
 }
 
-int z_impl_svc_stepper_count(void)
+int z_impl_app_svc_stepper_count(void)
 {
 	if (!app_has_cap(APP_CAP_STEPPER)) {
 		return -EPERM;
@@ -369,7 +369,7 @@ int z_impl_svc_stepper_count(void)
  * the stepper device and motion to the controller. An application is granted a
  * controller, so stopping it is expressed as a stop rather than a de-energize.
  */
-int z_impl_svc_stepper_stop(int idx)
+int z_impl_app_svc_stepper_stop(int idx)
 {
 	const struct device *dev;
 	int rc = granted_stepper(idx, &dev);
@@ -394,7 +394,7 @@ int z_impl_svc_stepper_stop(int idx)
  * a callback cannot cross into user mode, so an application polls the position
  * instead of being told when the move ends.
  */
-int z_impl_svc_stepper_move_by(int idx, int32_t micro_steps)
+int z_impl_app_svc_stepper_move_by(int idx, int32_t micro_steps)
 {
 	const struct device *dev;
 	int rc = granted_stepper(idx, &dev);
@@ -416,7 +416,7 @@ int z_impl_svc_stepper_move_by(int idx, int32_t micro_steps)
 	return rc;
 }
 
-int z_impl_svc_stepper_position(int idx, int32_t *pos)
+int z_impl_app_svc_stepper_position(int idx, int32_t *pos)
 {
 	const struct device *dev;
 	int32_t val = 0;
@@ -436,107 +436,107 @@ int z_impl_svc_stepper_position(int idx, int32_t *pos)
 
 #ifdef CONFIG_USERSPACE
 #ifdef CONFIG_APP_PLATFORM_RTC
-static inline int z_vrfy_svc_rtcdev_get(struct svc_rtc_time *out)
+static inline int z_vrfy_app_svc_rtcdev_get(struct app_svc_rtc_time *out)
 {
-	struct svc_rtc_time tmp;
-	int rc = z_impl_svc_rtcdev_get(&tmp);
+	struct app_svc_rtc_time tmp;
+	int rc = z_impl_app_svc_rtcdev_get(&tmp);
 
 	if (rc == 0 && k_usermode_to_copy(out, &tmp, sizeof(tmp)) != 0) {
 		return -EFAULT;
 	}
 	return rc;
 }
-#include <zephyr/syscalls/svc_rtcdev_get_mrsh.c>
+#include <zephyr/syscalls/app_svc_rtcdev_get_mrsh.c>
 
-static inline int z_vrfy_svc_rtcdev_set(const struct svc_rtc_time *in)
+static inline int z_vrfy_app_svc_rtcdev_set(const struct app_svc_rtc_time *in)
 {
-	struct svc_rtc_time tmp;
+	struct app_svc_rtc_time tmp;
 
 	if (k_usermode_from_copy(&tmp, (void *)in, sizeof(tmp)) != 0) {
 		return -EFAULT;
 	}
-	return z_impl_svc_rtcdev_set(&tmp);
+	return z_impl_app_svc_rtcdev_set(&tmp);
 }
-#include <zephyr/syscalls/svc_rtcdev_set_mrsh.c>
+#include <zephyr/syscalls/app_svc_rtcdev_set_mrsh.c>
 #endif /* CONFIG_APP_PLATFORM_RTC */
 
 #ifdef CONFIG_APP_PLATFORM_W1
-static inline int z_vrfy_svc_w1_reset(void)
+static inline int z_vrfy_app_svc_w1_reset(void)
 {
-	return z_impl_svc_w1_reset();
+	return z_impl_app_svc_w1_reset();
 }
-#include <zephyr/syscalls/svc_w1_reset_mrsh.c>
+#include <zephyr/syscalls/app_svc_w1_reset_mrsh.c>
 
-static inline int z_vrfy_svc_w1_read_byte(void)
+static inline int z_vrfy_app_svc_w1_read_byte(void)
 {
-	return z_impl_svc_w1_read_byte();
+	return z_impl_app_svc_w1_read_byte();
 }
-#include <zephyr/syscalls/svc_w1_read_byte_mrsh.c>
+#include <zephyr/syscalls/app_svc_w1_read_byte_mrsh.c>
 
-static inline int z_vrfy_svc_w1_write_byte(uint8_t byte)
+static inline int z_vrfy_app_svc_w1_write_byte(uint8_t byte)
 {
-	return z_impl_svc_w1_write_byte(byte);
+	return z_impl_app_svc_w1_write_byte(byte);
 }
-#include <zephyr/syscalls/svc_w1_write_byte_mrsh.c>
+#include <zephyr/syscalls/app_svc_w1_write_byte_mrsh.c>
 #endif /* CONFIG_APP_PLATFORM_W1 */
 
 #ifdef CONFIG_APP_PLATFORM_POWER
-static inline int z_vrfy_svc_charger_online(void)
+static inline int z_vrfy_app_svc_charger_online(void)
 {
-	return z_impl_svc_charger_online();
+	return z_impl_app_svc_charger_online();
 }
-#include <zephyr/syscalls/svc_charger_online_mrsh.c>
+#include <zephyr/syscalls/app_svc_charger_online_mrsh.c>
 
-static inline int z_vrfy_svc_battery_percent(void)
+static inline int z_vrfy_app_svc_battery_percent(void)
 {
-	return z_impl_svc_battery_percent();
+	return z_impl_app_svc_battery_percent();
 }
-#include <zephyr/syscalls/svc_battery_percent_mrsh.c>
+#include <zephyr/syscalls/app_svc_battery_percent_mrsh.c>
 #endif /* CONFIG_APP_PLATFORM_POWER */
 
 #ifdef CONFIG_APP_PLATFORM_REGULATOR
-static inline int z_vrfy_svc_regulator_count(void)
+static inline int z_vrfy_app_svc_regulator_count(void)
 {
-	return z_impl_svc_regulator_count();
+	return z_impl_app_svc_regulator_count();
 }
-#include <zephyr/syscalls/svc_regulator_count_mrsh.c>
+#include <zephyr/syscalls/app_svc_regulator_count_mrsh.c>
 
-static inline int z_vrfy_svc_regulator_enable(int idx, int on)
+static inline int z_vrfy_app_svc_regulator_enable(int idx, int on)
 {
-	return z_impl_svc_regulator_enable(idx, on);
+	return z_impl_app_svc_regulator_enable(idx, on);
 }
-#include <zephyr/syscalls/svc_regulator_enable_mrsh.c>
+#include <zephyr/syscalls/app_svc_regulator_enable_mrsh.c>
 #endif /* CONFIG_APP_PLATFORM_REGULATOR */
 
 #ifdef CONFIG_APP_PLATFORM_STEPPER
-static inline int z_vrfy_svc_stepper_count(void)
+static inline int z_vrfy_app_svc_stepper_count(void)
 {
-	return z_impl_svc_stepper_count();
+	return z_impl_app_svc_stepper_count();
 }
-#include <zephyr/syscalls/svc_stepper_count_mrsh.c>
+#include <zephyr/syscalls/app_svc_stepper_count_mrsh.c>
 
-static inline int z_vrfy_svc_stepper_stop(int idx)
+static inline int z_vrfy_app_svc_stepper_stop(int idx)
 {
-	return z_impl_svc_stepper_stop(idx);
+	return z_impl_app_svc_stepper_stop(idx);
 }
-#include <zephyr/syscalls/svc_stepper_stop_mrsh.c>
+#include <zephyr/syscalls/app_svc_stepper_stop_mrsh.c>
 
-static inline int z_vrfy_svc_stepper_move_by(int idx, int32_t micro_steps)
+static inline int z_vrfy_app_svc_stepper_move_by(int idx, int32_t micro_steps)
 {
-	return z_impl_svc_stepper_move_by(idx, micro_steps);
+	return z_impl_app_svc_stepper_move_by(idx, micro_steps);
 }
-#include <zephyr/syscalls/svc_stepper_move_by_mrsh.c>
+#include <zephyr/syscalls/app_svc_stepper_move_by_mrsh.c>
 
-static inline int z_vrfy_svc_stepper_position(int idx, int32_t *pos)
+static inline int z_vrfy_app_svc_stepper_position(int idx, int32_t *pos)
 {
 	int32_t val = 0;
-	int rc = z_impl_svc_stepper_position(idx, &val);
+	int rc = z_impl_app_svc_stepper_position(idx, &val);
 
 	if (rc == 0 && k_usermode_to_copy(pos, &val, sizeof(val)) != 0) {
 		return -EFAULT;
 	}
 	return rc;
 }
-#include <zephyr/syscalls/svc_stepper_position_mrsh.c>
+#include <zephyr/syscalls/app_svc_stepper_position_mrsh.c>
 #endif /* CONFIG_APP_PLATFORM_STEPPER */
 #endif /* CONFIG_USERSPACE */

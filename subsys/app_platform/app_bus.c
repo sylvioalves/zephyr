@@ -41,7 +41,7 @@ void app_platform_grant_i2c(int id, uint16_t addr)
 	}
 }
 
-int z_impl_svc_i2c_read(uint16_t addr, uint8_t *buf, size_t len)
+int z_impl_app_svc_i2c_read(uint16_t addr, uint8_t *buf, size_t len)
 {
 	if (!app_has_cap(APP_CAP_I2C)) {
 		return -EPERM;
@@ -94,7 +94,7 @@ void app_platform_grant_spi(int id, bool allow)
 	}
 }
 
-int z_impl_svc_spi_xfer(const uint8_t *tx, uint8_t *rx, size_t len)
+int z_impl_app_svc_spi_xfer(const uint8_t *tx, uint8_t *rx, size_t len)
 {
 	if (!app_has_cap(APP_CAP_SPI)) {
 		return -EPERM;
@@ -160,8 +160,8 @@ static void uart_restore_boot_cfg(int id)
 }
 #endif
 
-int z_impl_svc_uart_configure(uint32_t baud, uint8_t parity, uint8_t stop_bits,
-			      uint8_t data_bits)
+int z_impl_app_svc_uart_configure(uint32_t baud, uint8_t parity, uint8_t stop_bits,
+				  uint8_t data_bits)
 {
 	if (!app_has_cap(APP_CAP_UART)) {
 		return -EPERM;
@@ -242,7 +242,7 @@ int z_impl_svc_uart_configure(uint32_t baud, uint8_t parity, uint8_t stop_bits,
 #endif
 }
 
-int z_impl_svc_uart_close(void)
+int z_impl_app_svc_uart_close(void)
 {
 	if (!app_has_cap(APP_CAP_UART)) {
 		return -EPERM;
@@ -258,7 +258,7 @@ int z_impl_svc_uart_close(void)
 #endif
 }
 
-int z_impl_svc_uart_write(const uint8_t *buf, size_t len)
+int z_impl_app_svc_uart_write(const uint8_t *buf, size_t len)
 {
 	if (!app_has_cap(APP_CAP_UART)) {
 		return -EPERM;
@@ -280,7 +280,7 @@ int z_impl_svc_uart_write(const uint8_t *buf, size_t len)
 #endif
 }
 
-int z_impl_svc_uart_read(uint8_t *buf, size_t len)
+int z_impl_app_svc_uart_read(uint8_t *buf, size_t len)
 {
 	if (!app_has_cap(APP_CAP_UART)) {
 		return -EPERM;
@@ -305,7 +305,7 @@ int z_impl_svc_uart_read(uint8_t *buf, size_t len)
 }
 
 #ifdef CONFIG_USERSPACE
-int z_impl_svc_i2c_write(uint16_t addr, const uint8_t *buf, size_t len)
+int z_impl_app_svc_i2c_write(uint16_t addr, const uint8_t *buf, size_t len)
 {
 	if (!app_has_cap(APP_CAP_I2C)) {
 		return -EPERM;
@@ -330,8 +330,8 @@ int z_impl_svc_i2c_write(uint16_t addr, const uint8_t *buf, size_t len)
 #endif
 }
 
-int z_impl_svc_i2c_write_read(uint16_t addr, const uint8_t *tx, size_t tx_len,
-			      uint8_t *rx, size_t rx_len)
+int z_impl_app_svc_i2c_write_read(uint16_t addr, const uint8_t *tx, size_t tx_len,
+				  uint8_t *rx, size_t rx_len)
 {
 	if (!app_has_cap(APP_CAP_I2C)) {
 		return -EPERM;
@@ -358,65 +358,65 @@ int z_impl_svc_i2c_write_read(uint16_t addr, const uint8_t *tx, size_t tx_len,
 #endif
 }
 
-static inline int z_vrfy_svc_i2c_read(uint16_t addr, uint8_t *buf, size_t len)
+static inline int z_vrfy_app_svc_i2c_read(uint16_t addr, uint8_t *buf, size_t len)
 {
 	K_OOPS(K_SYSCALL_MEMORY_WRITE(buf, len));
-	return z_impl_svc_i2c_read(addr, buf, len);
+	return z_impl_app_svc_i2c_read(addr, buf, len);
 }
-#include <zephyr/syscalls/svc_i2c_read_mrsh.c>
+#include <zephyr/syscalls/app_svc_i2c_read_mrsh.c>
 
-static inline int z_vrfy_svc_i2c_write(uint16_t addr, const uint8_t *buf,
-				       size_t len)
+static inline int z_vrfy_app_svc_i2c_write(uint16_t addr, const uint8_t *buf,
+					   size_t len)
 {
 	K_OOPS(K_SYSCALL_MEMORY_READ(buf, len));
-	return z_impl_svc_i2c_write(addr, buf, len);
+	return z_impl_app_svc_i2c_write(addr, buf, len);
 }
-#include <zephyr/syscalls/svc_i2c_write_mrsh.c>
+#include <zephyr/syscalls/app_svc_i2c_write_mrsh.c>
 
-static inline int z_vrfy_svc_i2c_write_read(uint16_t addr, const uint8_t *tx,
-					    size_t tx_len, uint8_t *rx,
-					    size_t rx_len)
+static inline int z_vrfy_app_svc_i2c_write_read(uint16_t addr, const uint8_t *tx,
+						size_t tx_len, uint8_t *rx,
+						size_t rx_len)
 {
 	K_OOPS(K_SYSCALL_MEMORY_READ(tx, tx_len));
 	K_OOPS(K_SYSCALL_MEMORY_WRITE(rx, rx_len));
-	return z_impl_svc_i2c_write_read(addr, tx, tx_len, rx, rx_len);
+	return z_impl_app_svc_i2c_write_read(addr, tx, tx_len, rx, rx_len);
 }
-#include <zephyr/syscalls/svc_i2c_write_read_mrsh.c>
+#include <zephyr/syscalls/app_svc_i2c_write_read_mrsh.c>
 
-static inline int z_vrfy_svc_spi_xfer(const uint8_t *tx, uint8_t *rx, size_t len)
+static inline int z_vrfy_app_svc_spi_xfer(const uint8_t *tx, uint8_t *rx, size_t len)
 {
 	K_OOPS(K_SYSCALL_MEMORY_READ(tx, len));
 	K_OOPS(K_SYSCALL_MEMORY_WRITE(rx, len));
-	return z_impl_svc_spi_xfer(tx, rx, len);
+	return z_impl_app_svc_spi_xfer(tx, rx, len);
 }
-#include <zephyr/syscalls/svc_spi_xfer_mrsh.c>
+#include <zephyr/syscalls/app_svc_spi_xfer_mrsh.c>
 
-static inline int z_vrfy_svc_uart_write(const uint8_t *buf, size_t len)
+static inline int z_vrfy_app_svc_uart_write(const uint8_t *buf, size_t len)
 {
 	K_OOPS(K_SYSCALL_MEMORY_READ(buf, len));
-	return z_impl_svc_uart_write(buf, len);
+	return z_impl_app_svc_uart_write(buf, len);
 }
-#include <zephyr/syscalls/svc_uart_write_mrsh.c>
+#include <zephyr/syscalls/app_svc_uart_write_mrsh.c>
 
-static inline int z_vrfy_svc_uart_read(uint8_t *buf, size_t len)
+static inline int z_vrfy_app_svc_uart_read(uint8_t *buf, size_t len)
 {
 	K_OOPS(K_SYSCALL_MEMORY_WRITE(buf, len));
-	return z_impl_svc_uart_read(buf, len);
+	return z_impl_app_svc_uart_read(buf, len);
 }
-#include <zephyr/syscalls/svc_uart_read_mrsh.c>
+#include <zephyr/syscalls/app_svc_uart_read_mrsh.c>
 
-static inline int z_vrfy_svc_uart_configure(uint32_t baud, uint8_t parity,
-					    uint8_t stop_bits, uint8_t data_bits)
+static inline int z_vrfy_app_svc_uart_configure(uint32_t baud, uint8_t parity,
+						uint8_t stop_bits, uint8_t data_bits)
 {
-	return z_impl_svc_uart_configure(baud, parity, stop_bits, data_bits);
+	return z_impl_app_svc_uart_configure(baud, parity, stop_bits, data_bits);
 }
-#include <zephyr/syscalls/svc_uart_configure_mrsh.c>
+#include <zephyr/syscalls/app_svc_uart_configure_mrsh.c>
 
-static inline int z_vrfy_svc_uart_close(void)
+static inline int z_vrfy_app_svc_uart_close(void)
 {
-	return z_impl_svc_uart_close();
+	return z_impl_app_svc_uart_close();
 }
-#include <zephyr/syscalls/svc_uart_close_mrsh.c>
+#include <zephyr/syscalls/app_svc_uart_close_mrsh.c>
 #endif
 
 #if DT_HAS_CHOSEN(app_uart)

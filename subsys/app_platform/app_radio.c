@@ -129,7 +129,7 @@ static int radio_ensure_up(void)
 	return rc;
 }
 
-int z_impl_svc_radio_send(const void *buf, size_t len)
+int z_impl_app_svc_radio_send(const void *buf, size_t len)
 {
 	if (!app_has_cap(APP_CAP_RADIO)) {
 		return -EPERM;
@@ -148,7 +148,7 @@ int z_impl_svc_radio_send(const void *buf, size_t len)
 	return k_msgq_put(&radio_tx_q, &m, K_NO_WAIT) == 0 ? 0 : -EAGAIN;
 }
 
-int z_impl_svc_radio_recv(void *buf, size_t len, uint32_t timeout_ms)
+int z_impl_app_svc_radio_recv(void *buf, size_t len, uint32_t timeout_ms)
 {
 	if (!app_has_cap(APP_CAP_RADIO)) {
 		return -EPERM;
@@ -170,17 +170,17 @@ int z_impl_svc_radio_recv(void *buf, size_t len, uint32_t timeout_ms)
 }
 
 #ifdef CONFIG_USERSPACE
-static inline int z_vrfy_svc_radio_send(const void *buf, size_t len)
+static inline int z_vrfy_app_svc_radio_send(const void *buf, size_t len)
 {
 	K_OOPS(K_SYSCALL_MEMORY_READ(buf, len));
-	return z_impl_svc_radio_send(buf, len);
+	return z_impl_app_svc_radio_send(buf, len);
 }
-#include <zephyr/syscalls/svc_radio_send_mrsh.c>
+#include <zephyr/syscalls/app_svc_radio_send_mrsh.c>
 
-static inline int z_vrfy_svc_radio_recv(void *buf, size_t len, uint32_t timeout_ms)
+static inline int z_vrfy_app_svc_radio_recv(void *buf, size_t len, uint32_t timeout_ms)
 {
 	K_OOPS(K_SYSCALL_MEMORY_WRITE(buf, len));
-	return z_impl_svc_radio_recv(buf, len, timeout_ms);
+	return z_impl_app_svc_radio_recv(buf, len, timeout_ms);
 }
-#include <zephyr/syscalls/svc_radio_recv_mrsh.c>
+#include <zephyr/syscalls/app_svc_radio_recv_mrsh.c>
 #endif

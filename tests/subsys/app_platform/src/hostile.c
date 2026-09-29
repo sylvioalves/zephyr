@@ -61,7 +61,7 @@ static void canary_app(void *arg)
 	ARG_UNUSED(arg);
 	for (;;) {
 		victim_data++;
-		svc_heartbeat();
+		app_svc_heartbeat();
 		k_msleep(10);
 	}
 }
@@ -345,7 +345,7 @@ static void sha_kernel_ptr(void *a)
 	ARG_UNUSED(a);
 	uint8_t out[32];
 
-	report_rc = svc_sha256((const uint8_t *)&kernel_var, 4, out);
+	report_rc = app_svc_sha256((const uint8_t *)&kernel_var, 4, out);
 	report_done = 1;
 }
 
@@ -354,7 +354,7 @@ static void sha_wild_ptr(void *a)
 	ARG_UNUSED(a);
 	uint8_t out[32];
 
-	report_rc = svc_sha256((const uint8_t *)0xdeadbee0, 4, out);
+	report_rc = app_svc_sha256((const uint8_t *)0xdeadbee0, 4, out);
 	report_done = 1;
 }
 
@@ -363,23 +363,23 @@ static void sha_foreign_ptr(void *a)
 	ARG_UNUSED(a);
 	uint8_t out[32];
 
-	report_rc = svc_sha256((const uint8_t *)&victim_data, 4, out);
+	report_rc = app_svc_sha256((const uint8_t *)&victim_data, 4, out);
 	report_done = 1;
 }
 
 static void sha_out_kernel_ptr(void *a)
 {
 	ARG_UNUSED(a);
-	report_rc = svc_sha256(user_buf, 4, (uint8_t *)&kernel_var);
+	report_rc = app_svc_sha256(user_buf, 4, (uint8_t *)&kernel_var);
 	report_done = 1;
 }
 
 static void log_kernel_ptr(void *a)
 {
 	ARG_UNUSED(a);
-	svc_log((const char *)&kernel_var);
-	svc_log((const char *)0xdeadbeef);
-	svc_log((const char *)&victim_data);
+	app_svc_log((const char *)&kernel_var);
+	app_svc_log((const char *)0xdeadbeef);
+	app_svc_log((const char *)&victim_data);
 	report_rc = 0;
 	report_done = 1;
 }
@@ -422,7 +422,7 @@ static void ipc_flood(void *a)
 	int n = 0;
 
 	for (n = 0; n < 1000; n++) {
-		rc = svc_ipc_send(canary_id, user_buf, 8);
+		rc = app_svc_ipc_send(canary_id, user_buf, 8);
 		if (rc != 0) {
 			break;
 		}
@@ -488,7 +488,7 @@ ZTEST(zhostile, test_4_10_stack_overflow)
 
 /* Rewriting the thread's custom data must not change which application the
  * platform thinks is calling: an app that borrows another id would inherit its
- * capabilities. This app holds no capability at all, so svc_log has to stay
+ * capabilities. This app holds no capability at all, so app_svc_log has to stay
  * refused whatever it writes there.
  */
 /* The identity has to follow the thread, not any state the application can
@@ -506,7 +506,7 @@ static void forge_identity(void *a)
 		k_thread_custom_data_set((void *)(id + 1));
 	}
 #endif
-	report_rc = svc_sha256(in, sizeof(in), out);
+	report_rc = app_svc_sha256(in, sizeof(in), out);
 	report_done = 1;
 }
 
@@ -516,7 +516,7 @@ static void forge_identity(void *a)
 static void flash_wrap(void *a)
 {
 	ARG_UNUSED(a);
-	report_rc = svc_flash_erase(0xFFFF0000U, 0x10000U);
+	report_rc = app_svc_flash_erase(0xFFFF0000U, 0x10000U);
 	report_done = 1;
 }
 
@@ -528,7 +528,7 @@ static void flash_ungranted(void *a)
 	ARG_UNUSED(a);
 	uint8_t buf[4];
 
-	report_rc = svc_flash_read(0, buf, sizeof(buf));
+	report_rc = app_svc_flash_read(0, buf, sizeof(buf));
 	report_done = 1;
 }
 
@@ -579,7 +579,7 @@ ZTEST(zhostile, test_4_11_flash_ungranted)
 static void sensor_ungranted(void *a)
 {
 	ARG_UNUSED(a);
-	report_rc = svc_sensor_count();
+	report_rc = app_svc_sensor_count();
 	report_done = 1;
 }
 
@@ -598,7 +598,7 @@ ZTEST(zhostile, test_4_12_sensor_ungranted)
 static void sensor_probe(void *a)
 {
 	ARG_UNUSED(a);
-	report_rc = svc_sensor_count();
+	report_rc = app_svc_sensor_count();
 	report_done = 1;
 }
 
@@ -631,7 +631,7 @@ static void control_target(void *a)
 {
 	ARG_UNUSED(a);
 	for (;;) {
-		svc_heartbeat();
+		app_svc_heartbeat();
 		k_msleep(10);
 	}
 }
@@ -652,21 +652,21 @@ static void stop_self(void *a)
 	while (self_id < 0) {
 		k_msleep(5);
 	}
-	report_rc = svc_app_stop(self_id);
+	report_rc = app_svc_app_stop(self_id);
 	report_done = 1;
 }
 
 static void stop_ungranted(void *a)
 {
 	ARG_UNUSED(a);
-	report_rc = svc_app_stop(canary_id);
+	report_rc = app_svc_app_stop(canary_id);
 	report_done = 1;
 }
 
 static void start_ungranted(void *a)
 {
 	ARG_UNUSED(a);
-	report_rc = svc_app_start(canary_id);
+	report_rc = app_svc_app_start(canary_id);
 	report_done = 1;
 }
 
@@ -678,7 +678,7 @@ static void start_target(void *a)
 	while (target_id < 0) {
 		k_msleep(5);
 	}
-	report_rc = svc_app_start(target_id);
+	report_rc = app_svc_app_start(target_id);
 	report_done = 1;
 }
 
@@ -688,7 +688,7 @@ static void stop_target(void *a)
 	while (target_id < 0) {
 		k_msleep(5);
 	}
-	report_rc = svc_app_stop(target_id);
+	report_rc = app_svc_app_stop(target_id);
 	report_done = 1;
 }
 
@@ -746,14 +746,14 @@ ZTEST(zhostile, test_4_14_control_stops_another_app)
 	target_id = tid;
 	zassert_true(wait_slot_free("h_ctl", 2000), "controller never exited");
 	zassert_equal(report_done, 1, "controller trapped");
-	zassert_equal(report_rc, 0, "svc_app_stop rc %d", report_rc);
+	zassert_equal(report_rc, 0, "app_svc_app_stop rc %d", report_rc);
 
 	/* A stop keeps the slot and the module so the group can run again, so
 	 * the proof it really stopped is that the slot went inactive, not that
 	 * it was freed.
 	 */
 	zassert_equal(app_platform_status(tid, &st), 0);
-	zassert_false(st.active, "target still active after svc_app_stop");
+	zassert_false(st.active, "target still active after app_svc_app_stop");
 
 	/* And a controller can start it again, with the same slot. */
 	const struct app_def re = {
@@ -769,11 +769,11 @@ ZTEST(zhostile, test_4_14_control_stops_another_app)
 	add_report_part(rid);
 	zassert_true(wait_slot_free("h_rst", 2000), "restarter never exited");
 	zassert_equal(report_done, 1, "restarter trapped");
-	zassert_equal(report_rc, 0, "svc_app_start rc %d", report_rc);
+	zassert_equal(report_rc, 0, "app_svc_app_start rc %d", report_rc);
 
 	k_msleep(30);
 	zassert_equal(app_platform_status(tid, &st), 0);
-	zassert_true(st.active, "target did not come back after svc_app_start");
+	zassert_true(st.active, "target did not come back after app_svc_app_start");
 
 	zassert_equal(app_platform_remove(tid), 0);
 }
@@ -783,7 +783,7 @@ ZTEST(zhostile, test_4_14_control_stops_another_app)
 static void counter_ungranted(void *a)
 {
 	ARG_UNUSED(a);
-	report_rc = svc_counter_count();
+	report_rc = app_svc_counter_count();
 	report_done = 1;
 }
 
@@ -796,7 +796,7 @@ static void counter_instance_ungranted(void *a)
 
 	uint32_t ticks = 0;
 
-	report_rc = svc_counter_read(1, &ticks);
+	report_rc = app_svc_counter_read(1, &ticks);
 	report_done = 1;
 }
 
@@ -806,7 +806,7 @@ static void counter_out_of_range(void *a)
 
 	uint32_t ticks = 0;
 
-	report_rc = svc_counter_read(99, &ticks);
+	report_rc = app_svc_counter_read(99, &ticks);
 	report_done = 1;
 }
 
@@ -820,7 +820,7 @@ static void counter_runs(void *a)
 	uint32_t hz = 0;
 	uint32_t t1 = 0;
 	uint32_t t2 = 0;
-	int rc = svc_counter_frequency(0, &hz);
+	int rc = app_svc_counter_frequency(0, &hz);
 
 	if (rc != 0) {
 		report_rc = rc;
@@ -833,17 +833,17 @@ static void counter_runs(void *a)
 		return;
 	}
 
-	rc = svc_counter_start(0);
+	rc = app_svc_counter_start(0);
 	if (rc != 0) {
 		report_rc = rc;
 		report_done = 1;
 		return;
 	}
 
-	rc = svc_counter_read(0, &t1);
+	rc = app_svc_counter_read(0, &t1);
 	if (rc == 0) {
 		k_msleep(20);
-		rc = svc_counter_read(0, &t2);
+		rc = app_svc_counter_read(0, &t2);
 	}
 	if (rc == 0 && t2 == t1) {
 		rc = -ESTALE;   /* counted nothing over 20 ms */
@@ -885,14 +885,14 @@ ZTEST(zhostile, test_4_16_counter_runs)
 static void fs_ungranted(void *a)
 {
 	ARG_UNUSED(a);
-	report_rc = svc_file_open("x.txt", 1);
+	report_rc = app_svc_file_open("x.txt", 1);
 	report_done = 1;
 }
 
 static void fs_escape_dotdot(void *a)
 {
 	ARG_UNUSED(a);
-	report_rc = svc_file_open("../0/secret.txt", 1);
+	report_rc = app_svc_file_open("../0/secret.txt", 1);
 	report_done = 1;
 }
 
@@ -900,7 +900,7 @@ static void fs_roundtrip(void *a)
 {
 	ARG_UNUSED(a);
 
-	int h = svc_file_open("note.txt", 1);
+	int h = app_svc_file_open("note.txt", 1);
 
 	if (h < 0) {
 		report_rc = h;
@@ -909,19 +909,19 @@ static void fs_roundtrip(void *a)
 	}
 
 	char buf[8] = {0};
-	int rc = svc_file_write(h, "abcd", 4);
+	int rc = app_svc_file_write(h, "abcd", 4);
 
 	if (rc == 4) {
-		rc = svc_file_seek(h, 0, FS_SEEK_SET);
+		rc = app_svc_file_seek(h, 0, FS_SEEK_SET);
 		if (rc == 0) {
-			rc = svc_file_read(h, buf, sizeof(buf));
+			rc = app_svc_file_read(h, buf, sizeof(buf));
 			rc = (rc == 4 && memcmp(buf, "abcd", 4) == 0) ? 0 :
 			     (rc < 0 ? rc : -EIO);
 		}
 	} else if (rc >= 0) {
 		rc = -EIO;
 	}
-	(void)svc_file_close(h);
+	(void)app_svc_file_close(h);
 	report_rc = rc;
 	report_done = 1;
 }
@@ -954,11 +954,11 @@ static void priv_stack_pressure(void *a)
 		name[3] = 't';
 		name[4] = '\0';
 
-		int h = svc_file_open(name, 1);
+		int h = app_svc_file_open(name, 1);
 
 		if (h >= 0) {
-			(void)svc_file_write(h, "0123456789abcdef", 16);
-			(void)svc_file_close(h);
+			(void)app_svc_file_write(h, "0123456789abcdef", 16);
+			(void)app_svc_file_close(h);
 		}
 	}
 	report_rc = 0;
@@ -996,7 +996,7 @@ ZTEST(zhostile, test_4_16_deep_service_calls_do_not_kill_the_system)
 static void ipc_claim_name(void *a)
 {
 	ARG_UNUSED(a);
-	report_rc = svc_ipc_register("stale-name");
+	report_rc = app_svc_ipc_register("stale-name");
 	report_done = 1;
 }
 
@@ -1005,7 +1005,7 @@ static void ipc_send_to_stale(void *a)
 	ARG_UNUSED(a);
 	uint8_t msg = 1;
 
-	report_rc = svc_ipc_send_to("stale-name", &msg, sizeof(msg));
+	report_rc = app_svc_ipc_send_to("stale-name", &msg, sizeof(msg));
 	report_done = 1;
 }
 
@@ -1018,7 +1018,7 @@ ZTEST(zhostile, test_4_17_ipc_name_released_on_reclaim)
 static void checkpoint_store(void *a)
 {
 	ARG_UNUSED(a);
-	svc_checkpoint_set(1234U);
+	app_svc_checkpoint_set(1234U);
 	report_rc = 0;
 	report_done = 1;
 }
@@ -1026,7 +1026,7 @@ static void checkpoint_store(void *a)
 static void checkpoint_report(void *a)
 {
 	ARG_UNUSED(a);
-	report_rc = (int)svc_checkpoint_get();
+	report_rc = (int)app_svc_checkpoint_get();
 	report_done = 1;
 }
 

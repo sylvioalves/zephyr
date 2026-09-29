@@ -37,7 +37,7 @@ static void check(bool ok, const char *what, int rc)
 		(void)snprintk(line, sizeof(line), "FAIL %s (rc=%d)", what, rc);
 		fails++;
 	}
-	svc_log(line);
+	app_svc_log(line);
 }
 
 /* Read back what was just written. The port is looped back, so the bytes are
@@ -48,13 +48,13 @@ static int loopback_read(uint8_t *buf, size_t len)
 	int got = 0;
 
 	for (int i = 0; i < 80 && got < (int)len; i++) {
-		int n = svc_uart_read(&buf[got], len - got);
+		int n = app_svc_uart_read(&buf[got], len - got);
 
 		if (n > 0) {
 			got += n;
 		} else {
-			(void)svc_timer_start(2);
-			(void)svc_timer_wait(5);
+			(void)app_svc_timer_start(2);
+			(void)app_svc_timer_wait(5);
 		}
 	}
 	return got;
@@ -64,35 +64,35 @@ static void uart_app(void *arg)
 {
 	ARG_UNUSED(arg);
 
-	svc_log("uart_line: start");
+	app_svc_log("uart_line: start");
 
-	int rc = svc_uart_configure(115200, APP_UART_PARITY_NONE, 1, 8);
+	int rc = app_svc_uart_configure(115200, APP_UART_PARITY_NONE, 1, 8);
 
 	if (rc == -ENODEV) {
-		svc_log("uart_line: no secondary uart on this board, nothing to do");
+		app_svc_log("uart_line: no secondary uart on this board, nothing to do");
 		return;
 	}
 	check(rc == 0, "configure 115200 8N1", rc);
 
-	rc = svc_uart_configure(9600, APP_UART_PARITY_EVEN, 2, 7);
+	rc = app_svc_uart_configure(9600, APP_UART_PARITY_EVEN, 2, 7);
 	check(rc == 0, "configure 9600 7E2", rc);
 
-	rc = svc_uart_configure(0, APP_UART_PARITY_NONE, 1, 8);
+	rc = app_svc_uart_configure(0, APP_UART_PARITY_NONE, 1, 8);
 	check(rc == -EINVAL, "a zero baud rate is refused", rc);
-	rc = svc_uart_configure(115200, 99, 1, 8);
+	rc = app_svc_uart_configure(115200, 99, 1, 8);
 	check(rc == -EINVAL, "an unknown parity is refused", rc);
-	rc = svc_uart_configure(115200, APP_UART_PARITY_NONE, 5, 8);
+	rc = app_svc_uart_configure(115200, APP_UART_PARITY_NONE, 5, 8);
 	check(rc == -EINVAL, "an impossible stop-bit count is refused", rc);
-	rc = svc_uart_configure(115200, APP_UART_PARITY_NONE, 1, 12);
+	rc = app_svc_uart_configure(115200, APP_UART_PARITY_NONE, 1, 12);
 	check(rc == -EINVAL, "an impossible data-bit count is refused", rc);
 
-	rc = svc_uart_configure(115200, APP_UART_PARITY_NONE, 1, 8);
+	rc = app_svc_uart_configure(115200, APP_UART_PARITY_NONE, 1, 8);
 	check(rc == 0, "configure back to 115200 8N1", rc);
 
 	static const uint8_t tx[5] = {'h', 'e', 'l', 'l', 'o'};
 	uint8_t rx[8] = {0};
 
-	rc = svc_uart_write(tx, sizeof(tx));
+	rc = app_svc_uart_write(tx, sizeof(tx));
 	check(rc == (int)sizeof(tx), "write to the looped-back port", rc);
 
 	int got = loopback_read(rx, sizeof(tx));
@@ -104,26 +104,26 @@ static void uart_app(void *arg)
 	/* A different framing must loop back just as cleanly, which is what
 	 * shows the port was really reconfigured and not merely accepted.
 	 */
-	rc = svc_uart_configure(9600, APP_UART_PARITY_EVEN, 1, 8);
+	rc = app_svc_uart_configure(9600, APP_UART_PARITY_EVEN, 1, 8);
 	check(rc == 0, "configure 9600 8E1 for a second pass", rc);
 
 	static const uint8_t tx2[3] = {0x5A, 0xA5, 0x42};
 	uint8_t rx2[4] = {0};
 
-	(void)svc_uart_write(tx2, sizeof(tx2));
+	(void)app_svc_uart_write(tx2, sizeof(tx2));
 	got = loopback_read(rx2, sizeof(tx2));
 	check(got == (int)sizeof(tx2) && memcmp(rx2, tx2, sizeof(tx2)) == 0,
 	      "the bytes match at 9600 8E1 too", got);
 
-	rc = svc_uart_close();
+	rc = app_svc_uart_close();
 	check(rc == 0, "close restores the boot configuration", rc);
 
 	char line[48];
 
 	(void)snprintk(line, sizeof(line), "uart_line: %d passed, %d failed",
 		       passes, fails);
-	svc_log(line);
-	svc_log(fails == 0 ? "uart_line: done" : "uart_line: FAILURES");
+	app_svc_log(line);
+	app_svc_log(fails == 0 ? "uart_line: done" : "uart_line: FAILURES");
 }
 
 int main(void)

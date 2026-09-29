@@ -42,16 +42,16 @@ static void psram_worker(void *arg)
 
 	snprintk(line, sizeof(line), "app%u: requesting %u KB", tag,
 		 REGION_SIZE / 1024);
-	svc_log(line);
+	app_svc_log(line);
 
-	if (svc_psram_map(REGION_SIZE, &addr, &size) != 0) {
-		svc_log("map FAILED");
+	if (app_svc_psram_map(REGION_SIZE, &addr, &size) != 0) {
+		app_svc_log("map FAILED");
 		return;
 	}
 
 	snprintk(line, sizeof(line), "app%u: mapped 0x%lx size=%zu", tag,
 		 (unsigned long)addr, size);
-	svc_log(line);
+	app_svc_log(line);
 
 	volatile uint8_t *mem = (volatile uint8_t *)addr;
 
@@ -84,10 +84,10 @@ static void psram_worker(void *arg)
 		 "app%u: 10s stress iters=%u err=%u MB=%u %s", tag, iters,
 		 errors, (uint32_t)(bytes / (1024 * 1024)),
 		 errors ? "FAILED" : "OK");
-	svc_log(line);
+	app_svc_log(line);
 
 	for (;;) {
-		svc_heartbeat();
+		app_svc_heartbeat();
 		k_msleep(1000);
 	}
 }

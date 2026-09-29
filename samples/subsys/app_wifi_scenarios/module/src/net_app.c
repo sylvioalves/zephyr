@@ -69,67 +69,67 @@ static void report(const char *tag, int value, const char *suffix)
 	p = put_int(p, end, value);
 	p = put_str(p, end, suffix);
 	*p = '\0';
-	svc_log(line);
+	app_svc_log(line);
 }
 
 static void tcp_round_trip(void)
 {
 	char rx[64];
 	static const char msg[] = "app_platform tcp probe";
-	uint32_t t0 = svc_uptime_ms();
-	int rc = svc_tcp_connect(ECHO_HOST, ECHO_PORT);
+	uint32_t t0 = app_svc_uptime_ms();
+	int rc = app_svc_tcp_connect(ECHO_HOST, ECHO_PORT);
 
 	if (rc != 0) {
 		report("tcp: connect failed rc=", rc, "");
 		return;
 	}
-	report("tcp: connected in ", (int)(svc_uptime_ms() - t0), " ms");
+	report("tcp: connected in ", (int)(app_svc_uptime_ms() - t0), " ms");
 
-	rc = svc_tcp_send(msg, sizeof(msg) - 1);
+	rc = app_svc_tcp_send(msg, sizeof(msg) - 1);
 	report("tcp: sent rc=", rc, "");
 
-	rc = svc_tcp_recv(rx, sizeof(rx) - 1, 5000);
+	rc = app_svc_tcp_recv(rx, sizeof(rx) - 1, 5000);
 	if (rc > 0) {
 		rx[rc] = '\0';
 		report("tcp: echoed ", rc, " bytes");
-		svc_log(rx);
+		app_svc_log(rx);
 	} else {
 		report("tcp: recv rc=", rc, "");
 	}
-	(void)svc_tcp_close();
-	report("tcp: round trip ", (int)(svc_uptime_ms() - t0), " ms");
+	(void)app_svc_tcp_close();
+	report("tcp: round trip ", (int)(app_svc_uptime_ms() - t0), " ms");
 }
 
 void app_main(void *arg)
 {
 	ARG_UNUSED(arg);
 
-	uint32_t t0 = svc_uptime_ms();
-	int rc = svc_net_ready();
+	uint32_t t0 = app_svc_uptime_ms();
+	int rc = app_svc_net_ready();
 
 	report("net: link up rc=", rc, "");
-	report("net: took ", (int)(svc_uptime_ms() - t0), " ms");
+	report("net: took ", (int)(app_svc_uptime_ms() - t0), " ms");
 
 	if (rc == 0) {
 		tcp_round_trip();
 	}
 
-	svc_log("watch: power the access point off and on now");
+	app_svc_log("watch: power the access point off and on now");
 	int last = -1;
-	uint32_t tw = svc_uptime_ms();
+	uint32_t tw = app_svc_uptime_ms();
 
 	for (int i = 0; i < WATCH_SECONDS; i++) {
-		struct svc_wifi_status ws;
-		int now = (svc_wifi_status(&ws) == 0 && ws.connected) ? 1 : 0;
+		struct app_svc_wifi_status ws;
+		int now = (app_svc_wifi_status(&ws) == 0 && ws.connected) ? 1 : 0;
 
 		if (now != last) {
 			report(now ? "watch: link UP at " : "watch: link DOWN at ",
-			       (int)(svc_uptime_ms() - tw), " ms");
+			       (int)(app_svc_uptime_ms() - tw), " ms");
 			last = now;
 		}
 		k_msleep(1000);
 	}
-	svc_log("watch: done");
+	app_svc_log("watch: done");
 
 	for (;;) {
 		k_msleep(1000);

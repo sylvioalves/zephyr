@@ -35,11 +35,11 @@ static void on_write(const struct app_event *evt, void *user)
 	char line[64];
 
 	(*n)++;
-	int got = svc_ble_serve_get((int)evt->line, buf, sizeof(buf));
+	int got = app_svc_ble_serve_get((int)evt->line, buf, sizeof(buf));
 
 	(void)snprintf(line, sizeof(line), "llext-gatt: peer wrote 0x%02x (#%d)",
 		       (got > 0) ? buf[0] : 0, *n);
-	svc_log(line);
+	app_svc_log(line);
 }
 
 void app_main(void *arg)
@@ -58,19 +58,19 @@ void app_main(void *arg)
 		chrc[1].uuid[i] = inbox_uuid[i];
 	}
 
-	if (svc_ble_serve_start("c5-llext", svc_uuid, sizeof(svc_uuid), chrc,
-				ARRAY_SIZE(chrc)) != 0) {
-		svc_log("llext-gatt: serve failed");
+	if (app_svc_ble_serve_start("c5-llext", svc_uuid, sizeof(svc_uuid), chrc,
+				    ARRAY_SIZE(chrc)) != 0) {
+		app_svc_log("llext-gatt: serve failed");
 		return;
 	}
-	svc_log("llext-gatt: serving from a loadable module");
+	app_svc_log("llext-gatt: serving from a loadable module");
 
 	(void)app_dispatch_on(&d, APP_EVENT_GATT_WRITE, on_write, &writes);
 
 	for (uint8_t sec = 0;; sec++) {
 		uint8_t v[4] = {sec, 0, 0, 0};
 
-		(void)svc_ble_serve_set(0, v, sizeof(v));
+		(void)app_svc_ble_serve_set(0, v, sizeof(v));
 		(void)app_dispatch_run(&d, 1000);
 	}
 }

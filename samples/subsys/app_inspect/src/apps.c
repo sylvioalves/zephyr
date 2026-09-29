@@ -7,7 +7,7 @@
 /*
  * Worker apps with different resource profiles, plus an inspector app that holds
  * the inspect capability and prints a top-style table of every group's stack and
- * CPU use. The inspector reads the others only through the brokered svc_app_info
+ * CPU use. The inspector reads the others only through the brokered app_svc_app_info
  * call; an app without APP_CAP_INSPECT is refused.
  */
 
@@ -20,7 +20,7 @@ void app_spinner(void *arg)
 {
 	ARG_UNUSED(arg);
 
-	svc_log("spinner: started");
+	app_svc_log("spinner: started");
 	for (;;) {
 		volatile uint32_t x = 0;
 
@@ -35,7 +35,7 @@ void app_sleeper(void *arg)
 {
 	ARG_UNUSED(arg);
 
-	svc_log("sleeper: started");
+	app_svc_log("sleeper: started");
 	for (;;) {
 		k_msleep(1000);
 	}
@@ -57,7 +57,7 @@ void app_deep(void *arg)
 {
 	ARG_UNUSED(arg);
 
-	svc_log("deep: started");
+	app_svc_log("deep: started");
 	recurse(6);
 	for (;;) {
 		k_msleep(1000);
@@ -69,15 +69,15 @@ void app_inspector(void *arg)
 {
 	ARG_UNUSED(arg);
 
-	int n = svc_app_count();
+	int n = app_svc_app_count();
 
 	for (int round = 0; round < 4; round++) {
 		k_msleep(1000);
-		svc_log("---- app status ----");
+		app_svc_log("---- app status ----");
 		for (int id = 0; id < n; id++) {
-			struct svc_app_info info;
+			struct app_svc_app_info info;
 
-			if (svc_app_info(id, &info) != 0) {
+			if (app_svc_app_info(id, &info) != 0) {
 				continue;
 			}
 
@@ -94,8 +94,8 @@ void app_inspector(void *arg)
 				 info.name, info.stack_used, info.stack_size,
 				 share / 10U, share % 10U,
 				 info.monitored ? "  [mon]" : "");
-			svc_log(line);
+			app_svc_log(line);
 		}
 	}
-	svc_log("inspector: done");
+	app_svc_log("inspector: done");
 }

@@ -14,7 +14,7 @@ viewport size and the panel pixel format from the display service, then sweeps
 a bar across its half above a gradient band. The applications draw through
 system calls and never see the panel driver or each other's pixels.
 
-Each step of the bar is drawn right after :c:func:`svc_display_vsync` reports a
+Each step of the bar is drawn right after :c:func:`app_svc_display_vsync` reports a
 panel refresh, so the small update stays ahead of the scanout and the bar moves
 without tearing at the panel refresh rate. On a panel that reports no refresh,
 such as the ``qemu_x86`` ramfb, the applications pace themselves with a sleep.

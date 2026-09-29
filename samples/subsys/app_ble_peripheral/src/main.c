@@ -65,14 +65,14 @@ static void on_connect(const struct app_event *evt, void *user)
 {
 	ARG_UNUSED(evt);
 	ARG_UNUSED(user);
-	svc_log("peripheral: a peer connected");
+	app_svc_log("peripheral: a peer connected");
 }
 
 static void on_disconnect(const struct app_event *evt, void *user)
 {
 	ARG_UNUSED(evt);
 	ARG_UNUSED(user);
-	svc_log("peripheral: the peer went away, advertising again");
+	app_svc_log("peripheral: the peer went away, advertising again");
 }
 
 static void on_write(const struct app_event *evt, void *user)
@@ -83,17 +83,17 @@ static void on_write(const struct app_event *evt, void *user)
 
 	s->writes++;
 
-	int n = svc_ble_serve_get((int)evt->line, buf, sizeof(buf));
+	int n = app_svc_ble_serve_get((int)evt->line, buf, sizeof(buf));
 
 	if (n < 0) {
 		(void)snprintk(line, sizeof(line), "peripheral: read back failed (%d)", n);
-		svc_log(line);
+		app_svc_log(line);
 		return;
 	}
 	(void)snprintk(line, sizeof(line),
 		       "peripheral: peer wrote chr %u, %d byte(s), first 0x%02x (#%d)",
 		       evt->line, n, (n > 0) ? buf[0] : 0, s->writes);
-	svc_log(line);
+	app_svc_log(line);
 }
 
 static void peripheral_app(void *arg)
@@ -111,16 +111,16 @@ static void peripheral_app(void *arg)
 	memcpy(c[CHR_COUNT].uuid, count_uuid, 16);
 	memcpy(c[CHR_CONF].uuid, conf_uuid, 16);
 
-	int rc = svc_ble_serve_start(ADV_NAME, svc_uuid, sizeof(svc_uuid), c, 2);
+	int rc = app_svc_ble_serve_start(ADV_NAME, svc_uuid, sizeof(svc_uuid), c, 2);
 
 	if (rc != 0) {
 		char line[48];
 
 		(void)snprintk(line, sizeof(line), "peripheral: serve failed (%d)", rc);
-		svc_log(line);
+		app_svc_log(line);
 		return;
 	}
-	svc_log("peripheral: advertising as '" ADV_NAME "', connect and write");
+	app_svc_log("peripheral: advertising as '" ADV_NAME "', connect and write");
 
 	(void)app_dispatch_on(&state.d, APP_EVENT_GATT_WRITE, on_write, &state);
 	(void)app_dispatch_on(&state.d, APP_EVENT_BLE_CONNECTED, on_connect,
@@ -139,8 +139,8 @@ static void peripheral_app(void *arg)
 			(uint8_t)sec, (uint8_t)(sec >> 8), 0, 0,
 		};
 
-		if (svc_ble_notify(CHR_COUNT, v, sizeof(v)) != 0) {
-			(void)svc_ble_serve_set(CHR_COUNT, v, sizeof(v));
+		if (app_svc_ble_notify(CHR_COUNT, v, sizeof(v)) != 0) {
+			(void)app_svc_ble_serve_set(CHR_COUNT, v, sizeof(v));
 		}
 		(void)app_dispatch_run(&state.d, 1000);
 	}

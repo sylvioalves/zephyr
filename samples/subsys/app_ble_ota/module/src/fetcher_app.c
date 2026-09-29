@@ -51,20 +51,20 @@ void app_main(void *arg)
 	ARG_UNUSED(arg);
 	char line[96];
 
-	svc_log("ble-ota: looking for the update peer...");
+	app_svc_log("ble-ota: looking for the update peer...");
 
 	/* Scan first, so a peer that is simply not there is distinguishable
 	 * from one whose OTA service the device cannot drive.
 	 */
-	int seen = svc_ble_scan(OTA_PEER_NAME, 8000);
+	int seen = app_svc_ble_scan(OTA_PEER_NAME, 8000);
 
-	svc_log(seen == 1 ? "ble-ota: peer is advertising"
-			  : "ble-ota: peer NOT seen in scan");
+	app_svc_log(seen == 1 ? "ble-ota: peer is advertising"
+			      : "ble-ota: peer NOT seen in scan");
 
 	uint32_t len = 0;
-	uint32_t t0 = svc_uptime_ms();
-	int rc = svc_ble_ota_fetch(OTA_PEER_NAME, 20000, &len);
-	uint32_t took = svc_uptime_ms() - t0;
+	uint32_t t0 = app_svc_uptime_ms();
+	int rc = app_svc_ble_ota_fetch(OTA_PEER_NAME, 20000, &len);
+	uint32_t took = app_svc_uptime_ms() - t0;
 
 	char *p = line;
 	char *end = line + sizeof(line) - 1;
@@ -80,7 +80,7 @@ void app_main(void *arg)
 		p = put_uint(p, end, (uint32_t)(-rc));
 	}
 	*p = '\0';
-	svc_log(line);
+	app_svc_log(line);
 
 	/* The bytes are on flash now. The supervisor watches for them and does
 	 * the verifying; this application never sees them and cannot vouch for

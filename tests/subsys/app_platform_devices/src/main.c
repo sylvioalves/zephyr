@@ -102,7 +102,7 @@ static void eeprom_no_window(void *a)
 
 	uint8_t buf[4];
 
-	report_rc = svc_eeprom_read(0, buf, sizeof(buf));
+	report_rc = app_svc_eeprom_read(0, buf, sizeof(buf));
 	report_done = 1;
 }
 
@@ -112,7 +112,7 @@ static void eeprom_ungranted(void *a)
 
 	uint8_t buf[4];
 
-	report_rc = svc_eeprom_read(0, buf, sizeof(buf));
+	report_rc = app_svc_eeprom_read(0, buf, sizeof(buf));
 	report_done = 1;
 }
 
@@ -125,7 +125,7 @@ static void eeprom_overrun(void *a)
 
 	uint8_t buf[16];
 
-	report_rc = svc_eeprom_read(56, buf, sizeof(buf));
+	report_rc = app_svc_eeprom_read(56, buf, sizeof(buf));
 	report_done = 1;
 }
 
@@ -136,7 +136,7 @@ static void eeprom_wrap(void *a)
 
 	uint8_t buf[8];
 
-	report_rc = svc_eeprom_read(0xffffffffU, buf, sizeof(buf));
+	report_rc = app_svc_eeprom_read(0xffffffffU, buf, sizeof(buf));
 	report_done = 1;
 }
 
@@ -146,14 +146,14 @@ static void eeprom_roundtrip(void *a)
 
 	const uint8_t out[4] = {0xde, 0xad, 0xbe, 0xef};
 	uint8_t in[4] = {0};
-	int rc = svc_eeprom_write(8, out, sizeof(out));
+	int rc = app_svc_eeprom_write(8, out, sizeof(out));
 
 	if (rc != (int)sizeof(out)) {
 		report_rc = rc < 0 ? rc : -EIO;
 		report_done = 1;
 		return;
 	}
-	rc = svc_eeprom_read(8, in, sizeof(in));
+	rc = app_svc_eeprom_read(8, in, sizeof(in));
 	if (rc != (int)sizeof(in)) {
 		report_rc = rc < 0 ? rc : -EIO;
 	} else {
@@ -198,7 +198,7 @@ static void eeprom_writer(void *a)
 
 	const uint8_t mark[2] = {0xa5, 0x5a};
 
-	report_rc = svc_eeprom_write(0, mark, sizeof(mark));
+	report_rc = app_svc_eeprom_write(0, mark, sizeof(mark));
 	report_done = 1;
 }
 
@@ -207,7 +207,7 @@ static void eeprom_peeker(void *a)
 	ARG_UNUSED(a);
 
 	uint8_t in[2] = {0};
-	int rc = svc_eeprom_read(0, in, sizeof(in));
+	int rc = app_svc_eeprom_read(0, in, sizeof(in));
 
 	if (rc != (int)sizeof(in)) {
 		report_rc = rc < 0 ? rc : -EIO;
@@ -237,21 +237,21 @@ ZTEST(devices, test_eeprom_windows_are_private)
 static void dac_ungranted(void *a)
 {
 	ARG_UNUSED(a);
-	report_rc = svc_dac_count();
+	report_rc = app_svc_dac_count();
 	report_done = 1;
 }
 
 static void dac_instance_ungranted(void *a)
 {
 	ARG_UNUSED(a);
-	report_rc = svc_dac_write(0, 128);
+	report_rc = app_svc_dac_write(0, 128);
 	report_done = 1;
 }
 
 static void dac_write_ok(void *a)
 {
 	ARG_UNUSED(a);
-	report_rc = svc_dac_write(0, 128);
+	report_rc = app_svc_dac_write(0, 128);
 	report_done = 1;
 }
 
@@ -272,9 +272,9 @@ static void rtc_read_ungranted(void *a)
 {
 	ARG_UNUSED(a);
 
-	struct svc_rtc_time t;
+	struct app_svc_rtc_time t;
 
-	report_rc = svc_rtcdev_get(&t);
+	report_rc = app_svc_rtcdev_get(&t);
 	report_done = 1;
 }
 
@@ -283,12 +283,12 @@ static void rtc_set_without_set_cap(void *a)
 {
 	ARG_UNUSED(a);
 
-	const struct svc_rtc_time t = {
+	const struct app_svc_rtc_time t = {
 		.year = 2026, .month = 9, .day = 8,
 		.hour = 12, .minute = 0, .second = 0,
 	};
 
-	report_rc = svc_rtcdev_set(&t);
+	report_rc = app_svc_rtcdev_set(&t);
 	report_done = 1;
 }
 
@@ -296,19 +296,19 @@ static void rtc_roundtrip(void *a)
 {
 	ARG_UNUSED(a);
 
-	const struct svc_rtc_time set = {
+	const struct app_svc_rtc_time set = {
 		.year = 2026, .month = 9, .day = 8,
 		.hour = 12, .minute = 34, .second = 56,
 	};
-	struct svc_rtc_time got = {0};
-	int rc = svc_rtcdev_set(&set);
+	struct app_svc_rtc_time got = {0};
+	int rc = app_svc_rtcdev_set(&set);
 
 	if (rc != 0) {
 		report_rc = rc;
 		report_done = 1;
 		return;
 	}
-	rc = svc_rtcdev_get(&got);
+	rc = app_svc_rtcdev_get(&got);
 	if (rc == 0 && (got.year != set.year || got.month != set.month ||
 			got.day != set.day || got.hour != set.hour ||
 			got.minute != set.minute)) {
@@ -322,12 +322,12 @@ static void rtc_bad_field(void *a)
 {
 	ARG_UNUSED(a);
 
-	const struct svc_rtc_time t = {
+	const struct app_svc_rtc_time t = {
 		.year = 2026, .month = 13, .day = 1,
 		.hour = 0, .minute = 0, .second = 0,
 	};
 
-	report_rc = svc_rtcdev_set(&t);
+	report_rc = app_svc_rtcdev_set(&t);
 	report_done = 1;
 }
 
@@ -345,21 +345,21 @@ ZTEST(devices, test_rtc_read_and_set_are_separate)
 static void reg_ungranted(void *a)
 {
 	ARG_UNUSED(a);
-	report_rc = svc_regulator_count();
+	report_rc = app_svc_regulator_count();
 	report_done = 1;
 }
 
 static void reg_instance_ungranted(void *a)
 {
 	ARG_UNUSED(a);
-	report_rc = svc_regulator_enable(0, 1);
+	report_rc = app_svc_regulator_enable(0, 1);
 	report_done = 1;
 }
 
 static void reg_out_of_range(void *a)
 {
 	ARG_UNUSED(a);
-	report_rc = svc_regulator_enable(99, 1);
+	report_rc = app_svc_regulator_enable(99, 1);
 	report_done = 1;
 }
 
@@ -377,14 +377,14 @@ ZTEST(devices, test_regulator_gate_and_grant)
 static void step_ungranted(void *a)
 {
 	ARG_UNUSED(a);
-	report_rc = svc_stepper_count();
+	report_rc = app_svc_stepper_count();
 	report_done = 1;
 }
 
 static void step_instance_ungranted(void *a)
 {
 	ARG_UNUSED(a);
-	report_rc = svc_stepper_move_by(0, 100);
+	report_rc = app_svc_stepper_move_by(0, 100);
 	report_done = 1;
 }
 
@@ -393,10 +393,10 @@ static void step_move_and_read(void *a)
 	ARG_UNUSED(a);
 
 	int32_t pos = 0;
-	int rc = svc_stepper_move_by(0, 100);
+	int rc = app_svc_stepper_move_by(0, 100);
 
 	if (rc == 0) {
-		rc = svc_stepper_position(0, &pos);
+		rc = app_svc_stepper_position(0, &pos);
 	}
 	report_rc = rc;
 	report_done = 1;
@@ -419,7 +419,7 @@ ZTEST(devices, test_stepper_gate_and_grant)
 static void power_ungranted(void *a)
 {
 	ARG_UNUSED(a);
-	report_rc = svc_battery_percent();
+	report_rc = app_svc_battery_percent();
 	report_done = 1;
 }
 
@@ -427,7 +427,7 @@ static void power_read(void *a)
 {
 	ARG_UNUSED(a);
 
-	int pct = svc_battery_percent();
+	int pct = app_svc_battery_percent();
 
 	if (pct < 0) {
 		report_rc = pct;
@@ -506,10 +506,10 @@ static void reg_enable_twice(void *a)
 {
 	ARG_UNUSED(a);
 
-	int rc = svc_regulator_enable(0, 1);
+	int rc = app_svc_regulator_enable(0, 1);
 
 	if (rc == 0) {
-		rc = svc_regulator_enable(0, 1);
+		rc = app_svc_regulator_enable(0, 1);
 	}
 	hold_until_released(rc);
 }
@@ -530,7 +530,7 @@ ZTEST(devices, test_regulator_released_on_reclaim)
 static void reg_disable_only(void *a)
 {
 	ARG_UNUSED(a);
-	report_rc = svc_regulator_enable(0, 0);
+	report_rc = app_svc_regulator_enable(0, 0);
 	report_done = 1;
 }
 
@@ -538,13 +538,13 @@ static void reg_disable_twice(void *a)
 {
 	ARG_UNUSED(a);
 
-	int rc = svc_regulator_enable(0, 1);
+	int rc = app_svc_regulator_enable(0, 1);
 
 	if (rc == 0) {
-		rc = svc_regulator_enable(0, 0);
+		rc = app_svc_regulator_enable(0, 0);
 	}
 	if (rc == 0) {
-		rc = svc_regulator_enable(0, 0);
+		rc = app_svc_regulator_enable(0, 0);
 	}
 	report_rc = rc;
 	report_done = 1;
@@ -578,7 +578,7 @@ ZTEST(devices, test_regulator_disable_needs_own_enable)
 static void step_move_only(void *a)
 {
 	ARG_UNUSED(a);
-	report_rc = svc_stepper_move_by(0, 100);
+	report_rc = app_svc_stepper_move_by(0, 100);
 	report_done = 1;
 }
 
@@ -599,7 +599,7 @@ ZTEST(devices, test_stepper_stopped_on_reclaim)
 static void dac_write_held(void *a)
 {
 	ARG_UNUSED(a);
-	hold_until_released(svc_dac_write(0, 128));
+	hold_until_released(app_svc_dac_write(0, 128));
 }
 
 ZTEST(devices, test_dac_idle_on_reclaim)
@@ -621,7 +621,7 @@ ZTEST(devices, test_dac_idle_on_reclaim)
 static void pwm_set_half(void *a)
 {
 	ARG_UNUSED(a);
-	report_rc = svc_pwm_set(0, 500U);
+	report_rc = app_svc_pwm_set(0, 500U);
 	report_done = 1;
 }
 
@@ -629,10 +629,10 @@ static void pwm_set_then_idle(void *a)
 {
 	ARG_UNUSED(a);
 
-	int rc = svc_pwm_set(0, 500U);
+	int rc = app_svc_pwm_set(0, 500U);
 
 	if (rc == 0) {
-		rc = svc_pwm_set(0, 0U);
+		rc = app_svc_pwm_set(0, 0U);
 	}
 	report_rc = rc;
 	report_done = 1;
@@ -664,7 +664,7 @@ ZTEST(devices, test_pwm_idle_on_reclaim)
 static void motor_set_half(void *a)
 {
 	ARG_UNUSED(a);
-	report_rc = svc_motor_set(1U, 50U);
+	report_rc = app_svc_motor_set(1U, 50U);
 	report_done = 1;
 }
 
@@ -683,7 +683,7 @@ ZTEST(devices, test_motor_idle_on_reclaim)
 static void gpio_set_held(void *a)
 {
 	ARG_UNUSED(a);
-	hold_until_released(svc_gpio_set(0, 1));
+	hold_until_released(app_svc_gpio_set(0, 1));
 }
 
 ZTEST(devices, test_gpio_inactive_on_reclaim)
@@ -702,7 +702,7 @@ ZTEST(devices, test_gpio_inactive_on_reclaim)
 static void led_set_held(void *a)
 {
 	ARG_UNUSED(a);
-	hold_until_released(svc_led_set(0, 1));
+	hold_until_released(app_svc_led_set(0, 1));
 }
 
 ZTEST(devices, test_led_off_on_reclaim)
@@ -740,28 +740,28 @@ static uint32_t strip_drain(void)
 static void rgb_set_p0(void *a)
 {
 	ARG_UNUSED(a);
-	report_rc = svc_rgb_set(0, 1U, 2U, 3U);
+	report_rc = app_svc_rgb_set(0, 1U, 2U, 3U);
 	report_done = 1;
 }
 
 static void rgb_set_p1(void *a)
 {
 	ARG_UNUSED(a);
-	report_rc = svc_rgb_set(1, 1U, 2U, 3U);
+	report_rc = app_svc_rgb_set(1, 1U, 2U, 3U);
 	report_done = 1;
 }
 
 static void rgb_set_past_end(void *a)
 {
 	ARG_UNUSED(a);
-	report_rc = svc_rgb_set(2, 1U, 2U, 3U);
+	report_rc = app_svc_rgb_set(2, 1U, 2U, 3U);
 	report_done = 1;
 }
 
 static void rgb_count(void *a)
 {
 	ARG_UNUSED(a);
-	report_rc = svc_rgb_count();
+	report_rc = app_svc_rgb_count();
 	report_done = 1;
 }
 
@@ -792,7 +792,7 @@ ZTEST(devices, test_rgb_gate_and_grant)
 static void rgb_set_held(void *a)
 {
 	ARG_UNUSED(a);
-	hold_until_released(svc_rgb_set(0, 10U, 20U, 30U));
+	hold_until_released(app_svc_rgb_set(0, 10U, 20U, 30U));
 }
 
 ZTEST(devices, test_rgb_off_on_reclaim)
@@ -830,7 +830,7 @@ static const struct app_display_rect vp_full = {
 };
 
 K_APP_DMEM(report_part) uint16_t disp_pix[CAPTURE_W * 3];
-K_APP_DMEM(report_part) struct svc_display_info disp_info;
+K_APP_DMEM(report_part) struct app_svc_display_info disp_info;
 
 static void grant_display_all(const struct app_display_rect *vp)
 {
@@ -863,42 +863,42 @@ static bool rect_is(const struct app_display_rect *vp, uint16_t color)
 static void disp_info_app(void *a)
 {
 	ARG_UNUSED(a);
-	report_rc = svc_display_info(&disp_info);
+	report_rc = app_svc_display_info(&disp_info);
 	report_done = 1;
 }
 
 static void disp_write_2x2(void *a)
 {
 	ARG_UNUSED(a);
-	report_rc = svc_display_write(3, 4, 2, 2, disp_pix, 4 * sizeof(uint16_t));
+	report_rc = app_svc_display_write(3, 4, 2, 2, disp_pix, 4 * sizeof(uint16_t));
 	report_done = 1;
 }
 
 static void disp_write_short(void *a)
 {
 	ARG_UNUSED(a);
-	report_rc = svc_display_write(3, 4, 2, 2, disp_pix, 3 * sizeof(uint16_t));
+	report_rc = app_svc_display_write(3, 4, 2, 2, disp_pix, 3 * sizeof(uint16_t));
 	report_done = 1;
 }
 
 static void disp_write_edge(void *a)
 {
 	ARG_UNUSED(a);
-	report_rc = svc_display_write(79, 23, 1, 1, disp_pix, sizeof(uint16_t));
+	report_rc = app_svc_display_write(79, 23, 1, 1, disp_pix, sizeof(uint16_t));
 	report_done = 1;
 }
 
 static void disp_write_past(void *a)
 {
 	ARG_UNUSED(a);
-	report_rc = svc_display_write(79, 23, 2, 1, disp_pix, 2 * sizeof(uint16_t));
+	report_rc = app_svc_display_write(79, 23, 2, 1, disp_pix, 2 * sizeof(uint16_t));
 	report_done = 1;
 }
 
 static void disp_write_empty(void *a)
 {
 	ARG_UNUSED(a);
-	report_rc = svc_display_write(0, 0, 0, 1, disp_pix, 0);
+	report_rc = app_svc_display_write(0, 0, 0, 1, disp_pix, 0);
 	report_done = 1;
 }
 
@@ -908,45 +908,46 @@ static void disp_write_empty(void *a)
 static void disp_write_2x2_held(void *a)
 {
 	ARG_UNUSED(a);
-	hold_until_released(svc_display_write(3, 4, 2, 2, disp_pix, 4 * sizeof(uint16_t)));
+	hold_until_released(app_svc_display_write(3, 4, 2, 2, disp_pix, 4 * sizeof(uint16_t)));
 }
 
 static void disp_write_edge_held(void *a)
 {
 	ARG_UNUSED(a);
-	hold_until_released(svc_display_write(79, 23, 1, 1, disp_pix, sizeof(uint16_t)));
+	hold_until_released(app_svc_display_write(79, 23, 1, 1, disp_pix, sizeof(uint16_t)));
 }
 
 static void disp_write_wide_held(void *a)
 {
 	ARG_UNUSED(a);
-	hold_until_released(svc_display_write(0, 0, CAPTURE_W, 3, disp_pix, sizeof(disp_pix)));
+	hold_until_released(app_svc_display_write(0, 0, CAPTURE_W, 3, disp_pix, sizeof(disp_pix)));
 }
 
 static void disp_write_rows_held(void *a)
 {
 	ARG_UNUSED(a);
-	hold_until_released(svc_display_write(0, 0, 64, 6, disp_pix, 64 * 6 * sizeof(uint16_t)));
+	hold_until_released(
+		app_svc_display_write(0, 0, 64, 6, disp_pix, 64 * 6 * sizeof(uint16_t)));
 }
 
 static void disp_write_kernel_ptr(void *a)
 {
 	ARG_UNUSED(a);
-	report_rc = svc_display_write(0, 0, 1, 1, &capture_fb[0][0], sizeof(uint16_t));
+	report_rc = app_svc_display_write(0, 0, 1, 1, &capture_fb[0][0], sizeof(uint16_t));
 	report_done = 1;
 }
 
 static void disp_vsync_app(void *a)
 {
 	ARG_UNUSED(a);
-	report_rc = svc_display_vsync();
+	report_rc = app_svc_display_vsync();
 	report_done = 1;
 }
 
 static void disp_fill_held(void *a)
 {
 	ARG_UNUSED(a);
-	hold_until_released(svc_display_fill(0, 0, 80, 24, 0xf800U));
+	hold_until_released(app_svc_display_fill(0, 0, 80, 24, 0xf800U));
 }
 
 ZTEST(devices, test_display_gate_and_grant)
@@ -1145,21 +1146,21 @@ ZTEST(devices, test_display_vsync_times_out)
 static void fs_ungranted(void *a)
 {
 	ARG_UNUSED(a);
-	report_rc = svc_file_open("x.txt", 1);
+	report_rc = app_svc_file_open("x.txt", 1);
 	report_done = 1;
 }
 
 static void fs_escape_absolute(void *a)
 {
 	ARG_UNUSED(a);
-	report_rc = svc_file_open("/lfs/apps/0/secret.txt", 1);
+	report_rc = app_svc_file_open("/lfs/apps/0/secret.txt", 1);
 	report_done = 1;
 }
 
 static void fs_escape_dotdot(void *a)
 {
 	ARG_UNUSED(a);
-	report_rc = svc_file_open("../0/secret.txt", 1);
+	report_rc = app_svc_file_open("../0/secret.txt", 1);
 	report_done = 1;
 }
 
@@ -1167,7 +1168,7 @@ static void fs_roundtrip(void *a)
 {
 	ARG_UNUSED(a);
 
-	int h = svc_file_open("note.txt", 1);
+	int h = app_svc_file_open("note.txt", 1);
 
 	if (h < 0) {
 		report_rc = h;
@@ -1176,19 +1177,19 @@ static void fs_roundtrip(void *a)
 	}
 
 	char buf[8] = {0};
-	int rc = svc_file_write(h, "abcd", 4);
+	int rc = app_svc_file_write(h, "abcd", 4);
 
 	if (rc == 4) {
-		rc = svc_file_seek(h, 0, FS_SEEK_SET);
+		rc = app_svc_file_seek(h, 0, FS_SEEK_SET);
 		if (rc == 0) {
-			rc = svc_file_read(h, buf, sizeof(buf));
+			rc = app_svc_file_read(h, buf, sizeof(buf));
 			rc = (rc == 4 && memcmp(buf, "abcd", 4) == 0) ? 0 :
 			     (rc < 0 ? rc : -EIO);
 		}
 	} else if (rc >= 0) {
 		rc = -EIO;
 	}
-	(void)svc_file_close(h);
+	(void)app_svc_file_close(h);
 	report_rc = rc;
 	report_done = 1;
 }
@@ -1202,7 +1203,7 @@ static void fs_leaks_handle(void *a)
 {
 	ARG_UNUSED(a);
 
-	int h = svc_file_open("mine.txt", 1);
+	int h = app_svc_file_open("mine.txt", 1);
 
 	leaked_handle = h;
 	report_rc = h < 0 ? h : 0;
@@ -1213,7 +1214,7 @@ static void fs_leaks_handle(void *a)
 static void fs_steal_handle(void *a)
 {
 	ARG_UNUSED(a);
-	report_rc = svc_file_write(leaked_handle, "x", 1);
+	report_rc = app_svc_file_write(leaked_handle, "x", 1);
 	report_done = 1;
 }
 
@@ -1229,10 +1230,10 @@ static void fs_probe_note(void *a)
 {
 	ARG_UNUSED(a);
 
-	int h = svc_file_open("note.txt", 0);
+	int h = app_svc_file_open("note.txt", 0);
 
 	if (h >= 0) {
-		(void)svc_file_close(h);
+		(void)app_svc_file_close(h);
 	}
 	report_rc = h < 0 ? h : 0;
 	report_done = 1;
@@ -1374,7 +1375,7 @@ static void psram_map_size(size_t size)
 	uintptr_t addr;
 	size_t got;
 
-	report_rc = svc_psram_map(size, &addr, &got);
+	report_rc = app_svc_psram_map(size, &addr, &got);
 	report_done = 1;
 }
 
@@ -1397,7 +1398,7 @@ static void psram_zero_then_dirty(void *a)
 
 	uintptr_t addr;
 	size_t got;
-	int rc = svc_psram_map(PSRAM_MAP_SIZE, &addr, &got);
+	int rc = app_svc_psram_map(PSRAM_MAP_SIZE, &addr, &got);
 
 	if (rc == 0) {
 		volatile uint8_t *p = (volatile uint8_t *)addr;

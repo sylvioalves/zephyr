@@ -155,7 +155,7 @@ static int ble_do_scan(const char *name, uint32_t timeout_ms)
 	return rc;
 }
 
-int z_impl_svc_ble_scan(const char *name, uint32_t timeout_ms)
+int z_impl_app_svc_ble_scan(const char *name, uint32_t timeout_ms)
 {
 	if (!app_has_cap(APP_CAP_BLE)) {
 		return -EPERM;
@@ -696,7 +696,7 @@ static void ble_thread(void *a, void *b, void *c)
 
 K_THREAD_DEFINE(app_ble_tid, 2048, ble_thread, NULL, NULL, NULL, 6, 0, 0);
 
-int z_impl_svc_ble_hr_read(uint32_t timeout_ms, uint8_t *out_bpm)
+int z_impl_app_svc_ble_hr_read(uint32_t timeout_ms, uint8_t *out_bpm)
 {
 	if (!app_has_cap(APP_CAP_BLE)) {
 		return -EPERM;
@@ -1101,8 +1101,8 @@ out:
 	return rc;
 }
 
-int z_impl_svc_ble_ota_fetch(const char *name, uint32_t timeout_ms,
-			     uint32_t *out_len)
+int z_impl_app_svc_ble_ota_fetch(const char *name, uint32_t timeout_ms,
+				 uint32_t *out_len)
 {
 	if (!app_has_cap(APP_CAP_BLE)) {
 		return -EPERM;
@@ -1193,20 +1193,20 @@ static int gatt_request(bool is_write, const char *name,
 	return rc;
 }
 
-int z_impl_svc_ble_gatt_read(const char *name,
-			     const uint8_t *svc_uuid, size_t svc_uuid_len,
-			     const uint8_t *chr_uuid, size_t chr_uuid_len,
-			     uint8_t *buf, size_t cap, uint32_t timeout_ms)
+int z_impl_app_svc_ble_gatt_read(const char *name,
+				 const uint8_t *svc_uuid, size_t svc_uuid_len,
+				 const uint8_t *chr_uuid, size_t chr_uuid_len,
+				 uint8_t *buf, size_t cap, uint32_t timeout_ms)
 {
 	return gatt_request(false, name, svc_uuid, svc_uuid_len, chr_uuid,
 			    chr_uuid_len, buf, cap, timeout_ms);
 }
 
-int z_impl_svc_ble_gatt_write(const char *name,
-			      const uint8_t *svc_uuid, size_t svc_uuid_len,
-			      const uint8_t *chr_uuid, size_t chr_uuid_len,
-			      const uint8_t *buf, size_t len,
-			      uint32_t timeout_ms)
+int z_impl_app_svc_ble_gatt_write(const char *name,
+				  const uint8_t *svc_uuid, size_t svc_uuid_len,
+				  const uint8_t *chr_uuid, size_t chr_uuid_len,
+				  const uint8_t *buf, size_t len,
+				  uint32_t timeout_ms)
 {
 	int rc = gatt_request(true, name, svc_uuid, svc_uuid_len, chr_uuid,
 			      chr_uuid_len, (uint8_t *)buf, len, timeout_ms);
@@ -1216,28 +1216,28 @@ int z_impl_svc_ble_gatt_write(const char *name,
 #endif /* CONFIG_APP_PLATFORM_BLE_GATT */
 
 #ifdef CONFIG_USERSPACE
-static inline int z_vrfy_svc_ble_scan(const char *name, uint32_t timeout_ms)
+static inline int z_vrfy_app_svc_ble_scan(const char *name, uint32_t timeout_ms)
 {
 	char buf[BLE_NAME_MAX];
 
 	if (k_usermode_string_copy(buf, (char *)name, sizeof(buf)) != 0) {
 		return -EFAULT;
 	}
-	return z_impl_svc_ble_scan(buf, timeout_ms);
+	return z_impl_app_svc_ble_scan(buf, timeout_ms);
 }
-#include <zephyr/syscalls/svc_ble_scan_mrsh.c>
+#include <zephyr/syscalls/app_svc_ble_scan_mrsh.c>
 
-static inline int z_vrfy_svc_ble_hr_read(uint32_t timeout_ms, uint8_t *out_bpm)
+static inline int z_vrfy_app_svc_ble_hr_read(uint32_t timeout_ms, uint8_t *out_bpm)
 {
 	K_OOPS(K_SYSCALL_MEMORY_WRITE(out_bpm, 1));
-	return z_impl_svc_ble_hr_read(timeout_ms, out_bpm);
+	return z_impl_app_svc_ble_hr_read(timeout_ms, out_bpm);
 }
-#include <zephyr/syscalls/svc_ble_hr_read_mrsh.c>
+#include <zephyr/syscalls/app_svc_ble_hr_read_mrsh.c>
 
 #ifdef CONFIG_APP_PLATFORM_BLE_OTA
-static inline int z_vrfy_svc_ble_ota_fetch(const char *name,
-					   uint32_t timeout_ms,
-					   uint32_t *out_len)
+static inline int z_vrfy_app_svc_ble_ota_fetch(const char *name,
+					       uint32_t timeout_ms,
+					       uint32_t *out_len)
 {
 	char buf[BLE_NAME_MAX];
 
@@ -1247,9 +1247,9 @@ static inline int z_vrfy_svc_ble_ota_fetch(const char *name,
 	if (out_len != NULL) {
 		K_OOPS(K_SYSCALL_MEMORY_WRITE(out_len, sizeof(*out_len)));
 	}
-	return z_impl_svc_ble_ota_fetch(buf, timeout_ms, out_len);
+	return z_impl_app_svc_ble_ota_fetch(buf, timeout_ms, out_len);
 }
-#include <zephyr/syscalls/svc_ble_ota_fetch_mrsh.c>
+#include <zephyr/syscalls/app_svc_ble_ota_fetch_mrsh.c>
 #endif
 #ifdef CONFIG_APP_PLATFORM_BLE_GATT
 /* Both UUIDs and the value are copied into platform memory before use: the
@@ -1257,13 +1257,13 @@ static inline int z_vrfy_svc_ble_ota_fetch(const char *name,
  * it owns, and the copies mean a second thread in the same application cannot
  * change the bytes after they were checked.
  */
-static inline int z_vrfy_svc_ble_gatt_read(const char *name,
-					   const uint8_t *svc_uuid,
-					   size_t svc_uuid_len,
-					   const uint8_t *chr_uuid,
-					   size_t chr_uuid_len,
-					   uint8_t *buf, size_t cap,
-					   uint32_t timeout_ms)
+static inline int z_vrfy_app_svc_ble_gatt_read(const char *name,
+					       const uint8_t *svc_uuid,
+					       size_t svc_uuid_len,
+					       const uint8_t *chr_uuid,
+					       size_t chr_uuid_len,
+					       uint8_t *buf, size_t cap,
+					       uint32_t timeout_ms)
 {
 	char nbuf[BLE_NAME_MAX];
 	uint8_t svc[16];
@@ -1285,22 +1285,22 @@ static inline int z_vrfy_svc_ble_gatt_read(const char *name,
 	memcpy(svc, svc_uuid, svc_uuid_len);
 	memcpy(chr, chr_uuid, chr_uuid_len);
 
-	rc = z_impl_svc_ble_gatt_read(nbuf, svc, svc_uuid_len, chr,
-				      chr_uuid_len, vbuf, cap, timeout_ms);
+	rc = z_impl_app_svc_ble_gatt_read(nbuf, svc, svc_uuid_len, chr,
+					  chr_uuid_len, vbuf, cap, timeout_ms);
 	if (rc > 0) {
 		K_OOPS(k_usermode_to_copy(buf, vbuf, rc));
 	}
 	return rc;
 }
-#include <zephyr/syscalls/svc_ble_gatt_read_mrsh.c>
+#include <zephyr/syscalls/app_svc_ble_gatt_read_mrsh.c>
 
-static inline int z_vrfy_svc_ble_gatt_write(const char *name,
-					    const uint8_t *svc_uuid,
-					    size_t svc_uuid_len,
-					    const uint8_t *chr_uuid,
-					    size_t chr_uuid_len,
-					    const uint8_t *buf, size_t len,
-					    uint32_t timeout_ms)
+static inline int z_vrfy_app_svc_ble_gatt_write(const char *name,
+						const uint8_t *svc_uuid,
+						size_t svc_uuid_len,
+						const uint8_t *chr_uuid,
+						size_t chr_uuid_len,
+						const uint8_t *buf, size_t len,
+						uint32_t timeout_ms)
 {
 	char nbuf[BLE_NAME_MAX];
 	uint8_t svc[16];
@@ -1322,10 +1322,10 @@ static inline int z_vrfy_svc_ble_gatt_write(const char *name,
 	memcpy(chr, chr_uuid, chr_uuid_len);
 	memcpy(vbuf, buf, len);
 
-	return z_impl_svc_ble_gatt_write(nbuf, svc, svc_uuid_len, chr,
-					 chr_uuid_len, vbuf, len, timeout_ms);
+	return z_impl_app_svc_ble_gatt_write(nbuf, svc, svc_uuid_len, chr,
+					     chr_uuid_len, vbuf, len, timeout_ms);
 }
-#include <zephyr/syscalls/svc_ble_gatt_write_mrsh.c>
+#include <zephyr/syscalls/app_svc_ble_gatt_write_mrsh.c>
 #endif
 
 #endif

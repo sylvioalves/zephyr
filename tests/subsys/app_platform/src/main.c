@@ -632,7 +632,7 @@ ZTEST(lifecycle, test_entry_receives_argument)
 static void polite_app(void *arg)
 {
 	ARG_UNUSED(arg);
-	while (svc_stop_requested() == 0) {
+	while (app_svc_stop_requested() == 0) {
 		k_msleep(5);
 	}
 }
@@ -678,15 +678,15 @@ static void file_writer_app(void *arg)
 		buf[i] = (uint8_t)i;
 	}
 	for (;;) {
-		int h = svc_file_open("churn.bin", 1);
+		int h = app_svc_file_open("churn.bin", 1);
 
 		if (h < 0) {
 			continue;
 		}
 		for (int i = 0; i < 8; i++) {
-			(void)svc_file_write(h, buf, sizeof(buf));
+			(void)app_svc_file_write(h, buf, sizeof(buf));
 		}
-		(void)svc_file_close(h);
+		(void)app_svc_file_close(h);
 	}
 }
 

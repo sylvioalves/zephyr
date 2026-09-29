@@ -31,51 +31,51 @@ void app_main(void *arg)
 	ARG_UNUSED(arg);
 
 #if ROLE == ROLE_PRODUCER
-	svc_ipc_register("producer");
+	app_svc_ipc_register("producer");
 	/* Give the others a moment to register and subscribe. */
 	k_msleep(500);
 
-	svc_log("producer: sending to consumer by name");
-	int rc = svc_ipc_send_to("consumer", "hello-consumer", 15);
+	app_svc_log("producer: sending to consumer by name");
+	int rc = app_svc_ipc_send_to("consumer", "hello-consumer", 15);
 
-	svc_log(rc == 0 ? "producer: directed send ok" : "producer: send FAILED");
+	app_svc_log(rc == 0 ? "producer: directed send ok" : "producer: send FAILED");
 
-	svc_log("producer: publishing to topic sensors/temp");
-	int n = svc_topic_publish("sensors/temp", "23.4", 5);
+	app_svc_log("producer: publishing to topic sensors/temp");
+	int n = app_svc_topic_publish("sensors/temp", "23.4", 5);
 
-	svc_log(n >= 1 ? "producer: published to subscriber(s)"
-		       : "producer: no subscribers");
+	app_svc_log(n >= 1 ? "producer: published to subscriber(s)"
+			   : "producer: no subscribers");
 
 #elif ROLE == ROLE_CONSUMER
-	svc_ipc_register("consumer");
-	svc_log("consumer: waiting for a directed message");
+	app_svc_ipc_register("consumer");
+	app_svc_log("consumer: waiting for a directed message");
 
 	uint8_t buf[32] = {0};
-	int len = svc_ipc_recv(buf, sizeof(buf), 3000);
+	int len = app_svc_ipc_recv(buf, sizeof(buf), 3000);
 
 	if (len > 0 && buf[0] == 'h') {
-		svc_log("consumer: GOT directed message from producer");
+		app_svc_log("consumer: GOT directed message from producer");
 	} else {
-		svc_log("consumer: no message");
+		app_svc_log("consumer: no message");
 	}
 
 #elif ROLE == ROLE_LOGGER
-	svc_ipc_register("logger");
-	svc_topic_subscribe("sensors/temp");
-	svc_log("logger: subscribed to sensors/temp, waiting");
+	app_svc_ipc_register("logger");
+	app_svc_topic_subscribe("sensors/temp");
+	app_svc_log("logger: subscribed to sensors/temp, waiting");
 
 	uint8_t buf[32] = {0};
-	int len = svc_ipc_recv(buf, sizeof(buf), 3000);
+	int len = app_svc_ipc_recv(buf, sizeof(buf), 3000);
 
 	if (len > 0 && buf[0] == '2') {
-		svc_log("logger: GOT topic broadcast from producer");
+		app_svc_log("logger: GOT topic broadcast from producer");
 	} else {
-		svc_log("logger: no broadcast");
+		app_svc_log("logger: no broadcast");
 	}
 #endif
 
 	for (;;) {
-		svc_heartbeat();
+		app_svc_heartbeat();
 		k_msleep(1000);
 	}
 }

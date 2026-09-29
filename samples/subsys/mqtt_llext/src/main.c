@@ -8,7 +8,7 @@
  * A downloadable MQTT app over the shared service library. The platform owns the
  * Wi-Fi, network and MQTT stacks and the die-temperature sensor; the reporter
  * arrives as a verified llext module, runs isolated, and reaches all of it
- * through capability-gated svc_ calls. The module is embedded here to stand in
+ * through capability-gated app_svc_ calls. The module is embedded here to stand in
  * for a downloaded release.
  */
 

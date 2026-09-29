@@ -38,7 +38,7 @@ static void builtin_hello(void *arg)
 	ARG_UNUSED(arg);
 
 	for (;;) {
-		svc_log("builtin: hello from a compiled-in app");
+		app_svc_log("builtin: hello from a compiled-in app");
 		k_msleep(1000);
 	}
 }

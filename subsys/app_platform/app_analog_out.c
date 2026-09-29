@@ -67,7 +67,7 @@ void app_platform_clear_dac_grants(int id)
 	(void)app_service_unlock(&dac_lock);
 }
 
-int z_impl_svc_dac_count(void)
+int z_impl_app_svc_dac_count(void)
 {
 	if (!app_has_cap(APP_CAP_DAC)) {
 		return -EPERM;
@@ -78,7 +78,7 @@ int z_impl_svc_dac_count(void)
 /* The channel is set up on first use rather than at init, because the platform
  * does not know which application will be granted which channel.
  */
-int z_impl_svc_dac_write(int ch, uint32_t value)
+int z_impl_app_svc_dac_write(int ch, uint32_t value)
 {
 	if (!app_has_cap(APP_CAP_DAC)) {
 		return -EPERM;
@@ -186,7 +186,7 @@ static int eeprom_window(size_t off, size_t len, size_t *abs)
 	return 0;
 }
 
-int z_impl_svc_eeprom_size(void)
+int z_impl_app_svc_eeprom_size(void)
 {
 	if (!app_has_cap(APP_CAP_EEPROM)) {
 		return -EPERM;
@@ -200,7 +200,7 @@ int z_impl_svc_eeprom_size(void)
 	return (int)eeprom_grant[id].len;
 }
 
-int z_impl_svc_eeprom_read(uint32_t off, void *buf, size_t len)
+int z_impl_app_svc_eeprom_read(uint32_t off, void *buf, size_t len)
 {
 	if (!app_has_cap(APP_CAP_EEPROM)) {
 		return -EPERM;
@@ -222,7 +222,7 @@ int z_impl_svc_eeprom_read(uint32_t off, void *buf, size_t len)
 	return rc != 0 ? rc : (int)len;
 }
 
-int z_impl_svc_eeprom_write(uint32_t off, const void *buf, size_t len)
+int z_impl_app_svc_eeprom_write(uint32_t off, const void *buf, size_t len)
 {
 	if (!app_has_cap(APP_CAP_EEPROM)) {
 		return -EPERM;
@@ -247,27 +247,27 @@ int z_impl_svc_eeprom_write(uint32_t off, const void *buf, size_t len)
 
 #ifdef CONFIG_USERSPACE
 #ifdef CONFIG_APP_PLATFORM_DAC
-static inline int z_vrfy_svc_dac_count(void)
+static inline int z_vrfy_app_svc_dac_count(void)
 {
-	return z_impl_svc_dac_count();
+	return z_impl_app_svc_dac_count();
 }
-#include <zephyr/syscalls/svc_dac_count_mrsh.c>
+#include <zephyr/syscalls/app_svc_dac_count_mrsh.c>
 
-static inline int z_vrfy_svc_dac_write(int ch, uint32_t value)
+static inline int z_vrfy_app_svc_dac_write(int ch, uint32_t value)
 {
-	return z_impl_svc_dac_write(ch, value);
+	return z_impl_app_svc_dac_write(ch, value);
 }
-#include <zephyr/syscalls/svc_dac_write_mrsh.c>
+#include <zephyr/syscalls/app_svc_dac_write_mrsh.c>
 #endif /* CONFIG_APP_PLATFORM_DAC */
 
 #ifdef CONFIG_APP_PLATFORM_EEPROM
-static inline int z_vrfy_svc_eeprom_size(void)
+static inline int z_vrfy_app_svc_eeprom_size(void)
 {
-	return z_impl_svc_eeprom_size();
+	return z_impl_app_svc_eeprom_size();
 }
-#include <zephyr/syscalls/svc_eeprom_size_mrsh.c>
+#include <zephyr/syscalls/app_svc_eeprom_size_mrsh.c>
 
-static inline int z_vrfy_svc_eeprom_read(uint32_t off, void *buf, size_t len)
+static inline int z_vrfy_app_svc_eeprom_read(uint32_t off, void *buf, size_t len)
 {
 	char tmp[CONFIG_APP_PLATFORM_EEPROM_XFER_MAX];
 
@@ -275,16 +275,16 @@ static inline int z_vrfy_svc_eeprom_read(uint32_t off, void *buf, size_t len)
 		return -EINVAL;
 	}
 
-	int rc = z_impl_svc_eeprom_read(off, tmp, len);
+	int rc = z_impl_app_svc_eeprom_read(off, tmp, len);
 
 	if (rc > 0 && k_usermode_to_copy(buf, tmp, rc) != 0) {
 		return -EFAULT;
 	}
 	return rc;
 }
-#include <zephyr/syscalls/svc_eeprom_read_mrsh.c>
+#include <zephyr/syscalls/app_svc_eeprom_read_mrsh.c>
 
-static inline int z_vrfy_svc_eeprom_write(uint32_t off, const void *buf, size_t len)
+static inline int z_vrfy_app_svc_eeprom_write(uint32_t off, const void *buf, size_t len)
 {
 	char tmp[CONFIG_APP_PLATFORM_EEPROM_XFER_MAX];
 
@@ -294,8 +294,8 @@ static inline int z_vrfy_svc_eeprom_write(uint32_t off, const void *buf, size_t 
 	if (k_usermode_from_copy(tmp, (void *)buf, len) != 0) {
 		return -EFAULT;
 	}
-	return z_impl_svc_eeprom_write(off, tmp, len);
+	return z_impl_app_svc_eeprom_write(off, tmp, len);
 }
-#include <zephyr/syscalls/svc_eeprom_write_mrsh.c>
+#include <zephyr/syscalls/app_svc_eeprom_write_mrsh.c>
 #endif /* CONFIG_APP_PLATFORM_EEPROM */
 #endif /* CONFIG_USERSPACE */

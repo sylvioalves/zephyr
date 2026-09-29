@@ -21,7 +21,7 @@ void app_main(void *arg)
 	ARG_UNUSED(sink);
 #endif
 	for (;;) {
-		svc_log("pad app alive");
+		app_svc_log("pad app alive");
 		k_msleep(1000);
 	}
 }

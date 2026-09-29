@@ -222,7 +222,7 @@ static void hanger(void *arg)
 {
 	ARG_UNUSED(arg);
 	for (int i = 0; i < 3; i++) {
-		svc_heartbeat();
+		app_svc_heartbeat();
 		k_msleep(100);
 	}
 	t_app_last = (uint32_t)csr_read(cycle);
@@ -278,16 +278,16 @@ static void phase_hang(void)
 	       (app_meas_stamp[12] - t_app_last) / 240U);
 }
 
-/* ---- 4.6 kernel pointer to svc_log ---- */
+/* ---- 4.6 kernel pointer to app_svc_log ---- */
 
 static uint32_t kernel_secret = 0x5ec2e7;
 
 static void kptr_app(void *arg)
 {
 	ARG_UNUSED(arg);
-	svc_log((const char *)&kernel_secret);
-	svc_log((const char *)0xdeadbeef);
-	svc_log((const char *)0x40800000);
+	app_svc_log((const char *)&kernel_secret);
+	app_svc_log((const char *)0xdeadbeef);
+	app_svc_log((const char *)0x40800000);
 	t_app_last = 0xa11ceU;
 }
 
@@ -298,7 +298,7 @@ static void phase_kptr(void)
 		.caps = APP_CAP_LOG,
 	};
 
-	printk("== 4.6 svc_log with kernel/wild pointers (NLEN validate %s)\n",
+	printk("== 4.6 app_svc_log with kernel/wild pointers (NLEN validate %s)\n",
 	       IS_ENABLED(CONFIG_RISCV_USER_STRING_NLEN_VALIDATE) ? "on" : "off");
 	t_app_last = 0;
 	int id = app_platform_launch(&def);

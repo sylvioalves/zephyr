@@ -72,7 +72,7 @@ out:
 }
 #endif
 
-int z_impl_svc_can_send(uint32_t id, const uint8_t *buf, size_t len)
+int z_impl_app_svc_can_send(uint32_t id, const uint8_t *buf, size_t len)
 {
 	if (!app_has_cap(APP_CAP_CAN)) {
 		return -EPERM;
@@ -99,7 +99,7 @@ int z_impl_svc_can_send(uint32_t id, const uint8_t *buf, size_t len)
 #endif
 }
 
-int z_impl_svc_can_recv(uint32_t *id_out, uint8_t *buf, size_t cap, uint32_t timeout_ms)
+int z_impl_app_svc_can_recv(uint32_t *id_out, uint8_t *buf, size_t cap, uint32_t timeout_ms)
 {
 	if (!app_has_cap(APP_CAP_CAN)) {
 		return -EPERM;
@@ -129,19 +129,19 @@ int z_impl_svc_can_recv(uint32_t *id_out, uint8_t *buf, size_t cap, uint32_t tim
 }
 
 #ifdef CONFIG_USERSPACE
-static inline int z_vrfy_svc_can_send(uint32_t id, const uint8_t *buf, size_t len)
+static inline int z_vrfy_app_svc_can_send(uint32_t id, const uint8_t *buf, size_t len)
 {
 	K_OOPS(K_SYSCALL_MEMORY_READ(buf, len));
-	return z_impl_svc_can_send(id, buf, len);
+	return z_impl_app_svc_can_send(id, buf, len);
 }
-#include <zephyr/syscalls/svc_can_send_mrsh.c>
+#include <zephyr/syscalls/app_svc_can_send_mrsh.c>
 
-static inline int z_vrfy_svc_can_recv(uint32_t *id_out, uint8_t *buf, size_t cap,
-				      uint32_t timeout_ms)
+static inline int z_vrfy_app_svc_can_recv(uint32_t *id_out, uint8_t *buf, size_t cap,
+					  uint32_t timeout_ms)
 {
 	K_OOPS(K_SYSCALL_MEMORY_WRITE(id_out, sizeof(*id_out)));
 	K_OOPS(K_SYSCALL_MEMORY_WRITE(buf, cap));
-	return z_impl_svc_can_recv(id_out, buf, cap, timeout_ms);
+	return z_impl_app_svc_can_recv(id_out, buf, cap, timeout_ms);
 }
-#include <zephyr/syscalls/svc_can_recv_mrsh.c>
+#include <zephyr/syscalls/app_svc_can_recv_mrsh.c>
 #endif

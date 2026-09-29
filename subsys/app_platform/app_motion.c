@@ -43,7 +43,7 @@ static int pulse_init(void)
 }
 SYS_INIT(pulse_init, APPLICATION, 90);
 
-int z_impl_svc_pulse_emit(uint32_t n)
+int z_impl_app_svc_pulse_emit(uint32_t n)
 {
 	if (!app_has_cap(APP_CAP_COUNTER)) {
 		return -EPERM;
@@ -63,7 +63,7 @@ int z_impl_svc_pulse_emit(uint32_t n)
 	return (int)n;
 }
 
-int z_impl_svc_pulse_count(int32_t *count)
+int z_impl_app_svc_pulse_count(int32_t *count)
 {
 	if (!app_has_cap(APP_CAP_COUNTER)) {
 		return -EPERM;
@@ -88,7 +88,7 @@ int z_impl_svc_pulse_count(int32_t *count)
 	return 0;
 }
 #else  /* no pcnt node */
-int z_impl_svc_pulse_emit(uint32_t n)
+int z_impl_app_svc_pulse_emit(uint32_t n)
 {
 	if (!app_has_cap(APP_CAP_COUNTER)) {
 		return -EPERM;
@@ -97,7 +97,7 @@ int z_impl_svc_pulse_emit(uint32_t n)
 	return -ENODEV;
 }
 
-int z_impl_svc_pulse_count(int32_t *count)
+int z_impl_app_svc_pulse_count(int32_t *count)
 {
 	if (!app_has_cap(APP_CAP_COUNTER)) {
 		return -EPERM;
@@ -142,7 +142,7 @@ static int motor_init(void)
 }
 SYS_INIT(motor_init, APPLICATION, 99);
 
-int z_impl_svc_motor_set(uint32_t channel, uint32_t duty_pct)
+int z_impl_app_svc_motor_set(uint32_t channel, uint32_t duty_pct)
 {
 	if (!app_has_cap(APP_CAP_MOTOR)) {
 		return -EPERM;
@@ -174,7 +174,7 @@ int z_impl_svc_motor_set(uint32_t channel, uint32_t duty_pct)
 	return rc;
 }
 #else  /* no mcpwm0 node */
-int z_impl_svc_motor_set(uint32_t channel, uint32_t duty_pct)
+int z_impl_app_svc_motor_set(uint32_t channel, uint32_t duty_pct)
 {
 	if (!app_has_cap(APP_CAP_MOTOR)) {
 		return -EPERM;
@@ -185,22 +185,22 @@ int z_impl_svc_motor_set(uint32_t channel, uint32_t duty_pct)
 #endif /* mcpwm0 */
 
 #ifdef CONFIG_USERSPACE
-static inline int z_vrfy_svc_pulse_emit(uint32_t n)
+static inline int z_vrfy_app_svc_pulse_emit(uint32_t n)
 {
-	return z_impl_svc_pulse_emit(n);
+	return z_impl_app_svc_pulse_emit(n);
 }
-#include <zephyr/syscalls/svc_pulse_emit_mrsh.c>
+#include <zephyr/syscalls/app_svc_pulse_emit_mrsh.c>
 
-static inline int z_vrfy_svc_pulse_count(int32_t *count)
+static inline int z_vrfy_app_svc_pulse_count(int32_t *count)
 {
 	K_OOPS(K_SYSCALL_MEMORY_WRITE(count, sizeof(*count)));
-	return z_impl_svc_pulse_count(count);
+	return z_impl_app_svc_pulse_count(count);
 }
-#include <zephyr/syscalls/svc_pulse_count_mrsh.c>
+#include <zephyr/syscalls/app_svc_pulse_count_mrsh.c>
 
-static inline int z_vrfy_svc_motor_set(uint32_t channel, uint32_t duty_pct)
+static inline int z_vrfy_app_svc_motor_set(uint32_t channel, uint32_t duty_pct)
 {
-	return z_impl_svc_motor_set(channel, duty_pct);
+	return z_impl_app_svc_motor_set(channel, duty_pct);
 }
-#include <zephyr/syscalls/svc_motor_set_mrsh.c>
+#include <zephyr/syscalls/app_svc_motor_set_mrsh.c>
 #endif /* CONFIG_USERSPACE */

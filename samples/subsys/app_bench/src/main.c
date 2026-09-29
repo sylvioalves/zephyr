@@ -82,19 +82,19 @@ static void bench_user(void *arg)
 
 	t0 = read_cycles();
 	for (uint32_t i = 0; i < N_CALL; i++) {
-		svc_heartbeat();
+		app_svc_heartbeat();
 	}
 	ures.hb = read_cycles() - t0;
 
 	t0 = read_cycles();
 	for (uint32_t i = 0; i < N_CALL; i++) {
-		svc_log("x");
+		app_svc_log("x");
 	}
 	ures.log = read_cycles() - t0;
 
 	t0 = read_cycles();
 	for (uint32_t i = 0; i < N_SHA; i++) {
-		rc |= svc_sha256(in, sizeof(in), out);
+		rc |= app_svc_sha256(in, sizeof(in), out);
 	}
 	ures.sha = read_cycles() - t0;
 	ures.sha_rc = rc;
@@ -115,7 +115,7 @@ static void bench_denied(void *arg)
 
 	t0 = read_cycles();
 	for (uint32_t i = 0; i < N_CALL; i++) {
-		rc = svc_sha256(in, sizeof(in), out);
+		rc = app_svc_sha256(in, sizeof(in), out);
 	}
 	ures.sha_denied = read_cycles() - t0;
 	ures.denied_rc = rc;
@@ -148,7 +148,7 @@ static void run_kernel_direct(void)
 
 	t0 = read_cycles();
 	for (uint32_t i = 0; i < N_CALL; i++) {
-		z_impl_svc_heartbeat();
+		z_impl_app_svc_heartbeat();
 	}
 	report("kernel direct heartbeat", read_cycles() - t0, N_CALL);
 }
@@ -265,9 +265,9 @@ int main(void)
 	wait_done(1);
 	printk("-- user-mode app (bench0, caps LOG|TIME|CRYPTO)\n");
 	report("user empty loop", ures.empty, N_CALL);
-	report("user svc_heartbeat()", ures.hb, N_CALL);
-	report("user svc_log(\"x\")", ures.log, N_CALL);
-	report("user svc_sha256(32B)", ures.sha, N_SHA);
+	report("user app_svc_heartbeat()", ures.hb, N_CALL);
+	report("user app_svc_log(\"x\")", ures.log, N_CALL);
+	report("user app_svc_sha256(32B)", ures.sha, N_SHA);
 	printk("  (sha rc=%d)\n", ures.sha_rc);
 
 	int id1 = app_platform_launch(&denied_app);
@@ -275,7 +275,7 @@ int main(void)
 	k_mem_domain_add_partition(app_platform_domain(id1), &res_part);
 	wait_done(2);
 	printk("-- user-mode app (bench1, caps LOG|TIME, no CRYPTO)\n");
-	report("user svc_sha256 denied", ures.sha_denied, N_CALL);
+	report("user app_svc_sha256 denied", ures.sha_denied, N_CALL);
 	printk("  (denied rc=%d, expect -EPERM=-1)\n", ures.denied_rc);
 
 	printk("-- kernel thread (%s), direct z_impl calls\n", __func__);

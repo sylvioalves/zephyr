@@ -202,7 +202,7 @@ Time
      - Needs ``APP_CAP_RTC_SET``, a capability of its own.
    * - Set the platform wall clock
      - Admin
-     - ``svc_rtc_set`` needs only ``APP_CAP_TIME``, and moves the clock every
+     - ``app_svc_rtc_set`` needs only ``APP_CAP_TIME``, and moves the clock every
        application reads.
    * - Software timers
      - Open

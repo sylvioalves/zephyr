@@ -9,7 +9,7 @@ project(app_ble_ota_peer)
 # A module that calls platform services cannot be compiled here at all: a
 # syscall's number is its index in the generated table, and that table follows
 # the whole Kconfig. This peer places sys_clock_* where the device places
-# svc_*, so a module built here would ecall numbers the device does not
+# app_svc_*, so a module built here would ecall numbers the device does not
 # recognise, and the loaded application would fault on its first service call.
 #
 # So the module is built once, by the device application, and its .llext is

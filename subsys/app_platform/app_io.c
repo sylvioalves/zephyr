@@ -90,7 +90,7 @@ void app_platform_grant_led(int id, uint32_t pin_mask)
 	}
 }
 
-int z_impl_svc_led_set(int pin, int on)
+int z_impl_app_svc_led_set(int pin, int on)
 {
 	/* The capability is checked before the grant, as everywhere else, so a
 	 * caller without APP_CAP_LED gets -EPERM and cannot tell an ungranted
@@ -127,7 +127,7 @@ int z_impl_svc_led_set(int pin, int on)
 	return rc;
 }
 
-int z_impl_svc_led_count(void)
+int z_impl_app_svc_led_count(void)
 {
 	return (int)LED_COUNT;
 }
@@ -145,7 +145,7 @@ static int led_find(const char *name)
 	return -ENOENT;
 }
 
-int z_impl_svc_led_find(const char *name)
+int z_impl_app_svc_led_find(const char *name)
 {
 	return led_find(name);
 }
@@ -155,7 +155,7 @@ void app_platform_grant_led(int id, uint32_t pin_mask)
 	ARG_UNUSED(id); ARG_UNUSED(pin_mask);
 }
 
-int z_impl_svc_led_set(int pin, int on)
+int z_impl_app_svc_led_set(int pin, int on)
 {
 	if (!app_has_cap(APP_CAP_LED)) {
 		return -EPERM;
@@ -164,12 +164,12 @@ int z_impl_svc_led_set(int pin, int on)
 	return -ENODEV;
 }
 
-int z_impl_svc_led_count(void)
+int z_impl_app_svc_led_count(void)
 {
 	return 0;
 }
 
-int z_impl_svc_led_find(const char *name)
+int z_impl_app_svc_led_find(const char *name)
 {
 	ARG_UNUSED(name);
 	return -ENOENT;
@@ -244,7 +244,7 @@ static void button_pressed(const struct device *dev, struct gpio_callback *cb,
 	k_sem_give(&press_sem);
 
 	/* Also deliver to every per-application queue, so an application can
-	 * wait on the button together with its other sources. svc_button_wait
+	 * wait on the button together with its other sources. app_svc_button_wait
 	 * keeps working for applications that use only the button.
 	 */
 	if (IS_ENABLED(CONFIG_APP_PLATFORM_EVENTS)) {
@@ -272,7 +272,7 @@ SYS_INIT(button_init, APPLICATION, 90);
 #endif
 
 #ifndef APP_IO_NO_BUTTON
-int z_impl_svc_button_wait(int32_t timeout_ms)
+int z_impl_app_svc_button_wait(int32_t timeout_ms)
 {
 	if (!app_has_cap(APP_CAP_INPUT)) {
 		return -EPERM;
@@ -286,7 +286,7 @@ int z_impl_svc_button_wait(int32_t timeout_ms)
 	return (int)atomic_get(&press_count);
 }
 #else
-int z_impl_svc_button_wait(int32_t timeout_ms)
+int z_impl_app_svc_button_wait(int32_t timeout_ms)
 {
 	if (!app_has_cap(APP_CAP_INPUT)) {
 		return -EPERM;
@@ -334,7 +334,7 @@ static bool name_running(const char *name)
 	return false;
 }
 
-void z_impl_svc_checkpoint_set(uint32_t value)
+void z_impl_app_svc_checkpoint_set(uint32_t value)
 {
 	char name[APP_PLATFORM_NAME_LEN];
 	struct checkpoint *slot = NULL;
@@ -362,7 +362,7 @@ void z_impl_svc_checkpoint_set(uint32_t value)
 	k_spin_unlock(&checkpoint_lock, key);
 }
 
-uint32_t z_impl_svc_checkpoint_get(void)
+uint32_t z_impl_app_svc_checkpoint_get(void)
 {
 	char name[APP_PLATFORM_NAME_LEN];
 	uint32_t value = 0U;
@@ -384,44 +384,44 @@ uint32_t z_impl_svc_checkpoint_get(void)
 }
 
 #ifdef CONFIG_USERSPACE
-static inline int z_vrfy_svc_led_set(int pin, int on)
+static inline int z_vrfy_app_svc_led_set(int pin, int on)
 {
-	return z_impl_svc_led_set(pin, on);
+	return z_impl_app_svc_led_set(pin, on);
 }
-#include <zephyr/syscalls/svc_led_set_mrsh.c>
+#include <zephyr/syscalls/app_svc_led_set_mrsh.c>
 
-static inline int z_vrfy_svc_led_count(void)
+static inline int z_vrfy_app_svc_led_count(void)
 {
-	return z_impl_svc_led_count();
+	return z_impl_app_svc_led_count();
 }
-#include <zephyr/syscalls/svc_led_count_mrsh.c>
+#include <zephyr/syscalls/app_svc_led_count_mrsh.c>
 
-static inline int z_vrfy_svc_led_find(const char *name)
+static inline int z_vrfy_app_svc_led_find(const char *name)
 {
 	char buf[IO_NAME_MAX];
 
 	if (k_usermode_string_copy(buf, (char *)name, sizeof(buf)) != 0) {
 		return -EFAULT;
 	}
-	return z_impl_svc_led_find(buf);
+	return z_impl_app_svc_led_find(buf);
 }
-#include <zephyr/syscalls/svc_led_find_mrsh.c>
+#include <zephyr/syscalls/app_svc_led_find_mrsh.c>
 
-static inline int z_vrfy_svc_button_wait(int32_t timeout_ms)
+static inline int z_vrfy_app_svc_button_wait(int32_t timeout_ms)
 {
-	return z_impl_svc_button_wait(timeout_ms);
+	return z_impl_app_svc_button_wait(timeout_ms);
 }
-#include <zephyr/syscalls/svc_button_wait_mrsh.c>
+#include <zephyr/syscalls/app_svc_button_wait_mrsh.c>
 
-static inline void z_vrfy_svc_checkpoint_set(uint32_t value)
+static inline void z_vrfy_app_svc_checkpoint_set(uint32_t value)
 {
-	z_impl_svc_checkpoint_set(value);
+	z_impl_app_svc_checkpoint_set(value);
 }
-#include <zephyr/syscalls/svc_checkpoint_set_mrsh.c>
+#include <zephyr/syscalls/app_svc_checkpoint_set_mrsh.c>
 
-static inline uint32_t z_vrfy_svc_checkpoint_get(void)
+static inline uint32_t z_vrfy_app_svc_checkpoint_get(void)
 {
-	return z_impl_svc_checkpoint_get();
+	return z_impl_app_svc_checkpoint_get();
 }
-#include <zephyr/syscalls/svc_checkpoint_get_mrsh.c>
+#include <zephyr/syscalls/app_svc_checkpoint_get_mrsh.c>
 #endif /* CONFIG_USERSPACE */

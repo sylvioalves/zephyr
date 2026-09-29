@@ -9,7 +9,7 @@
  * instances of this module run in parallel as isolated user-mode apps so the
  * maximum number of concurrent loadable apps can be measured.
  *
- * The module uses only service syscalls (svc_*) and builds its log line by
+ * The module uses only service syscalls (app_svc_*) and builds its log line by
  * hand, so it has no libc or supervisor-symbol dependencies to resolve at load
  * time.
  */
@@ -55,12 +55,12 @@ void app_main(void *arg)
 	uint32_t ticks = 0;
 	uint32_t acc = 0;
 
-	svc_log("hello: loadable app running");
+	app_svc_log("hello: loadable app running");
 
 	for (;;) {
 		uint8_t r[4] = {0};
 
-		svc_random(r, sizeof(r));
+		app_svc_random(r, sizeof(r));
 		acc += (uint32_t)r[0] + r[1] + r[2] + r[3];
 
 		ticks++;
@@ -71,7 +71,7 @@ void app_main(void *arg)
 			i = put_str(line, i, " acc=");
 			i = put_u32(line, i, acc);
 			line[i] = '\0';
-			svc_log(line);
+			app_svc_log(line);
 		}
 
 		k_msleep(1000);

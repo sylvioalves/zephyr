@@ -8,7 +8,7 @@
  * An isolated user-mode application that reacts to input through registered
  * callbacks instead of a blocking wait per source. The handlers run on the
  * application's own thread, in user mode and in its own memory domain: the
- * dispatcher is a loop around svc_event_wait(), so nothing calls from the
+ * dispatcher is a loop around app_svc_event_wait(), so nothing calls from the
  * platform into the application and a faulting handler is an ordinary
  * application fault.
  *
@@ -53,7 +53,7 @@ static void on_button(const struct app_event *evt, void *user)
 	(void)snprintk(line, sizeof(line),
 		       "dispatch: key 0x%x #%d (seq %u)", evt->code, h->button,
 		       evt->seq);
-	svc_log(line);
+	app_svc_log(line);
 }
 
 static void on_gpio(const struct app_event *evt, void *user)
@@ -65,10 +65,10 @@ static void on_gpio(const struct app_event *evt, void *user)
 	(void)snprintk(line, sizeof(line),
 		       "dispatch: gpio line %u -> %u (#%d, seq %u)",
 		       evt->line, evt->value, h->gpio, evt->seq);
-	svc_log(line);
+	app_svc_log(line);
 
 	if (h->gpio >= 4) {
-		svc_log("dispatch: seen enough, stopping");
+		app_svc_log("dispatch: seen enough, stopping");
 		app_dispatch_stop(&h->d);
 	}
 }
@@ -77,11 +77,11 @@ static void dispatch_app(void *arg)
 {
 	ARG_UNUSED(arg);
 
-	if (svc_gpio_watch(WATCH_LINE, 1) != 0) {
-		svc_log("dispatch: could not watch the granted line");
+	if (app_svc_gpio_watch(WATCH_LINE, 1) != 0) {
+		app_svc_log("dispatch: could not watch the granted line");
 		return;
 	}
-	svc_log("dispatch: watching a granted line and the button");
+	app_svc_log("dispatch: watching a granted line and the button");
 
 	(void)app_dispatch_on(&holder.d, APP_EVENT_BUTTON, on_button, &holder);
 	(void)app_dispatch_on(&holder.d, APP_EVENT_GPIO, on_gpio, &holder);
@@ -92,7 +92,7 @@ static void dispatch_app(void *arg)
 	(void)snprintk(line, sizeof(line),
 		       "dispatch: loop ended rc=%d button=%d gpio=%d", rc,
 		       holder.button, holder.gpio);
-	svc_log(line);
+	app_svc_log(line);
 }
 
 static void nodispatch_app(void *arg)
@@ -101,10 +101,10 @@ static void nodispatch_app(void *arg)
 
 	struct app_event evt;
 
-	if (svc_event_wait(&evt, 100) == -EPERM) {
-		svc_log("nodispatch: wait denied without the capability");
+	if (app_svc_event_wait(&evt, 100) == -EPERM) {
+		app_svc_log("nodispatch: wait denied without the capability");
 	} else {
-		svc_log("nodispatch: ERROR wait was allowed");
+		app_svc_log("nodispatch: ERROR wait was allowed");
 	}
 }
 

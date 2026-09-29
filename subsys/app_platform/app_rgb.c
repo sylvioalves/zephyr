@@ -48,7 +48,7 @@ void app_platform_grant_rgb(int id, uint32_t pixel_mask)
 	}
 }
 
-int z_impl_svc_rgb_set(int pixel, uint8_t r, uint8_t g, uint8_t b)
+int z_impl_app_svc_rgb_set(int pixel, uint8_t r, uint8_t g, uint8_t b)
 {
 	if (!app_has_cap(APP_CAP_RGB)) {
 		return -EPERM;
@@ -87,7 +87,7 @@ int z_impl_svc_rgb_set(int pixel, uint8_t r, uint8_t g, uint8_t b)
 	return rc;
 }
 
-int z_impl_svc_rgb_count(void)
+int z_impl_app_svc_rgb_count(void)
 {
 	return (int)RGB_COUNT;
 }
@@ -116,15 +116,15 @@ void app_platform_clear_rgb_grants(int id)
 }
 
 #ifdef CONFIG_USERSPACE
-static inline int z_vrfy_svc_rgb_set(int pixel, uint8_t r, uint8_t g, uint8_t b)
+static inline int z_vrfy_app_svc_rgb_set(int pixel, uint8_t r, uint8_t g, uint8_t b)
 {
-	return z_impl_svc_rgb_set(pixel, r, g, b);
+	return z_impl_app_svc_rgb_set(pixel, r, g, b);
 }
-#include <zephyr/syscalls/svc_rgb_set_mrsh.c>
+#include <zephyr/syscalls/app_svc_rgb_set_mrsh.c>
 
-static inline int z_vrfy_svc_rgb_count(void)
+static inline int z_vrfy_app_svc_rgb_count(void)
 {
-	return z_impl_svc_rgb_count();
+	return z_impl_app_svc_rgb_count();
 }
-#include <zephyr/syscalls/svc_rgb_count_mrsh.c>
+#include <zephyr/syscalls/app_svc_rgb_count_mrsh.c>
 #endif /* CONFIG_USERSPACE */

@@ -132,7 +132,7 @@ static int mailbox_put(int dest, const void *buf, size_t len)
 	return k_msgq_put(&mailbox[dest], &msg, K_NO_WAIT) == 0 ? 0 : -EAGAIN;
 }
 
-void z_impl_svc_log(const char *msg)
+void z_impl_app_svc_log(const char *msg)
 {
 	if (!app_has_cap(APP_CAP_LOG)) {
 		return;
@@ -146,17 +146,17 @@ void z_impl_svc_log(const char *msg)
 	LOG_INF("[app %d] %s", app_platform_id_current(), msg);
 }
 
-void z_impl_svc_heartbeat(void)
+void z_impl_app_svc_heartbeat(void)
 {
 	app_platform_heartbeat();
 }
 
-int z_impl_svc_stop_requested(void)
+int z_impl_app_svc_stop_requested(void)
 {
 	return app_platform_stop_requested() ? 1 : 0;
 }
 
-int z_impl_svc_sha256(const uint8_t *in, size_t len, uint8_t *out32)
+int z_impl_app_svc_sha256(const uint8_t *in, size_t len, uint8_t *out32)
 {
 	if (!app_has_cap(APP_CAP_CRYPTO)) {
 		return -EPERM;
@@ -180,7 +180,7 @@ int z_impl_svc_sha256(const uint8_t *in, size_t len, uint8_t *out32)
 #endif
 }
 
-int z_impl_svc_random(uint8_t *buf, size_t len)
+int z_impl_app_svc_random(uint8_t *buf, size_t len)
 {
 	if (!app_has_cap(APP_CAP_RANDOM)) {
 		return -EPERM;
@@ -192,7 +192,7 @@ int z_impl_svc_random(uint8_t *buf, size_t len)
 	return 0;
 }
 
-uint32_t z_impl_svc_uptime_ms(void)
+uint32_t z_impl_app_svc_uptime_ms(void)
 {
 	if (!app_has_cap(APP_CAP_TIME)) {
 		return 0;
@@ -200,7 +200,7 @@ uint32_t z_impl_svc_uptime_ms(void)
 	return (uint32_t)k_uptime_get();
 }
 
-uint32_t z_impl_svc_cycles(void)
+uint32_t z_impl_app_svc_cycles(void)
 {
 	if (!app_has_cap(APP_CAP_TIME)) {
 		return 0;
@@ -208,7 +208,7 @@ uint32_t z_impl_svc_cycles(void)
 	return k_cycle_get_32();
 }
 
-int z_impl_svc_die_temp_milli(void)
+int z_impl_app_svc_die_temp_milli(void)
 {
 	if (!app_has_cap(APP_CAP_SENSOR)) {
 		return -EPERM;
@@ -227,7 +227,7 @@ int z_impl_svc_die_temp_milli(void)
 #endif
 }
 
-int z_impl_svc_kv_set(const char *key, uint32_t value)
+int z_impl_app_svc_kv_set(const char *key, uint32_t value)
 {
 	if (!app_has_cap(APP_CAP_KV)) {
 		return -EPERM;
@@ -264,7 +264,7 @@ out:
 	return rc;
 }
 
-int z_impl_svc_kv_get(const char *key, uint32_t *out)
+int z_impl_app_svc_kv_get(const char *key, uint32_t *out)
 {
 	if (!app_has_cap(APP_CAP_KV)) {
 		return -EPERM;
@@ -315,7 +315,7 @@ static int kv_service_init(void)
 }
 SYS_INIT(kv_service_init, APPLICATION, 99);
 
-int z_impl_svc_kv_delete(const char *key)
+int z_impl_app_svc_kv_delete(const char *key)
 {
 	if (!app_has_cap(APP_CAP_KV)) {
 		return -EPERM;
@@ -398,7 +398,7 @@ static int flash_window(uint32_t off, size_t len, uint32_t size, uint32_t *abs)
 }
 #endif /* CONFIG_FLASH_MAP && storage_partition */
 
-int z_impl_svc_flash_read(uint32_t off, uint8_t *buf, size_t len)
+int z_impl_app_svc_flash_read(uint32_t off, uint8_t *buf, size_t len)
 {
 	if (!app_has_cap(APP_CAP_FLASH)) {
 		return -EPERM;
@@ -437,7 +437,7 @@ int z_impl_svc_flash_read(uint32_t off, uint8_t *buf, size_t len)
 #endif
 }
 
-int z_impl_svc_flash_write(uint32_t off, const uint8_t *buf, size_t len)
+int z_impl_app_svc_flash_write(uint32_t off, const uint8_t *buf, size_t len)
 {
 	if (!app_has_cap(APP_CAP_FLASH)) {
 		return -EPERM;
@@ -477,7 +477,7 @@ int z_impl_svc_flash_write(uint32_t off, const uint8_t *buf, size_t len)
 #endif
 }
 
-int z_impl_svc_flash_erase(uint32_t off, size_t len)
+int z_impl_app_svc_flash_erase(uint32_t off, size_t len)
 {
 	if (!app_has_cap(APP_CAP_FLASH)) {
 		return -EPERM;
@@ -510,7 +510,7 @@ int z_impl_svc_flash_erase(uint32_t off, size_t len)
 #endif
 }
 
-int z_impl_svc_device_id(uint8_t *buf, size_t len)
+int z_impl_app_svc_device_id(uint8_t *buf, size_t len)
 {
 	if (!app_has_cap(APP_CAP_TIME)) {
 		return -EPERM;
@@ -526,7 +526,7 @@ int z_impl_svc_device_id(uint8_t *buf, size_t len)
 #endif
 }
 
-int z_impl_svc_reset_cause(uint32_t *cause)
+int z_impl_app_svc_reset_cause(uint32_t *cause)
 {
 	if (!app_has_cap(APP_CAP_TIME)) {
 		return -EPERM;
@@ -622,7 +622,7 @@ static int slot_lookup(int slot, struct app_timer_slot **out)
 	return 0;
 }
 
-int z_impl_svc_timer_create(void)
+int z_impl_app_svc_timer_create(void)
 {
 	if (!app_has_cap(APP_CAP_TIME)) {
 		return -EPERM;
@@ -650,7 +650,7 @@ int z_impl_svc_timer_create(void)
 	return -ENOSPC;
 }
 
-int z_impl_svc_timer_arm(int slot, uint32_t ms, int periodic)
+int z_impl_app_svc_timer_arm(int slot, uint32_t ms, int periodic)
 {
 	struct app_timer_slot *s;
 	int err = slot_lookup(slot, &s);
@@ -672,7 +672,7 @@ int z_impl_svc_timer_arm(int slot, uint32_t ms, int periodic)
 	return 0;
 }
 
-int z_impl_svc_timer_slot_wait(int slot, int32_t timeout_ms)
+int z_impl_app_svc_timer_slot_wait(int slot, int32_t timeout_ms)
 {
 	struct app_timer_slot *s;
 	int err = slot_lookup(slot, &s);
@@ -686,7 +686,7 @@ int z_impl_svc_timer_slot_wait(int slot, int32_t timeout_ms)
 	return (k_sem_take(&s->sem, t) == 0) ? 0 : -EAGAIN;
 }
 
-int z_impl_svc_timer_stop(int slot)
+int z_impl_app_svc_timer_stop(int slot)
 {
 	struct app_timer_slot *s;
 	int err = slot_lookup(slot, &s);
@@ -699,7 +699,7 @@ int z_impl_svc_timer_stop(int slot)
 	return 0;
 }
 
-int z_impl_svc_timer_elapsed(int slot)
+int z_impl_app_svc_timer_elapsed(int slot)
 {
 	struct app_timer_slot *s;
 	int err = slot_lookup(slot, &s);
@@ -714,7 +714,7 @@ int z_impl_svc_timer_elapsed(int slot)
 	return (int)(k_uptime_get() - s->armed_at);
 }
 
-int z_impl_svc_timer_free(int slot)
+int z_impl_app_svc_timer_free(int slot)
 {
 	struct app_timer_slot *s;
 	int err = slot_lookup(slot, &s);
@@ -758,7 +758,7 @@ static int timer_slots_init(void)
 }
 SYS_INIT(timer_slots_init, APPLICATION, 99);
 
-int z_impl_svc_timer_start(uint32_t ms)
+int z_impl_app_svc_timer_start(uint32_t ms)
 {
 	if (!app_has_cap(APP_CAP_TIME)) {
 		return -EPERM;
@@ -775,7 +775,7 @@ int z_impl_svc_timer_start(uint32_t ms)
 	return 0;
 }
 
-int z_impl_svc_timer_wait(uint32_t timeout_ms)
+int z_impl_app_svc_timer_wait(uint32_t timeout_ms)
 {
 	if (!app_has_cap(APP_CAP_TIME)) {
 		return -EPERM;
@@ -795,7 +795,7 @@ static SVC_LOCK_DEFINE(rtc_lock);
 static int64_t rtc_seed_sec;
 static int64_t rtc_seed_uptime;
 
-int z_impl_svc_rtc_set(uint32_t epoch_sec)
+int z_impl_app_svc_rtc_set(uint32_t epoch_sec)
 {
 	if (!app_has_cap(APP_CAP_TIME)) {
 		return -EPERM;
@@ -809,7 +809,7 @@ int z_impl_svc_rtc_set(uint32_t epoch_sec)
 	return 0;
 }
 
-int z_impl_svc_rtc_now(uint32_t *epoch_sec)
+int z_impl_app_svc_rtc_now(uint32_t *epoch_sec)
 {
 	if (!app_has_cap(APP_CAP_TIME)) {
 		return -EPERM;
@@ -824,7 +824,7 @@ int z_impl_svc_rtc_now(uint32_t *epoch_sec)
 	return 0;
 }
 
-int z_impl_svc_ipc_send(int dest_id, const void *buf, size_t len)
+int z_impl_app_svc_ipc_send(int dest_id, const void *buf, size_t len)
 {
 	if (!app_has_cap(APP_CAP_IPC)) {
 		return -EPERM;
@@ -835,7 +835,7 @@ int z_impl_svc_ipc_send(int dest_id, const void *buf, size_t len)
 	return mailbox_put(dest_id, buf, len);
 }
 
-int z_impl_svc_ipc_recv(void *buf, size_t len, uint32_t timeout_ms)
+int z_impl_app_svc_ipc_recv(void *buf, size_t len, uint32_t timeout_ms)
 {
 	if (!app_has_cap(APP_CAP_IPC)) {
 		return -EPERM;
@@ -859,7 +859,7 @@ int z_impl_svc_ipc_recv(void *buf, size_t len, uint32_t timeout_ms)
 	return (int)n;
 }
 
-int z_impl_svc_ipc_register(const char *name)
+int z_impl_app_svc_ipc_register(const char *name)
 {
 	if (!app_has_cap(APP_CAP_IPC)) {
 		return -EPERM;
@@ -879,7 +879,7 @@ int z_impl_svc_ipc_register(const char *name)
 	return 0;
 }
 
-int z_impl_svc_ipc_send_to(const char *name, const void *buf, size_t len)
+int z_impl_app_svc_ipc_send_to(const char *name, const void *buf, size_t len)
 {
 	if (!app_has_cap(APP_CAP_IPC)) {
 		return -EPERM;
@@ -907,7 +907,7 @@ int z_impl_svc_ipc_send_to(const char *name, const void *buf, size_t len)
 	return mailbox_put(dest, buf, len);
 }
 
-int z_impl_svc_topic_subscribe(const char *topic)
+int z_impl_app_svc_topic_subscribe(const char *topic)
 {
 	if (!app_has_cap(APP_CAP_IPC)) {
 		return -EPERM;
@@ -927,7 +927,7 @@ int z_impl_svc_topic_subscribe(const char *topic)
 	return 0;
 }
 
-int z_impl_svc_topic_publish(const char *topic, const void *buf, size_t len)
+int z_impl_app_svc_topic_publish(const char *topic, const void *buf, size_t len)
 {
 	if (!app_has_cap(APP_CAP_IPC)) {
 		return -EPERM;
@@ -956,7 +956,7 @@ int z_impl_svc_topic_publish(const char *topic, const void *buf, size_t len)
 	return delivered;
 }
 
-int z_impl_svc_app_count(void)
+int z_impl_app_svc_app_count(void)
 {
 	if (!app_has_cap(APP_CAP_INSPECT)) {
 		return -EPERM;
@@ -964,7 +964,7 @@ int z_impl_svc_app_count(void)
 	return app_platform_count();
 }
 
-int z_impl_svc_app_info(int id, struct svc_app_info *out)
+int z_impl_app_svc_app_info(int id, struct app_svc_app_info *out)
 {
 	if (!app_has_cap(APP_CAP_INSPECT)) {
 		return -EPERM;
@@ -977,7 +977,7 @@ int z_impl_svc_app_info(int id, struct svc_app_info *out)
 		return rc;
 	}
 
-	*out = (struct svc_app_info){
+	*out = (struct app_svc_app_info){
 		.active = st.active,
 		.monitored = st.monitored,
 		.faulted = st.faulted,
@@ -995,7 +995,7 @@ int z_impl_svc_app_info(int id, struct svc_app_info *out)
  * returns, so the application would disappear instead of seeing an error.
  * Refuse it and let an application exit by returning from its entry point.
  */
-int z_impl_svc_app_stop(int id)
+int z_impl_app_svc_app_stop(int id)
 {
 	if (!app_has_cap(APP_CAP_CONTROL)) {
 		return -EPERM;
@@ -1006,7 +1006,7 @@ int z_impl_svc_app_stop(int id)
 	return app_platform_stop(id);
 }
 
-int z_impl_svc_app_start(int id)
+int z_impl_app_svc_app_start(int id)
 {
 	if (!app_has_cap(APP_CAP_CONTROL)) {
 		return -EPERM;
@@ -1026,7 +1026,7 @@ int z_impl_svc_app_start(int id)
 #endif
 }
 
-int z_impl_svc_app_restart(int id)
+int z_impl_app_svc_app_restart(int id)
 {
 	if (!app_has_cap(APP_CAP_CONTROL)) {
 		return -EPERM;
@@ -1053,85 +1053,85 @@ int z_impl_svc_app_restart(int id)
 }
 
 #ifdef CONFIG_USERSPACE
-static inline void z_vrfy_svc_log(const char *msg)
+static inline void z_vrfy_app_svc_log(const char *msg)
 {
 	char buf[64];
 
 	if (k_usermode_string_copy(buf, (char *)msg, sizeof(buf)) == 0) {
-		z_impl_svc_log(buf);
+		z_impl_app_svc_log(buf);
 	}
 }
-#include <zephyr/syscalls/svc_log_mrsh.c>
+#include <zephyr/syscalls/app_svc_log_mrsh.c>
 
-static inline void z_vrfy_svc_heartbeat(void)
+static inline void z_vrfy_app_svc_heartbeat(void)
 {
-	z_impl_svc_heartbeat();
+	z_impl_app_svc_heartbeat();
 }
-#include <zephyr/syscalls/svc_heartbeat_mrsh.c>
+#include <zephyr/syscalls/app_svc_heartbeat_mrsh.c>
 
-static inline int z_vrfy_svc_stop_requested(void)
+static inline int z_vrfy_app_svc_stop_requested(void)
 {
-	return z_impl_svc_stop_requested();
+	return z_impl_app_svc_stop_requested();
 }
-#include <zephyr/syscalls/svc_stop_requested_mrsh.c>
+#include <zephyr/syscalls/app_svc_stop_requested_mrsh.c>
 
-static inline int z_vrfy_svc_sha256(const uint8_t *in, size_t len,
-				    uint8_t *out32)
+static inline int z_vrfy_app_svc_sha256(const uint8_t *in, size_t len,
+					uint8_t *out32)
 {
 	K_OOPS(K_SYSCALL_MEMORY_READ(in, len));
 	K_OOPS(K_SYSCALL_MEMORY_WRITE(out32, 32));
-	return z_impl_svc_sha256(in, len, out32);
+	return z_impl_app_svc_sha256(in, len, out32);
 }
-#include <zephyr/syscalls/svc_sha256_mrsh.c>
+#include <zephyr/syscalls/app_svc_sha256_mrsh.c>
 
-static inline int z_vrfy_svc_random(uint8_t *buf, size_t len)
+static inline int z_vrfy_app_svc_random(uint8_t *buf, size_t len)
 {
 	K_OOPS(K_SYSCALL_MEMORY_WRITE(buf, len));
-	return z_impl_svc_random(buf, len);
+	return z_impl_app_svc_random(buf, len);
 }
-#include <zephyr/syscalls/svc_random_mrsh.c>
+#include <zephyr/syscalls/app_svc_random_mrsh.c>
 
-static inline uint32_t z_vrfy_svc_uptime_ms(void)
+static inline uint32_t z_vrfy_app_svc_uptime_ms(void)
 {
-	return z_impl_svc_uptime_ms();
+	return z_impl_app_svc_uptime_ms();
 }
-#include <zephyr/syscalls/svc_uptime_ms_mrsh.c>
+#include <zephyr/syscalls/app_svc_uptime_ms_mrsh.c>
 
-static inline uint32_t z_vrfy_svc_cycles(void)
+static inline uint32_t z_vrfy_app_svc_cycles(void)
 {
-	return z_impl_svc_cycles();
+	return z_impl_app_svc_cycles();
 }
-#include <zephyr/syscalls/svc_cycles_mrsh.c>
+#include <zephyr/syscalls/app_svc_cycles_mrsh.c>
 
-static inline int z_vrfy_svc_die_temp_milli(void)
+static inline int z_vrfy_app_svc_die_temp_milli(void)
 {
-	return z_impl_svc_die_temp_milli();
+	return z_impl_app_svc_die_temp_milli();
 }
-#include <zephyr/syscalls/svc_die_temp_milli_mrsh.c>
+#include <zephyr/syscalls/app_svc_die_temp_milli_mrsh.c>
 
-static inline int z_vrfy_svc_kv_set(const char *key, uint32_t value)
-{
-	char buf[KV_KEY_MAX];
-
-	if (k_usermode_string_copy(buf, (char *)key, sizeof(buf)) != 0) {
-		return -EFAULT;
-	}
-	return z_impl_svc_kv_set(buf, value);
-}
-#include <zephyr/syscalls/svc_kv_set_mrsh.c>
-
-static inline int z_vrfy_svc_kv_delete(const char *key)
+static inline int z_vrfy_app_svc_kv_set(const char *key, uint32_t value)
 {
 	char buf[KV_KEY_MAX];
 
 	if (k_usermode_string_copy(buf, (char *)key, sizeof(buf)) != 0) {
 		return -EFAULT;
 	}
-	return z_impl_svc_kv_delete(buf);
+	return z_impl_app_svc_kv_set(buf, value);
 }
-#include <zephyr/syscalls/svc_kv_delete_mrsh.c>
+#include <zephyr/syscalls/app_svc_kv_set_mrsh.c>
 
-static inline int z_vrfy_svc_kv_get(const char *key, uint32_t *out)
+static inline int z_vrfy_app_svc_kv_delete(const char *key)
+{
+	char buf[KV_KEY_MAX];
+
+	if (k_usermode_string_copy(buf, (char *)key, sizeof(buf)) != 0) {
+		return -EFAULT;
+	}
+	return z_impl_app_svc_kv_delete(buf);
+}
+#include <zephyr/syscalls/app_svc_kv_delete_mrsh.c>
+
+static inline int z_vrfy_app_svc_kv_get(const char *key, uint32_t *out)
 {
 	char buf[KV_KEY_MAX];
 
@@ -1139,132 +1139,132 @@ static inline int z_vrfy_svc_kv_get(const char *key, uint32_t *out)
 		return -EFAULT;
 	}
 	K_OOPS(K_SYSCALL_MEMORY_WRITE(out, sizeof(*out)));
-	return z_impl_svc_kv_get(buf, out);
+	return z_impl_app_svc_kv_get(buf, out);
 }
-#include <zephyr/syscalls/svc_kv_get_mrsh.c>
+#include <zephyr/syscalls/app_svc_kv_get_mrsh.c>
 
-static inline int z_vrfy_svc_flash_read(uint32_t off, uint8_t *buf, size_t len)
+static inline int z_vrfy_app_svc_flash_read(uint32_t off, uint8_t *buf, size_t len)
 {
 	K_OOPS(K_SYSCALL_MEMORY_WRITE(buf, len));
-	return z_impl_svc_flash_read(off, buf, len);
+	return z_impl_app_svc_flash_read(off, buf, len);
 }
-#include <zephyr/syscalls/svc_flash_read_mrsh.c>
+#include <zephyr/syscalls/app_svc_flash_read_mrsh.c>
 
-static inline int z_vrfy_svc_flash_write(uint32_t off, const uint8_t *buf, size_t len)
+static inline int z_vrfy_app_svc_flash_write(uint32_t off, const uint8_t *buf, size_t len)
 {
 	K_OOPS(K_SYSCALL_MEMORY_READ(buf, len));
-	return z_impl_svc_flash_write(off, buf, len);
+	return z_impl_app_svc_flash_write(off, buf, len);
 }
-#include <zephyr/syscalls/svc_flash_write_mrsh.c>
+#include <zephyr/syscalls/app_svc_flash_write_mrsh.c>
 
-static inline int z_vrfy_svc_flash_erase(uint32_t off, size_t len)
+static inline int z_vrfy_app_svc_flash_erase(uint32_t off, size_t len)
 {
-	return z_impl_svc_flash_erase(off, len);
+	return z_impl_app_svc_flash_erase(off, len);
 }
-#include <zephyr/syscalls/svc_flash_erase_mrsh.c>
+#include <zephyr/syscalls/app_svc_flash_erase_mrsh.c>
 
-static inline int z_vrfy_svc_device_id(uint8_t *buf, size_t len)
+static inline int z_vrfy_app_svc_device_id(uint8_t *buf, size_t len)
 {
 	K_OOPS(K_SYSCALL_MEMORY_WRITE(buf, len));
-	return z_impl_svc_device_id(buf, len);
+	return z_impl_app_svc_device_id(buf, len);
 }
-#include <zephyr/syscalls/svc_device_id_mrsh.c>
+#include <zephyr/syscalls/app_svc_device_id_mrsh.c>
 
-static inline int z_vrfy_svc_reset_cause(uint32_t *cause)
+static inline int z_vrfy_app_svc_reset_cause(uint32_t *cause)
 {
 	K_OOPS(K_SYSCALL_MEMORY_WRITE(cause, sizeof(*cause)));
-	return z_impl_svc_reset_cause(cause);
+	return z_impl_app_svc_reset_cause(cause);
 }
-#include <zephyr/syscalls/svc_reset_cause_mrsh.c>
+#include <zephyr/syscalls/app_svc_reset_cause_mrsh.c>
 
-static inline int z_vrfy_svc_timer_start(uint32_t ms)
+static inline int z_vrfy_app_svc_timer_start(uint32_t ms)
 {
-	return z_impl_svc_timer_start(ms);
+	return z_impl_app_svc_timer_start(ms);
 }
-#include <zephyr/syscalls/svc_timer_start_mrsh.c>
+#include <zephyr/syscalls/app_svc_timer_start_mrsh.c>
 
-static inline int z_vrfy_svc_timer_wait(uint32_t timeout_ms)
+static inline int z_vrfy_app_svc_timer_wait(uint32_t timeout_ms)
 {
-	return z_impl_svc_timer_wait(timeout_ms);
+	return z_impl_app_svc_timer_wait(timeout_ms);
 }
-#include <zephyr/syscalls/svc_timer_wait_mrsh.c>
+#include <zephyr/syscalls/app_svc_timer_wait_mrsh.c>
 
-static inline int z_vrfy_svc_timer_create(void)
+static inline int z_vrfy_app_svc_timer_create(void)
 {
-	return z_impl_svc_timer_create();
+	return z_impl_app_svc_timer_create();
 }
-#include <zephyr/syscalls/svc_timer_create_mrsh.c>
+#include <zephyr/syscalls/app_svc_timer_create_mrsh.c>
 
-static inline int z_vrfy_svc_timer_arm(int slot, uint32_t ms, int periodic)
+static inline int z_vrfy_app_svc_timer_arm(int slot, uint32_t ms, int periodic)
 {
-	return z_impl_svc_timer_arm(slot, ms, periodic);
+	return z_impl_app_svc_timer_arm(slot, ms, periodic);
 }
-#include <zephyr/syscalls/svc_timer_arm_mrsh.c>
+#include <zephyr/syscalls/app_svc_timer_arm_mrsh.c>
 
-static inline int z_vrfy_svc_timer_slot_wait(int slot, int32_t timeout_ms)
+static inline int z_vrfy_app_svc_timer_slot_wait(int slot, int32_t timeout_ms)
 {
-	return z_impl_svc_timer_slot_wait(slot, timeout_ms);
+	return z_impl_app_svc_timer_slot_wait(slot, timeout_ms);
 }
-#include <zephyr/syscalls/svc_timer_slot_wait_mrsh.c>
+#include <zephyr/syscalls/app_svc_timer_slot_wait_mrsh.c>
 
-static inline int z_vrfy_svc_timer_stop(int slot)
+static inline int z_vrfy_app_svc_timer_stop(int slot)
 {
-	return z_impl_svc_timer_stop(slot);
+	return z_impl_app_svc_timer_stop(slot);
 }
-#include <zephyr/syscalls/svc_timer_stop_mrsh.c>
+#include <zephyr/syscalls/app_svc_timer_stop_mrsh.c>
 
-static inline int z_vrfy_svc_timer_elapsed(int slot)
+static inline int z_vrfy_app_svc_timer_elapsed(int slot)
 {
-	return z_impl_svc_timer_elapsed(slot);
+	return z_impl_app_svc_timer_elapsed(slot);
 }
-#include <zephyr/syscalls/svc_timer_elapsed_mrsh.c>
+#include <zephyr/syscalls/app_svc_timer_elapsed_mrsh.c>
 
-static inline int z_vrfy_svc_timer_free(int slot)
+static inline int z_vrfy_app_svc_timer_free(int slot)
 {
-	return z_impl_svc_timer_free(slot);
+	return z_impl_app_svc_timer_free(slot);
 }
-#include <zephyr/syscalls/svc_timer_free_mrsh.c>
+#include <zephyr/syscalls/app_svc_timer_free_mrsh.c>
 
-static inline int z_vrfy_svc_rtc_set(uint32_t epoch_sec)
+static inline int z_vrfy_app_svc_rtc_set(uint32_t epoch_sec)
 {
-	return z_impl_svc_rtc_set(epoch_sec);
+	return z_impl_app_svc_rtc_set(epoch_sec);
 }
-#include <zephyr/syscalls/svc_rtc_set_mrsh.c>
+#include <zephyr/syscalls/app_svc_rtc_set_mrsh.c>
 
-static inline int z_vrfy_svc_rtc_now(uint32_t *epoch_sec)
+static inline int z_vrfy_app_svc_rtc_now(uint32_t *epoch_sec)
 {
 	K_OOPS(K_SYSCALL_MEMORY_WRITE(epoch_sec, sizeof(*epoch_sec)));
-	return z_impl_svc_rtc_now(epoch_sec);
+	return z_impl_app_svc_rtc_now(epoch_sec);
 }
-#include <zephyr/syscalls/svc_rtc_now_mrsh.c>
+#include <zephyr/syscalls/app_svc_rtc_now_mrsh.c>
 
-static inline int z_vrfy_svc_ipc_send(int dest_id, const void *buf, size_t len)
+static inline int z_vrfy_app_svc_ipc_send(int dest_id, const void *buf, size_t len)
 {
 	K_OOPS(K_SYSCALL_MEMORY_READ(buf, len));
-	return z_impl_svc_ipc_send(dest_id, buf, len);
+	return z_impl_app_svc_ipc_send(dest_id, buf, len);
 }
-#include <zephyr/syscalls/svc_ipc_send_mrsh.c>
+#include <zephyr/syscalls/app_svc_ipc_send_mrsh.c>
 
-static inline int z_vrfy_svc_ipc_recv(void *buf, size_t len, uint32_t timeout_ms)
+static inline int z_vrfy_app_svc_ipc_recv(void *buf, size_t len, uint32_t timeout_ms)
 {
 	K_OOPS(K_SYSCALL_MEMORY_WRITE(buf, len));
-	return z_impl_svc_ipc_recv(buf, len, timeout_ms);
+	return z_impl_app_svc_ipc_recv(buf, len, timeout_ms);
 }
-#include <zephyr/syscalls/svc_ipc_recv_mrsh.c>
+#include <zephyr/syscalls/app_svc_ipc_recv_mrsh.c>
 
-static inline int z_vrfy_svc_ipc_register(const char *name)
+static inline int z_vrfy_app_svc_ipc_register(const char *name)
 {
 	char buf[IPC_NAME_MAX];
 
 	if (k_usermode_string_copy(buf, (char *)name, sizeof(buf)) != 0) {
 		return -EFAULT;
 	}
-	return z_impl_svc_ipc_register(buf);
+	return z_impl_app_svc_ipc_register(buf);
 }
-#include <zephyr/syscalls/svc_ipc_register_mrsh.c>
+#include <zephyr/syscalls/app_svc_ipc_register_mrsh.c>
 
-static inline int z_vrfy_svc_ipc_send_to(const char *name, const void *buf,
-					 size_t len)
+static inline int z_vrfy_app_svc_ipc_send_to(const char *name, const void *buf,
+					     size_t len)
 {
 	char nbuf[IPC_NAME_MAX];
 
@@ -1272,23 +1272,23 @@ static inline int z_vrfy_svc_ipc_send_to(const char *name, const void *buf,
 		return -EFAULT;
 	}
 	K_OOPS(K_SYSCALL_MEMORY_READ(buf, len));
-	return z_impl_svc_ipc_send_to(nbuf, buf, len);
+	return z_impl_app_svc_ipc_send_to(nbuf, buf, len);
 }
-#include <zephyr/syscalls/svc_ipc_send_to_mrsh.c>
+#include <zephyr/syscalls/app_svc_ipc_send_to_mrsh.c>
 
-static inline int z_vrfy_svc_topic_subscribe(const char *topic)
+static inline int z_vrfy_app_svc_topic_subscribe(const char *topic)
 {
 	char buf[IPC_TOPIC_MAX];
 
 	if (k_usermode_string_copy(buf, (char *)topic, sizeof(buf)) != 0) {
 		return -EFAULT;
 	}
-	return z_impl_svc_topic_subscribe(buf);
+	return z_impl_app_svc_topic_subscribe(buf);
 }
-#include <zephyr/syscalls/svc_topic_subscribe_mrsh.c>
+#include <zephyr/syscalls/app_svc_topic_subscribe_mrsh.c>
 
-static inline int z_vrfy_svc_topic_publish(const char *topic, const void *buf,
-					   size_t len)
+static inline int z_vrfy_app_svc_topic_publish(const char *topic, const void *buf,
+					       size_t len)
 {
 	char tbuf[IPC_TOPIC_MAX];
 
@@ -1296,38 +1296,38 @@ static inline int z_vrfy_svc_topic_publish(const char *topic, const void *buf,
 		return -EFAULT;
 	}
 	K_OOPS(K_SYSCALL_MEMORY_READ(buf, len));
-	return z_impl_svc_topic_publish(tbuf, buf, len);
+	return z_impl_app_svc_topic_publish(tbuf, buf, len);
 }
-#include <zephyr/syscalls/svc_topic_publish_mrsh.c>
+#include <zephyr/syscalls/app_svc_topic_publish_mrsh.c>
 
-static inline int z_vrfy_svc_app_count(void)
+static inline int z_vrfy_app_svc_app_count(void)
 {
-	return z_impl_svc_app_count();
+	return z_impl_app_svc_app_count();
 }
-#include <zephyr/syscalls/svc_app_count_mrsh.c>
+#include <zephyr/syscalls/app_svc_app_count_mrsh.c>
 
-static inline int z_vrfy_svc_app_info(int id, struct svc_app_info *out)
+static inline int z_vrfy_app_svc_app_info(int id, struct app_svc_app_info *out)
 {
 	K_OOPS(K_SYSCALL_MEMORY_WRITE(out, sizeof(*out)));
-	return z_impl_svc_app_info(id, out);
+	return z_impl_app_svc_app_info(id, out);
 }
-#include <zephyr/syscalls/svc_app_info_mrsh.c>
+#include <zephyr/syscalls/app_svc_app_info_mrsh.c>
 
-static inline int z_vrfy_svc_app_stop(int id)
+static inline int z_vrfy_app_svc_app_stop(int id)
 {
-	return z_impl_svc_app_stop(id);
+	return z_impl_app_svc_app_stop(id);
 }
-#include <zephyr/syscalls/svc_app_stop_mrsh.c>
+#include <zephyr/syscalls/app_svc_app_stop_mrsh.c>
 
-static inline int z_vrfy_svc_app_start(int id)
+static inline int z_vrfy_app_svc_app_start(int id)
 {
-	return z_impl_svc_app_start(id);
+	return z_impl_app_svc_app_start(id);
 }
-#include <zephyr/syscalls/svc_app_start_mrsh.c>
+#include <zephyr/syscalls/app_svc_app_start_mrsh.c>
 
-static inline int z_vrfy_svc_app_restart(int id)
+static inline int z_vrfy_app_svc_app_restart(int id)
 {
-	return z_impl_svc_app_restart(id);
+	return z_impl_app_svc_app_restart(id);
 }
-#include <zephyr/syscalls/svc_app_restart_mrsh.c>
+#include <zephyr/syscalls/app_svc_app_restart_mrsh.c>
 #endif

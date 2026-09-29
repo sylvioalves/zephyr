@@ -259,7 +259,7 @@ int app_platform_on_reclaim(app_reclaim_hook_t hook);
 bool app_platform_handle_fatal_error(unsigned int reason, const struct arch_esf *esf);
 
 /**
- * @brief Enable or mute per-application log output (svc_log).
+ * @brief Enable or mute per-application log output (app_svc_log).
  *
  * Muting lets a console operator silence the application stream while typing,
  * without stopping the applications.

@@ -26,9 +26,9 @@ static void psram_app(void *arg)
 	uintptr_t addr = 0;
 	size_t size = 0;
 
-	svc_log("psram: requesting a 256 KB region");
-	if (svc_psram_map(256 * 1024, &addr, &size) != 0) {
-		svc_log("psram: map FAILED");
+	app_svc_log("psram: requesting a 256 KB region");
+	if (app_svc_psram_map(256 * 1024, &addr, &size) != 0) {
+		app_svc_log("psram: map FAILED");
 		return;
 	}
 
@@ -36,7 +36,7 @@ static void psram_app(void *arg)
 
 	snprintk(line, sizeof(line), "psram: mapped 0x%lx size=%zu",
 		 (unsigned long)addr, size);
-	svc_log(line);
+	app_svc_log(line);
 
 	volatile uint8_t *mem = (volatile uint8_t *)addr;
 
@@ -52,10 +52,10 @@ static void psram_app(void *arg)
 			break;
 		}
 	}
-	svc_log(ok ? "psram: write+read of full region OK"
-		   : "psram: verify FAILED");
+	app_svc_log(ok ? "psram: write+read of full region OK"
+		       : "psram: verify FAILED");
 
-	uint32_t t0 = svc_cycles();
+	uint32_t t0 = app_svc_cycles();
 	uint64_t sum = 0;
 
 	for (int pass = 0; pass < 10; pass++) {
@@ -64,12 +64,12 @@ static void psram_app(void *arg)
 		}
 	}
 	snprintk(line, sizeof(line), "psram: 10x256KB read cyc=%u sum=%u",
-		 svc_cycles() - t0, (uint32_t)sum);
-	svc_log(line);
+		 app_svc_cycles() - t0, (uint32_t)sum);
+	app_svc_log(line);
 
-	svc_log("psram: done");
+	app_svc_log("psram: done");
 	for (;;) {
-		svc_heartbeat();
+		app_svc_heartbeat();
 		k_msleep(1000);
 	}
 }

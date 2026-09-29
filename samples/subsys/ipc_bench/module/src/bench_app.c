@@ -50,42 +50,42 @@ static void report(const char *tag, uint32_t iters, uint32_t cycles)
 	line[i++] = ' '; line[i++] = 'c'; line[i++] = 'y'; line[i++] = 'c'; line[i++] = '=';
 	i = put_u32(line, i, cycles);
 	line[i] = '\0';
-	svc_log(line);
+	app_svc_log(line);
 }
 
 void app_main(void *arg)
 {
 	ARG_UNUSED(arg);
 
-	svc_ipc_register("bench");
-	svc_topic_subscribe("bench/topic");
+	app_svc_ipc_register("bench");
+	app_svc_topic_subscribe("bench/topic");
 
 	uint8_t msg[16] = { 'b', 'e', 'n', 'c', 'h', 0 };
 	uint8_t rx[16];
 
-	svc_log("bench: warming up");
+	app_svc_log("bench: warming up");
 	for (int i = 0; i < 100; i++) {
-		svc_ipc_send(0, msg, 8);
-		svc_ipc_recv(rx, sizeof(rx), 10);
+		app_svc_ipc_send(0, msg, 8);
+		app_svc_ipc_recv(rx, sizeof(rx), 10);
 	}
 
 	/* 1. Round-trip: send to own mailbox then receive (syscall+copy+msgq). */
 	const uint32_t N = 2000;
-	uint32_t t0 = svc_cycles();
+	uint32_t t0 = app_svc_cycles();
 
 	for (uint32_t i = 0; i < N; i++) {
-		svc_ipc_send(0, msg, 8);
-		svc_ipc_recv(rx, sizeof(rx), 10);
+		app_svc_ipc_send(0, msg, 8);
+		app_svc_ipc_recv(rx, sizeof(rx), 10);
 	}
-	report("rtt8", N, svc_cycles() - t0);
+	report("rtt8", N, app_svc_cycles() - t0);
 
 	/* 2. Send-only throughput, 8-byte payload (drain to avoid full queue). */
-	t0 = svc_cycles();
+	t0 = app_svc_cycles();
 	for (uint32_t i = 0; i < N; i++) {
-		svc_ipc_send(0, msg, 8);
-		svc_ipc_recv(rx, sizeof(rx), 10);
+		app_svc_ipc_send(0, msg, 8);
+		app_svc_ipc_recv(rx, sizeof(rx), 10);
 	}
-	uint32_t send8 = svc_cycles() - t0;
+	uint32_t send8 = app_svc_cycles() - t0;
 
 	report("send8", N, send8);
 
@@ -95,33 +95,33 @@ void app_main(void *arg)
 	for (int i = 0; i < 64; i++) {
 		big[i] = (uint8_t)i;
 	}
-	t0 = svc_cycles();
+	t0 = app_svc_cycles();
 	for (uint32_t i = 0; i < N; i++) {
-		svc_ipc_send(0, big, 64);
-		svc_ipc_recv(rx, sizeof(rx), 10);
+		app_svc_ipc_send(0, big, 64);
+		app_svc_ipc_recv(rx, sizeof(rx), 10);
 	}
-	report("rtt64", N, svc_cycles() - t0);
+	report("rtt64", N, app_svc_cycles() - t0);
 
-	/* 4. Bare syscall cost baseline: svc_cycles itself, N times. */
-	t0 = svc_cycles();
+	/* 4. Bare syscall cost baseline: app_svc_cycles itself, N times. */
+	t0 = app_svc_cycles();
 	volatile uint32_t sink = 0;
 
 	for (uint32_t i = 0; i < N; i++) {
-		sink += svc_cycles();
+		sink += app_svc_cycles();
 	}
-	report("syscall", N, svc_cycles() - t0);
+	report("syscall", N, app_svc_cycles() - t0);
 
 	/* 5. Topic publish round-trip (publish then recv the broadcast). */
-	t0 = svc_cycles();
+	t0 = app_svc_cycles();
 	for (uint32_t i = 0; i < N; i++) {
-		svc_topic_publish("bench/topic", msg, 8);
-		svc_ipc_recv(rx, sizeof(rx), 10);
+		app_svc_topic_publish("bench/topic", msg, 8);
+		app_svc_ipc_recv(rx, sizeof(rx), 10);
 	}
-	report("pub8", N, svc_cycles() - t0);
+	report("pub8", N, app_svc_cycles() - t0);
 
-	svc_log("bench: done");
+	app_svc_log("bench: done");
 	for (;;) {
-		svc_heartbeat();
+		app_svc_heartbeat();
 		k_msleep(1000);
 	}
 }

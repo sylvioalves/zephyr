@@ -111,7 +111,7 @@ static void ring_release(int id)
 	app_service_unlock(&ring_lock);
 }
 
-int z_impl_svc_ring_bind(size_t bytes, uintptr_t *out_addr, size_t *out_cap)
+int z_impl_app_svc_ring_bind(size_t bytes, uintptr_t *out_addr, size_t *out_cap)
 {
 	if (!app_has_cap(APP_CAP_UART)) {
 		return -EPERM;
@@ -175,7 +175,7 @@ int z_impl_svc_ring_bind(size_t bytes, uintptr_t *out_addr, size_t *out_cap)
 	return 0;
 }
 
-int z_impl_svc_ring_unbind(void)
+int z_impl_app_svc_ring_unbind(void)
 {
 	if (!app_has_cap(APP_CAP_UART)) {
 		return -EPERM;
@@ -187,7 +187,7 @@ int z_impl_svc_ring_unbind(void)
 	return 0;
 }
 
-int z_impl_svc_ring_flush(void)
+int z_impl_app_svc_ring_flush(void)
 {
 	if (!app_has_cap(APP_CAP_UART)) {
 		return -EPERM;
@@ -233,7 +233,7 @@ int z_impl_svc_ring_flush(void)
 #endif
 }
 
-int z_impl_svc_ring_fill(void)
+int z_impl_app_svc_ring_fill(void)
 {
 	if (!app_has_cap(APP_CAP_UART)) {
 		return -EPERM;
@@ -284,30 +284,30 @@ static int ring_service_init(void)
 SYS_INIT(ring_service_init, APPLICATION, 99);
 
 #ifdef CONFIG_USERSPACE
-static inline int z_vrfy_svc_ring_bind(size_t bytes, uintptr_t *out_addr,
-				       size_t *out_cap)
+static inline int z_vrfy_app_svc_ring_bind(size_t bytes, uintptr_t *out_addr,
+					   size_t *out_cap)
 {
 	K_OOPS(K_SYSCALL_MEMORY_WRITE(out_addr, sizeof(*out_addr)));
 	K_OOPS(K_SYSCALL_MEMORY_WRITE(out_cap, sizeof(*out_cap)));
-	return z_impl_svc_ring_bind(bytes, out_addr, out_cap);
+	return z_impl_app_svc_ring_bind(bytes, out_addr, out_cap);
 }
-#include <zephyr/syscalls/svc_ring_bind_mrsh.c>
+#include <zephyr/syscalls/app_svc_ring_bind_mrsh.c>
 
-static inline int z_vrfy_svc_ring_unbind(void)
+static inline int z_vrfy_app_svc_ring_unbind(void)
 {
-	return z_impl_svc_ring_unbind();
+	return z_impl_app_svc_ring_unbind();
 }
-#include <zephyr/syscalls/svc_ring_unbind_mrsh.c>
+#include <zephyr/syscalls/app_svc_ring_unbind_mrsh.c>
 
-static inline int z_vrfy_svc_ring_flush(void)
+static inline int z_vrfy_app_svc_ring_flush(void)
 {
-	return z_impl_svc_ring_flush();
+	return z_impl_app_svc_ring_flush();
 }
-#include <zephyr/syscalls/svc_ring_flush_mrsh.c>
+#include <zephyr/syscalls/app_svc_ring_flush_mrsh.c>
 
-static inline int z_vrfy_svc_ring_fill(void)
+static inline int z_vrfy_app_svc_ring_fill(void)
 {
-	return z_impl_svc_ring_fill();
+	return z_impl_app_svc_ring_fill();
 }
-#include <zephyr/syscalls/svc_ring_fill_mrsh.c>
+#include <zephyr/syscalls/app_svc_ring_fill_mrsh.c>
 #endif

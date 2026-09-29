@@ -138,7 +138,7 @@ void app_platform_clear_fs_handles(int id)
 	app_service_unlock(&fs_lock);
 }
 
-int z_impl_svc_file_open(const char *path, int create)
+int z_impl_app_svc_file_open(const char *path, int create)
 {
 	if (!app_has_cap(APP_CAP_FS)) {
 		return -EPERM;
@@ -217,7 +217,7 @@ static int owned_file(int handle, struct fs_file_t **out)
 	return 0;
 }
 
-int z_impl_svc_file_write(int handle, const void *data, size_t len)
+int z_impl_app_svc_file_write(int handle, const void *data, size_t len)
 {
 	if (!app_has_cap(APP_CAP_FS)) {
 		return -EPERM;
@@ -241,7 +241,7 @@ int z_impl_svc_file_write(int handle, const void *data, size_t len)
 	return rc;
 }
 
-int z_impl_svc_file_read(int handle, void *buf, size_t len)
+int z_impl_app_svc_file_read(int handle, void *buf, size_t len)
 {
 	if (!app_has_cap(APP_CAP_FS)) {
 		return -EPERM;
@@ -265,7 +265,7 @@ int z_impl_svc_file_read(int handle, void *buf, size_t len)
 	return rc;
 }
 
-int z_impl_svc_file_seek(int handle, int32_t off, int whence)
+int z_impl_app_svc_file_seek(int handle, int32_t off, int whence)
 {
 	if (!app_has_cap(APP_CAP_FS)) {
 		return -EPERM;
@@ -286,7 +286,7 @@ int z_impl_svc_file_seek(int handle, int32_t off, int whence)
 	return rc;
 }
 
-int z_impl_svc_file_close(int handle)
+int z_impl_app_svc_file_close(int handle)
 {
 	if (!app_has_cap(APP_CAP_FS)) {
 		return -EPERM;
@@ -310,21 +310,21 @@ int z_impl_svc_file_close(int handle)
 }
 
 #ifdef CONFIG_USERSPACE
-static inline int z_vrfy_svc_file_open(const char *path, int create)
+static inline int z_vrfy_app_svc_file_open(const char *path, int create)
 {
 	char copy[PATH_MAX_LEN];
 
 	if (k_usermode_string_copy(copy, (char *)path, sizeof(copy)) != 0) {
 		return -EFAULT;
 	}
-	return z_impl_svc_file_open(copy, create);
+	return z_impl_app_svc_file_open(copy, create);
 }
-#include <zephyr/syscalls/svc_file_open_mrsh.c>
+#include <zephyr/syscalls/app_svc_file_open_mrsh.c>
 
 /* Bounce through a supervisor buffer rather than handing the filesystem a user
  * pointer, matching the other transfer services.
  */
-static inline int z_vrfy_svc_file_write(int handle, const void *data, size_t len)
+static inline int z_vrfy_app_svc_file_write(int handle, const void *data, size_t len)
 {
 	char buf[CONFIG_APP_PLATFORM_FS_XFER_MAX];
 
@@ -334,11 +334,11 @@ static inline int z_vrfy_svc_file_write(int handle, const void *data, size_t len
 	if (k_usermode_from_copy(buf, (void *)data, len) != 0) {
 		return -EFAULT;
 	}
-	return z_impl_svc_file_write(handle, buf, len);
+	return z_impl_app_svc_file_write(handle, buf, len);
 }
-#include <zephyr/syscalls/svc_file_write_mrsh.c>
+#include <zephyr/syscalls/app_svc_file_write_mrsh.c>
 
-static inline int z_vrfy_svc_file_read(int handle, void *buf, size_t len)
+static inline int z_vrfy_app_svc_file_read(int handle, void *buf, size_t len)
 {
 	char tmp[CONFIG_APP_PLATFORM_FS_XFER_MAX];
 
@@ -346,24 +346,24 @@ static inline int z_vrfy_svc_file_read(int handle, void *buf, size_t len)
 		return -EINVAL;
 	}
 
-	int rc = z_impl_svc_file_read(handle, tmp, len);
+	int rc = z_impl_app_svc_file_read(handle, tmp, len);
 
 	if (rc > 0 && k_usermode_to_copy(buf, tmp, rc) != 0) {
 		return -EFAULT;
 	}
 	return rc;
 }
-#include <zephyr/syscalls/svc_file_read_mrsh.c>
+#include <zephyr/syscalls/app_svc_file_read_mrsh.c>
 
-static inline int z_vrfy_svc_file_seek(int handle, int32_t off, int whence)
+static inline int z_vrfy_app_svc_file_seek(int handle, int32_t off, int whence)
 {
-	return z_impl_svc_file_seek(handle, off, whence);
+	return z_impl_app_svc_file_seek(handle, off, whence);
 }
-#include <zephyr/syscalls/svc_file_seek_mrsh.c>
+#include <zephyr/syscalls/app_svc_file_seek_mrsh.c>
 
-static inline int z_vrfy_svc_file_close(int handle)
+static inline int z_vrfy_app_svc_file_close(int handle)
 {
-	return z_impl_svc_file_close(handle);
+	return z_impl_app_svc_file_close(handle);
 }
-#include <zephyr/syscalls/svc_file_close_mrsh.c>
+#include <zephyr/syscalls/app_svc_file_close_mrsh.c>
 #endif /* CONFIG_USERSPACE */

@@ -17,7 +17,7 @@
  * achieves is faulting itself, and the platform reclaims it. Two categories
  * are deliberately absent. The libc allocators operate on an arena in
  * z_malloc_partition, which is in no application's memory domain, so an
- * application uses svc_psram_map() for memory the platform can revoke.
+ * application uses app_svc_psram_map() for memory the platform can revoke.
  * Functions carrying static state between calls, such as strtok(), would let
  * one application corrupt another's parsing and are not pure in this sense.
  */

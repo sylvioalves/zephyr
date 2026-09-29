@@ -37,15 +37,15 @@ void app_main(void *arg)
 {
 	ARG_UNUSED(arg);
 
-	svc_log("pub: waiting for the shared network link");
-	if (svc_net_ready() != 0) {
-		svc_log("pub: network not ready");
+	app_svc_log("pub: waiting for the shared network link");
+	if (app_svc_net_ready() != 0) {
+		app_svc_log("pub: network not ready");
 		return;
 	}
 
-	struct svc_wifi_status ws;
+	struct app_svc_wifi_status ws;
 
-	if (svc_wifi_status(&ws) == 0) {
+	if (app_svc_wifi_status(&ws) == 0) {
 		char line[80];
 		int i = 0;
 		const char *p = "pub: link ";
@@ -68,21 +68,21 @@ void app_main(void *arg)
 		}
 		line[i++] = ')';
 		line[i] = '\0';
-		svc_log(line);
+		app_svc_log(line);
 	}
 
-	if (svc_mqtt_open("zephyr-trio-pub", "zephyr/trio/temp",
-			  "zephyr/trio/unused") != 0) {
-		svc_log("pub: MQTT session failed");
+	if (app_svc_mqtt_open("zephyr-trio-pub", "zephyr/trio/temp",
+			      "zephyr/trio/unused") != 0) {
+		app_svc_log("pub: MQTT session failed");
 		return;
 	}
-	svc_log("pub: publishing die temp every 5s on zephyr/trio/temp");
+	app_svc_log("pub: publishing die temp every 5s on zephyr/trio/temp");
 
 	for (;;) {
 		char payload[8];
 
-		fmt_temp(svc_die_temp_milli(), payload);
-		svc_mqtt_publish(payload);
+		fmt_temp(app_svc_die_temp_milli(), payload);
+		app_svc_mqtt_publish(payload);
 		k_msleep(5000);
 	}
 }

@@ -47,7 +47,7 @@ static void body(void *arg)
 			k_yield();
 			sink += t;
 #else
-			svc_heartbeat();
+			app_svc_heartbeat();
 			sink += t;
 #endif
 		}

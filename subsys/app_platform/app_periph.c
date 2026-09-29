@@ -59,7 +59,7 @@ void app_platform_grant_pwm(int id, uint32_t ch_mask)
 	}
 }
 
-int z_impl_svc_pwm_set(int ch, uint32_t permille)
+int z_impl_app_svc_pwm_set(int ch, uint32_t permille)
 {
 	if (!app_has_cap(APP_CAP_PWM)) {
 		return -EPERM;
@@ -100,7 +100,7 @@ int z_impl_svc_pwm_set(int ch, uint32_t permille)
 #endif
 }
 
-int z_impl_svc_pwm_find(const char *name)
+int z_impl_app_svc_pwm_find(const char *name)
 {
 	if (!app_has_cap(APP_CAP_PWM)) {
 		return -EPERM;
@@ -170,7 +170,7 @@ void app_platform_grant_adc(int id, uint32_t ch_mask)
 	}
 }
 
-int z_impl_svc_adc_read(int ch)
+int z_impl_app_svc_adc_read(int ch)
 {
 	if (!app_has_cap(APP_CAP_ADC)) {
 		return -EPERM;
@@ -211,26 +211,26 @@ int z_impl_svc_adc_read(int ch)
 }
 
 #ifdef CONFIG_USERSPACE
-static inline int z_vrfy_svc_pwm_set(int ch, uint32_t permille)
+static inline int z_vrfy_app_svc_pwm_set(int ch, uint32_t permille)
 {
-	return z_impl_svc_pwm_set(ch, permille);
+	return z_impl_app_svc_pwm_set(ch, permille);
 }
-#include <zephyr/syscalls/svc_pwm_set_mrsh.c>
+#include <zephyr/syscalls/app_svc_pwm_set_mrsh.c>
 
-static inline int z_vrfy_svc_pwm_find(const char *name)
+static inline int z_vrfy_app_svc_pwm_find(const char *name)
 {
 	char buf[24];
 
 	if (k_usermode_string_copy(buf, (char *)name, sizeof(buf)) != 0) {
 		return -EFAULT;
 	}
-	return z_impl_svc_pwm_find(buf);
+	return z_impl_app_svc_pwm_find(buf);
 }
-#include <zephyr/syscalls/svc_pwm_find_mrsh.c>
+#include <zephyr/syscalls/app_svc_pwm_find_mrsh.c>
 
-static inline int z_vrfy_svc_adc_read(int ch)
+static inline int z_vrfy_app_svc_adc_read(int ch)
 {
-	return z_impl_svc_adc_read(ch);
+	return z_impl_app_svc_adc_read(ch);
 }
-#include <zephyr/syscalls/svc_adc_read_mrsh.c>
+#include <zephyr/syscalls/app_svc_adc_read_mrsh.c>
 #endif

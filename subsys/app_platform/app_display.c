@@ -224,7 +224,7 @@ void app_platform_display_unlock(void)
 	(void)app_service_unlock(&display_lock);
 }
 
-int z_impl_svc_display_info(struct svc_display_info *out)
+int z_impl_app_svc_display_info(struct app_svc_display_info *out)
 {
 	struct display_capabilities caps;
 	struct app_display_rect vp;
@@ -242,7 +242,7 @@ int z_impl_svc_display_info(struct svc_display_info *out)
 	return 0;
 }
 
-int z_impl_svc_display_vsync(void)
+int z_impl_app_svc_display_vsync(void)
 {
 	struct display_capabilities caps;
 	struct app_display_rect vp;
@@ -259,8 +259,8 @@ int z_impl_svc_display_vsync(void)
 	return k_event_wait(&vsync_event, VSYNC_EVENT, true, VSYNC_TIMEOUT) != 0U ? 0 : -EAGAIN;
 }
 
-int z_impl_svc_display_write(uint16_t x, uint16_t y, uint16_t w, uint16_t h, const void *buf,
-			     size_t len)
+int z_impl_app_svc_display_write(uint16_t x, uint16_t y, uint16_t w, uint16_t h, const void *buf,
+				 size_t len)
 {
 	struct display_capabilities caps;
 	struct app_display_rect vp;
@@ -285,7 +285,7 @@ int z_impl_svc_display_write(uint16_t x, uint16_t y, uint16_t w, uint16_t h, con
 	return rc;
 }
 
-int z_impl_svc_display_fill(uint16_t x, uint16_t y, uint16_t w, uint16_t h, uint32_t color)
+int z_impl_app_svc_display_fill(uint16_t x, uint16_t y, uint16_t w, uint16_t h, uint32_t color)
 {
 	struct display_capabilities caps;
 	struct app_display_rect vp;
@@ -332,36 +332,36 @@ void app_platform_clear_display_grants(int id)
 }
 
 #ifdef CONFIG_USERSPACE
-static inline int z_vrfy_svc_display_info(struct svc_display_info *out)
+static inline int z_vrfy_app_svc_display_info(struct app_svc_display_info *out)
 {
-	struct svc_display_info tmp;
-	int rc = z_impl_svc_display_info(&tmp);
+	struct app_svc_display_info tmp;
+	int rc = z_impl_app_svc_display_info(&tmp);
 
 	if (rc == 0 && k_usermode_to_copy(out, &tmp, sizeof(tmp)) != 0) {
 		return -EFAULT;
 	}
 	return rc;
 }
-#include <zephyr/syscalls/svc_display_info_mrsh.c>
+#include <zephyr/syscalls/app_svc_display_info_mrsh.c>
 
-static inline int z_vrfy_svc_display_vsync(void)
+static inline int z_vrfy_app_svc_display_vsync(void)
 {
-	return z_impl_svc_display_vsync();
+	return z_impl_app_svc_display_vsync();
 }
-#include <zephyr/syscalls/svc_display_vsync_mrsh.c>
+#include <zephyr/syscalls/app_svc_display_vsync_mrsh.c>
 
-static inline int z_vrfy_svc_display_write(uint16_t x, uint16_t y, uint16_t w, uint16_t h,
-					   const void *buf, size_t len)
+static inline int z_vrfy_app_svc_display_write(uint16_t x, uint16_t y, uint16_t w, uint16_t h,
+					       const void *buf, size_t len)
 {
 	K_OOPS(K_SYSCALL_MEMORY_READ(buf, len));
-	return z_impl_svc_display_write(x, y, w, h, buf, len);
+	return z_impl_app_svc_display_write(x, y, w, h, buf, len);
 }
-#include <zephyr/syscalls/svc_display_write_mrsh.c>
+#include <zephyr/syscalls/app_svc_display_write_mrsh.c>
 
-static inline int z_vrfy_svc_display_fill(uint16_t x, uint16_t y, uint16_t w, uint16_t h,
-					  uint32_t color)
+static inline int z_vrfy_app_svc_display_fill(uint16_t x, uint16_t y, uint16_t w, uint16_t h,
+					      uint32_t color)
 {
-	return z_impl_svc_display_fill(x, y, w, h, color);
+	return z_impl_app_svc_display_fill(x, y, w, h, color);
 }
-#include <zephyr/syscalls/svc_display_fill_mrsh.c>
+#include <zephyr/syscalls/app_svc_display_fill_mrsh.c>
 #endif /* CONFIG_USERSPACE */

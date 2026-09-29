@@ -104,7 +104,7 @@ void app_events_broadcast(const struct app_event *evt,
 	}
 }
 
-int z_impl_svc_event_wait(struct app_event *evt, int32_t timeout_ms)
+int z_impl_app_svc_event_wait(struct app_event *evt, int32_t timeout_ms)
 {
 	if (!app_has_cap(APP_CAP_INPUT)) {
 		return -EPERM;
@@ -158,11 +158,11 @@ void app_events_clear(int id)
 }
 
 #ifdef CONFIG_USERSPACE
-static inline int z_vrfy_svc_event_wait(struct app_event *evt,
-					int32_t timeout_ms)
+static inline int z_vrfy_app_svc_event_wait(struct app_event *evt,
+					    int32_t timeout_ms)
 {
 	K_OOPS(K_SYSCALL_MEMORY_WRITE(evt, sizeof(*evt)));
-	return z_impl_svc_event_wait(evt, timeout_ms);
+	return z_impl_app_svc_event_wait(evt, timeout_ms);
 }
-#include <zephyr/syscalls/svc_event_wait_mrsh.c>
+#include <zephyr/syscalls/app_svc_event_wait_mrsh.c>
 #endif

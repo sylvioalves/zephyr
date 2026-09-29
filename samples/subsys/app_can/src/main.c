@@ -28,30 +28,30 @@ static void can_app(void *arg)
 {
 	ARG_UNUSED(arg);
 
-	svc_log("can: sending frames in loopback");
+	app_svc_log("can: sending frames in loopback");
 
 	for (int round = 0; round < ROUNDS; round++) {
 		uint8_t tx[4] = { (uint8_t)round, 0xAA, 0x55, (uint8_t)(round + 1) };
 		uint32_t id = CAN_ID_BASE + (uint32_t)round;
-		int rc = svc_can_send(id, tx, sizeof(tx));
+		int rc = app_svc_can_send(id, tx, sizeof(tx));
 
 		if (rc != 0) {
 			char line[48];
 
 			(void)snprintk(line, sizeof(line), "can: send failed (%d)", rc);
-			svc_log(line);
+			app_svc_log(line);
 			return;
 		}
 
 		uint32_t got_id = 0;
 		uint8_t rx[8];
-		int n = svc_can_recv(&got_id, rx, sizeof(rx), 500);
+		int n = app_svc_can_recv(&got_id, rx, sizeof(rx), 500);
 
 		if (n < 0) {
 			char line[48];
 
 			(void)snprintk(line, sizeof(line), "can: recv failed (%d)", n);
-			svc_log(line);
+			app_svc_log(line);
 			return;
 		}
 
@@ -64,7 +64,7 @@ static void can_app(void *arg)
 		(void)snprintk(line, sizeof(line),
 			       "can: round %d id 0x%x len %d %s", round, got_id, n,
 			       match ? "matches" : "MISMATCH");
-		svc_log(line);
+		app_svc_log(line);
 
 		if (!match) {
 			return;
@@ -76,13 +76,13 @@ static void can_app(void *arg)
 	 */
 	uint8_t big[9] = {0};
 
-	if (svc_can_send(CAN_ID_BASE, big, sizeof(big)) == -EINVAL) {
-		svc_log("can: oversized payload correctly refused");
+	if (app_svc_can_send(CAN_ID_BASE, big, sizeof(big)) == -EINVAL) {
+		app_svc_log("can: oversized payload correctly refused");
 	} else {
-		svc_log("can: ERROR oversized payload was accepted");
+		app_svc_log("can: ERROR oversized payload was accepted");
 	}
 
-	svc_log("can: done");
+	app_svc_log("can: done");
 }
 
 static void nocan_app(void *arg)
@@ -91,19 +91,19 @@ static void nocan_app(void *arg)
 
 	uint8_t tx[2] = { 0x01, 0x02 };
 
-	if (svc_can_send(CAN_ID_BASE, tx, sizeof(tx)) == -EPERM) {
-		svc_log("nocan: send denied without the capability");
+	if (app_svc_can_send(CAN_ID_BASE, tx, sizeof(tx)) == -EPERM) {
+		app_svc_log("nocan: send denied without the capability");
 	} else {
-		svc_log("nocan: ERROR send was allowed");
+		app_svc_log("nocan: ERROR send was allowed");
 	}
 
 	uint32_t id = 0;
 	uint8_t rx[8];
 
-	if (svc_can_recv(&id, rx, sizeof(rx), 100) == -EPERM) {
-		svc_log("nocan: recv denied without the capability");
+	if (app_svc_can_recv(&id, rx, sizeof(rx), 100) == -EPERM) {
+		app_svc_log("nocan: recv denied without the capability");
 	} else {
-		svc_log("nocan: ERROR recv was allowed");
+		app_svc_log("nocan: ERROR recv was allowed");
 	}
 }
 

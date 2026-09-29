@@ -39,17 +39,17 @@ static void check(bool ok, const char *what, int rc)
 		(void)snprintk(line, sizeof(line), "FAIL %s (rc=%d)", what, rc);
 		fails++;
 	}
-	svc_log(line);
+	app_svc_log(line);
 }
 
 static void timer_app(void *arg)
 {
 	ARG_UNUSED(arg);
 
-	svc_log("timer_slots: start");
+	app_svc_log("timer_slots: start");
 
-	int a = svc_timer_create();
-	int b = svc_timer_create();
+	int a = app_svc_timer_create();
+	int b = app_svc_timer_create();
 
 	check(a >= 0, "claim a slot", a);
 	check(b >= 0 && b != a, "claim a second, distinct slot", b);
@@ -57,46 +57,46 @@ static void timer_app(void *arg)
 	/* The point of slots: two timers run at once and each is waited on
 	 * separately, which a single per-application timer could not do.
 	 */
-	int rc = svc_timer_arm(a, 120, 0);
+	int rc = app_svc_timer_arm(a, 120, 0);
 
 	check(rc == 0, "arm the first for 120ms", rc);
-	rc = svc_timer_arm(b, 40, 0);
+	rc = app_svc_timer_arm(b, 40, 0);
 	check(rc == 0, "arm the second for 40ms", rc);
 
-	rc = svc_timer_slot_wait(b, 500);
+	rc = app_svc_timer_slot_wait(b, 500);
 	check(rc == 0, "the shorter one fires first", rc);
 
-	rc = svc_timer_slot_wait(a, 0);
+	rc = app_svc_timer_slot_wait(a, 0);
 	check(rc == -EAGAIN, "the longer one is still pending", rc);
 
-	rc = svc_timer_slot_wait(a, 500);
+	rc = app_svc_timer_slot_wait(a, 500);
 	check(rc == 0, "the longer one fires after it", rc);
 
-	int el = svc_timer_elapsed(a);
+	int el = app_svc_timer_elapsed(a);
 
 	check(el >= 100 && el < 400, "elapsed is in range", el);
 
-	rc = svc_timer_arm(a, 50, 1);
+	rc = app_svc_timer_arm(a, 50, 1);
 	check(rc == 0, "arm periodic", rc);
-	rc = svc_timer_slot_wait(a, 400);
+	rc = app_svc_timer_slot_wait(a, 400);
 	check(rc == 0, "periodic fires", rc);
-	rc = svc_timer_slot_wait(a, 400);
+	rc = app_svc_timer_slot_wait(a, 400);
 	check(rc == 0, "periodic fires again without re-arming", rc);
 
-	rc = svc_timer_stop(a);
+	rc = app_svc_timer_stop(a);
 	check(rc == 0, "stop it", rc);
-	rc = svc_timer_slot_wait(a, 150);
+	rc = app_svc_timer_slot_wait(a, 150);
 	check(rc == -EAGAIN, "a stopped slot does not fire", rc);
 
-	rc = svc_timer_arm(99, 10, 0);
+	rc = app_svc_timer_arm(99, 10, 0);
 	check(rc == -EINVAL, "an out-of-range slot is refused", rc);
 
-	rc = svc_timer_free(a);
+	rc = app_svc_timer_free(a);
 	check(rc == 0, "release the first slot", rc);
-	rc = svc_timer_arm(a, 10, 0);
+	rc = app_svc_timer_arm(a, 10, 0);
 	check(rc == -EINVAL, "a released slot is refused until claimed again",
 	      rc);
-	rc = svc_timer_free(b);
+	rc = app_svc_timer_free(b);
 	check(rc == 0, "release the second slot", rc);
 
 	/* Every slot was claimed and released, so the pool must come back
@@ -105,25 +105,25 @@ static void timer_app(void *arg)
 	int got = 0;
 
 	for (int i = 0; i < APP_TIMER_SLOTS; i++) {
-		if (svc_timer_create() >= 0) {
+		if (app_svc_timer_create() >= 0) {
 			got++;
 		}
 	}
 	check(got == APP_TIMER_SLOTS, "the whole pool is claimable again", got);
 
-	rc = svc_timer_create();
+	rc = app_svc_timer_create();
 	check(rc == -ENOSPC, "an exhausted pool is refused", rc);
 
 	for (int i = 0; i < APP_TIMER_SLOTS; i++) {
-		(void)svc_timer_free(i);
+		(void)app_svc_timer_free(i);
 	}
 
 	char line[48];
 
 	(void)snprintk(line, sizeof(line), "timer_slots: %d passed, %d failed",
 		       passes, fails);
-	svc_log(line);
-	svc_log(fails == 0 ? "timer_slots: done" : "timer_slots: FAILURES");
+	app_svc_log(line);
+	app_svc_log(fails == 0 ? "timer_slots: done" : "timer_slots: FAILURES");
 }
 
 int main(void)

@@ -56,47 +56,47 @@ static void gatt_app(void *arg)
 	uint8_t buf[16];
 	char line[64];
 
-	svc_log("gatt: reading the granted sensor value");
-	int n = svc_ble_gatt_read(PEER_NAME, sensor_svc, sizeof(sensor_svc),
-				  sensor_val, sizeof(sensor_val), buf,
-				  sizeof(buf), GATT_TIMEOUT_MS);
+	app_svc_log("gatt: reading the granted sensor value");
+	int n = app_svc_ble_gatt_read(PEER_NAME, sensor_svc, sizeof(sensor_svc),
+				      sensor_val, sizeof(sensor_val), buf,
+				      sizeof(buf), GATT_TIMEOUT_MS);
 
 	if (n < 0) {
 		(void)snprintk(line, sizeof(line), "gatt: read failed (%d)", n);
-		svc_log(line);
+		app_svc_log(line);
 		return;
 	}
 	(void)snprintk(line, sizeof(line),
 		       "gatt: read %d byte(s), first 0x%02x", n, buf[0]);
-	svc_log(line);
+	app_svc_log(line);
 
 	uint8_t cfg[2] = { 0x5A, 0xA5 };
-	int rc = svc_ble_gatt_write(PEER_NAME, sensor_svc, sizeof(sensor_svc),
-				    sensor_cfg, sizeof(sensor_cfg), cfg,
-				    sizeof(cfg), GATT_TIMEOUT_MS);
+	int rc = app_svc_ble_gatt_write(PEER_NAME, sensor_svc, sizeof(sensor_svc),
+					sensor_cfg, sizeof(sensor_cfg), cfg,
+					sizeof(cfg), GATT_TIMEOUT_MS);
 
 	if (rc == 0) {
-		svc_log("gatt: wrote the granted config value");
+		app_svc_log("gatt: wrote the granted config value");
 	} else {
 		(void)snprintk(line, sizeof(line), "gatt: write failed (%d)", rc);
-		svc_log(line);
+		app_svc_log(line);
 	}
 
 	/* The peer exposes this service, but it was never granted here. The
 	 * platform must refuse it without going on air.
 	 */
-	rc = svc_ble_gatt_read(PEER_NAME, private_svc, sizeof(private_svc),
-			       private_val, sizeof(private_val), buf,
-			       sizeof(buf), GATT_TIMEOUT_MS);
+	rc = app_svc_ble_gatt_read(PEER_NAME, private_svc, sizeof(private_svc),
+				   private_val, sizeof(private_val), buf,
+				   sizeof(buf), GATT_TIMEOUT_MS);
 	if (rc == -EACCES) {
-		svc_log("gatt: ungranted service correctly denied");
+		app_svc_log("gatt: ungranted service correctly denied");
 	} else {
 		(void)snprintk(line, sizeof(line),
 			       "gatt: ERROR ungranted service returned %d", rc);
-		svc_log(line);
+		app_svc_log(line);
 	}
 
-	svc_log("gatt: done");
+	app_svc_log("gatt: done");
 }
 
 static void nogatt_app(void *arg)
@@ -105,12 +105,12 @@ static void nogatt_app(void *arg)
 
 	uint8_t buf[8];
 
-	if (svc_ble_gatt_read(PEER_NAME, sensor_svc, sizeof(sensor_svc),
-			      sensor_val, sizeof(sensor_val), buf, sizeof(buf),
-			      1000U) == -EPERM) {
-		svc_log("nogatt: read denied without the capability");
+	if (app_svc_ble_gatt_read(PEER_NAME, sensor_svc, sizeof(sensor_svc),
+				  sensor_val, sizeof(sensor_val), buf, sizeof(buf),
+				  1000U) == -EPERM) {
+		app_svc_log("nogatt: read denied without the capability");
 	} else {
-		svc_log("nogatt: ERROR read was allowed");
+		app_svc_log("nogatt: ERROR read was allowed");
 	}
 }
 

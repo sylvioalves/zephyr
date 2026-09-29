@@ -16,7 +16,7 @@ buffer.
 The sample sends the same payload both ways on the same port and prints the
 cycle count for each, so the benefit is measured on the board rather than
 assumed. On an ESP32-C5 at 240MHz, 192 bytes cost about 87k cycles through the
-ring against about 266k through repeated ``svc_uart_write`` calls.
+ring against about 266k through repeated ``app_svc_uart_write`` calls.
 
 Because the ring's indices live in application memory, an application can
 rewrite them at any moment. The sample plants an out-of-range head and tail and

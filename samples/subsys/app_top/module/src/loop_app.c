@@ -22,7 +22,7 @@ void app_main(void *arg)
 	ARG_UNUSED(arg);
 
 	for (;;) {
-		svc_log("loadable: hello from a loaded module");
+		app_svc_log("loadable: hello from a loaded module");
 		k_msleep(1000);
 	}
 }

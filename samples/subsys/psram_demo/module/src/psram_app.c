@@ -42,13 +42,13 @@ void app_main(void *arg)
 	uintptr_t addr = 0;
 	size_t size = 0;
 
-	svc_log("psram: requesting a 256 KB region");
-	int rc = svc_psram_map(256 * 1024, &addr, &size);
+	app_svc_log("psram: requesting a 256 KB region");
+	int rc = app_svc_psram_map(256 * 1024, &addr, &size);
 
 	if (rc != 0) {
-		svc_log("psram: map FAILED");
+		app_svc_log("psram: map FAILED");
 		for (;;) {
-			svc_heartbeat();
+			app_svc_heartbeat();
 			k_msleep(1000);
 		}
 	}
@@ -73,7 +73,7 @@ void app_main(void *arg)
 		}
 		i = put_u32(line, i, (uint32_t)size);
 		line[i] = '\0';
-		svc_log(line);
+		app_svc_log(line);
 	}
 
 	/* Direct write across the whole region - no syscall per access. */
@@ -92,11 +92,11 @@ void app_main(void *arg)
 			break;
 		}
 	}
-	svc_log(ok ? "psram: write+read of full region OK"
-		   : "psram: verify FAILED");
+	app_svc_log(ok ? "psram: write+read of full region OK"
+		       : "psram: verify FAILED");
 
 	/* Time a large traversal to show it is memory-speed access. */
-	uint32_t t0 = svc_cycles();
+	uint32_t t0 = app_svc_cycles();
 	uint64_t sum = 0;
 
 	for (int pass = 0; pass < 10; pass++) {
@@ -104,7 +104,7 @@ void app_main(void *arg)
 			sum += mem[i];
 		}
 	}
-	uint32_t cyc = svc_cycles() - t0;
+	uint32_t cyc = app_svc_cycles() - t0;
 
 	{
 		char line[48];
@@ -118,12 +118,12 @@ void app_main(void *arg)
 		line[i++] = ' '; line[i++] = 's'; line[i++] = '=';
 		i = put_u32(line, i, (uint32_t)sum);
 		line[i] = '\0';
-		svc_log(line);
+		app_svc_log(line);
 	}
 
-	svc_log("psram: done");
+	app_svc_log("psram: done");
 	for (;;) {
-		svc_heartbeat();
+		app_svc_heartbeat();
 		k_msleep(1000);
 	}
 }

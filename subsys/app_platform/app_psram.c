@@ -72,7 +72,7 @@ static void psram_release(int id)
 	app_service_unlock(&psram_lock);
 }
 
-int z_impl_svc_psram_map(size_t size, uintptr_t *out_addr, size_t *out_size)
+int z_impl_app_svc_psram_map(size_t size, uintptr_t *out_addr, size_t *out_size)
 {
 	if (!app_has_cap(APP_CAP_PSRAM)) {
 		return -EPERM;
@@ -139,7 +139,7 @@ int z_impl_svc_psram_map(size_t size, uintptr_t *out_addr, size_t *out_size)
 	return 0;
 }
 
-int z_impl_svc_psram_unmap(void)
+int z_impl_app_svc_psram_unmap(void)
 {
 	if (!app_has_cap(APP_CAP_PSRAM)) {
 		return -EPERM;
@@ -163,18 +163,18 @@ static int psram_service_init(void)
 SYS_INIT(psram_service_init, APPLICATION, 99);
 
 #ifdef CONFIG_USERSPACE
-static inline int z_vrfy_svc_psram_map(size_t size, uintptr_t *out_addr,
-				       size_t *out_size)
+static inline int z_vrfy_app_svc_psram_map(size_t size, uintptr_t *out_addr,
+					   size_t *out_size)
 {
 	K_OOPS(K_SYSCALL_MEMORY_WRITE(out_addr, sizeof(*out_addr)));
 	K_OOPS(K_SYSCALL_MEMORY_WRITE(out_size, sizeof(*out_size)));
-	return z_impl_svc_psram_map(size, out_addr, out_size);
+	return z_impl_app_svc_psram_map(size, out_addr, out_size);
 }
-#include <zephyr/syscalls/svc_psram_map_mrsh.c>
+#include <zephyr/syscalls/app_svc_psram_map_mrsh.c>
 
-static inline int z_vrfy_svc_psram_unmap(void)
+static inline int z_vrfy_app_svc_psram_unmap(void)
 {
-	return z_impl_svc_psram_unmap();
+	return z_impl_app_svc_psram_unmap();
 }
-#include <zephyr/syscalls/svc_psram_unmap_mrsh.c>
+#include <zephyr/syscalls/app_svc_psram_unmap_mrsh.c>
 #endif

@@ -29,22 +29,22 @@ void app_main(void *arg)
 {
 	ARG_UNUSED(arg);
 
-	svc_log("bridge: waiting for the shared network link");
-	if (svc_net_ready() != 0) {
-		svc_log("bridge: network not ready");
+	app_svc_log("bridge: waiting for the shared network link");
+	if (app_svc_net_ready() != 0) {
+		app_svc_log("bridge: network not ready");
 		return;
 	}
 	/* Subscribe to the same topic the publisher uses. */
-	if (svc_mqtt_open("zephyr-trio-bridge", "zephyr/trio/unused",
-			  "zephyr/trio/temp") != 0) {
-		svc_log("bridge: MQTT session failed");
+	if (app_svc_mqtt_open("zephyr-trio-bridge", "zephyr/trio/unused",
+			      "zephyr/trio/temp") != 0) {
+		app_svc_log("bridge: MQTT session failed");
 		return;
 	}
-	svc_log("bridge: receiving die temp over MQTT, forwarding via IPC");
+	app_svc_log("bridge: receiving die temp over MQTT, forwarding via IPC");
 
 	for (;;) {
 		char temp[16];
-		int n = svc_mqtt_recv(temp, sizeof(temp), 10000);
+		int n = app_svc_mqtt_recv(temp, sizeof(temp), 10000);
 
 		if (n <= 0) {
 			continue;
@@ -61,13 +61,13 @@ void app_main(void *arg)
 			line[i++] = temp[j];
 		}
 		line[i] = '\0';
-		svc_log(line);
+		app_svc_log(line);
 
 		/* Forward to app 3 by name, over isolation-safe IPC. */
-		int sr = svc_ipc_send_to("printer", temp, z_strlen(temp) + 1);
+		int sr = app_svc_ipc_send_to("printer", temp, z_strlen(temp) + 1);
 
-		svc_log(sr == 0 ? "bridge: forwarded to printer"
-				: "bridge: forward FAILED");
+		app_svc_log(sr == 0 ? "bridge: forwarded to printer"
+				    : "bridge: forward FAILED");
 	}
 }
 EXPORT_SYMBOL(app_main);

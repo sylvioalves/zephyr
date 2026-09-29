@@ -228,9 +228,9 @@ BT_CONN_CB_DEFINE(app_serve_conn_cb) = {
 	.disconnected = serve_disconnected,
 };
 
-int z_impl_svc_ble_serve_start(const char *name, const uint8_t *svc_uuid,
-			       size_t uuid_len,
-			       const struct app_ble_chrc *chrc, size_t n)
+int z_impl_app_svc_ble_serve_start(const char *name, const uint8_t *svc_uuid,
+				   size_t uuid_len,
+				   const struct app_ble_chrc *chrc, size_t n)
 {
 	if (!app_has_cap(APP_CAP_BLE)) {
 		return -EPERM;
@@ -382,7 +382,7 @@ int z_impl_svc_ble_serve_start(const char *name, const uint8_t *svc_uuid,
 	return 0;
 }
 
-int z_impl_svc_ble_notify(int idx, const void *buf, size_t len)
+int z_impl_app_svc_ble_notify(int idx, const void *buf, size_t len)
 {
 	if (!app_has_cap(APP_CAP_BLE)) {
 		return -EPERM;
@@ -409,7 +409,7 @@ int z_impl_svc_ble_notify(int idx, const void *buf, size_t len)
 	return bt_gatt_notify(serve_conn, &attrs[value_attr[idx]], buf, len);
 }
 
-int z_impl_svc_ble_is_connected(void)
+int z_impl_app_svc_ble_is_connected(void)
 {
 	if (!app_has_cap(APP_CAP_BLE)) {
 		return -EPERM;
@@ -420,7 +420,7 @@ int z_impl_svc_ble_is_connected(void)
 	return (serve_conn != NULL) ? 1 : 0;
 }
 
-int z_impl_svc_ble_advertise(int on, uint32_t interval_ms)
+int z_impl_app_svc_ble_advertise(int on, uint32_t interval_ms)
 {
 	if (!app_has_cap(APP_CAP_BLE)) {
 		return -EPERM;
@@ -469,7 +469,7 @@ int z_impl_svc_ble_advertise(int on, uint32_t interval_ms)
 	return rc;
 }
 
-int z_impl_svc_ble_serve_set(int idx, const uint8_t *buf, size_t len)
+int z_impl_app_svc_ble_serve_set(int idx, const uint8_t *buf, size_t len)
 {
 	if (!app_has_cap(APP_CAP_BLE)) {
 		return -EPERM;
@@ -486,7 +486,7 @@ int z_impl_svc_ble_serve_set(int idx, const uint8_t *buf, size_t len)
 	return 0;
 }
 
-int z_impl_svc_ble_serve_get(int idx, uint8_t *buf, size_t cap)
+int z_impl_app_svc_ble_serve_get(int idx, uint8_t *buf, size_t cap)
 {
 	if (!app_has_cap(APP_CAP_BLE)) {
 		return -EPERM;
@@ -504,7 +504,7 @@ int z_impl_svc_ble_serve_get(int idx, uint8_t *buf, size_t cap)
 	return (int)n;
 }
 
-int z_impl_svc_ble_serve_stop(void)
+int z_impl_app_svc_ble_serve_stop(void)
 {
 	if (!app_has_cap(APP_CAP_BLE)) {
 		return -EPERM;
@@ -527,11 +527,11 @@ int z_impl_svc_ble_serve_stop(void)
 }
 
 #ifdef CONFIG_USERSPACE
-static inline int z_vrfy_svc_ble_serve_start(const char *name,
-					     const uint8_t *svc_uuid,
-					     size_t uuid_len,
-					     const struct app_ble_chrc *chrc,
-					     size_t n)
+static inline int z_vrfy_app_svc_ble_serve_start(const char *name,
+						 const uint8_t *svc_uuid,
+						 size_t uuid_len,
+						 const struct app_ble_chrc *chrc,
+						 size_t n)
 {
 	char nbuf[NAME_MAX];
 	uint8_t ubuf[16];
@@ -548,12 +548,12 @@ static inline int z_vrfy_svc_ble_serve_start(const char *name,
 	memcpy(ubuf, svc_uuid, uuid_len);
 	memcpy(cbuf, chrc, n * sizeof(*chrc));
 
-	return z_impl_svc_ble_serve_start(nbuf, ubuf, uuid_len, cbuf, n);
+	return z_impl_app_svc_ble_serve_start(nbuf, ubuf, uuid_len, cbuf, n);
 }
-#include <zephyr/syscalls/svc_ble_serve_start_mrsh.c>
+#include <zephyr/syscalls/app_svc_ble_serve_start_mrsh.c>
 
-static inline int z_vrfy_svc_ble_serve_set(int idx, const uint8_t *buf,
-					   size_t len)
+static inline int z_vrfy_app_svc_ble_serve_set(int idx, const uint8_t *buf,
+					       size_t len)
 {
 	uint8_t vbuf[VALUE_MAX];
 
@@ -562,39 +562,39 @@ static inline int z_vrfy_svc_ble_serve_set(int idx, const uint8_t *buf,
 	}
 	K_OOPS(K_SYSCALL_MEMORY_READ(buf, len));
 	memcpy(vbuf, buf, len);
-	return z_impl_svc_ble_serve_set(idx, vbuf, len);
+	return z_impl_app_svc_ble_serve_set(idx, vbuf, len);
 }
-#include <zephyr/syscalls/svc_ble_serve_set_mrsh.c>
+#include <zephyr/syscalls/app_svc_ble_serve_set_mrsh.c>
 
-static inline int z_vrfy_svc_ble_serve_get(int idx, uint8_t *buf, size_t cap)
+static inline int z_vrfy_app_svc_ble_serve_get(int idx, uint8_t *buf, size_t cap)
 {
 	K_OOPS(K_SYSCALL_MEMORY_WRITE(buf, cap));
-	return z_impl_svc_ble_serve_get(idx, buf, cap);
+	return z_impl_app_svc_ble_serve_get(idx, buf, cap);
 }
-#include <zephyr/syscalls/svc_ble_serve_get_mrsh.c>
+#include <zephyr/syscalls/app_svc_ble_serve_get_mrsh.c>
 
-static inline int z_vrfy_svc_ble_serve_stop(void)
+static inline int z_vrfy_app_svc_ble_serve_stop(void)
 {
-	return z_impl_svc_ble_serve_stop();
+	return z_impl_app_svc_ble_serve_stop();
 }
-#include <zephyr/syscalls/svc_ble_serve_stop_mrsh.c>
+#include <zephyr/syscalls/app_svc_ble_serve_stop_mrsh.c>
 
-static inline int z_vrfy_svc_ble_notify(int idx, const void *buf, size_t len)
+static inline int z_vrfy_app_svc_ble_notify(int idx, const void *buf, size_t len)
 {
 	K_OOPS(K_SYSCALL_MEMORY_READ(buf, len));
-	return z_impl_svc_ble_notify(idx, buf, len);
+	return z_impl_app_svc_ble_notify(idx, buf, len);
 }
-#include <zephyr/syscalls/svc_ble_notify_mrsh.c>
+#include <zephyr/syscalls/app_svc_ble_notify_mrsh.c>
 
-static inline int z_vrfy_svc_ble_is_connected(void)
+static inline int z_vrfy_app_svc_ble_is_connected(void)
 {
-	return z_impl_svc_ble_is_connected();
+	return z_impl_app_svc_ble_is_connected();
 }
-#include <zephyr/syscalls/svc_ble_is_connected_mrsh.c>
+#include <zephyr/syscalls/app_svc_ble_is_connected_mrsh.c>
 
-static inline int z_vrfy_svc_ble_advertise(int on, uint32_t interval_ms)
+static inline int z_vrfy_app_svc_ble_advertise(int on, uint32_t interval_ms)
 {
-	return z_impl_svc_ble_advertise(on, interval_ms);
+	return z_impl_app_svc_ble_advertise(on, interval_ms);
 }
-#include <zephyr/syscalls/svc_ble_advertise_mrsh.c>
+#include <zephyr/syscalls/app_svc_ble_advertise_mrsh.c>
 #endif

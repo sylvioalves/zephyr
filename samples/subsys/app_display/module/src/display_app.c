@@ -99,14 +99,14 @@ static void draw_fps(uint16_t x, uint32_t fps, uint8_t bpp, uint32_t box, uint32
 			put_pixel(&box_buf[(py * BOX_W + px) * bpp], lit ? on : box, bpp);
 		}
 	}
-	(void)svc_display_write(x, 0U, BOX_W, BOX_H, box_buf, (size_t)BOX_W * BOX_H * bpp);
+	(void)app_svc_display_write(x, 0U, BOX_W, BOX_H, box_buf, (size_t)BOX_W * BOX_H * bpp);
 }
 
 void app_main(void *arg)
 {
 	int idx = (int)(uintptr_t)arg;
 	const uint8_t *tint = app_display_tint[idx & 1];
-	struct svc_display_info info;
+	struct app_svc_display_info info;
 	bool vsync = true;
 	uint32_t bg;
 	uint32_t fg;
@@ -126,10 +126,10 @@ void app_main(void *arg)
 	int failed = 0;
 	int rc;
 
-	rc = svc_display_info(&info);
+	rc = app_svc_display_info(&info);
 	(void)snprintf(line, sizeof(line), "display: app %d viewport %ux%u rc=%d", idx, info.width,
 		       info.height, rc);
-	svc_log(line);
+	app_svc_log(line);
 	if (rc != 0 || info.width < 2U * BOX_W || info.height <= TOP_H + BAND_H + 16U) {
 		return;
 	}
@@ -138,7 +138,7 @@ void app_main(void *arg)
 	fg = app_display_color(info.pixel_format, tint[0], tint[1], tint[2]);
 	box = app_display_color(info.pixel_format, 40U, 40U, 48U);
 	digit = app_display_color(info.pixel_format, 230U, 230U, 230U);
-	(void)svc_display_fill(0U, 0U, info.width, info.height, bg);
+	(void)app_svc_display_fill(0U, 0U, info.width, info.height, bg);
 
 	band_w = MIN(info.width, MAX_ROW_PX);
 	for (uint16_t x = 0U; x < band_w; x++) {
@@ -149,21 +149,21 @@ void app_main(void *arg)
 		put_pixel(&band_row[x * info.bytes_per_pixel], px, info.bytes_per_pixel);
 	}
 	for (uint16_t row = 0U; row < BAND_H; row++) {
-		(void)svc_display_write(0U, info.height - BAND_H + row, band_w, 1U, band_row,
-					(size_t)band_w * info.bytes_per_pixel);
+		(void)app_svc_display_write(0U, info.height - BAND_H + row, band_w, 1U, band_row,
+					    (size_t)band_w * info.bytes_per_pixel);
 	}
 
 	bar_w = MAX(info.width / 8U, 8U);
 	bar_h = info.height - TOP_H - BAND_H - 4U;
 	step = MAX(info.width / 192U, 2U);
 	draw_fps(info.width - BOX_W, fps, info.bytes_per_pixel, box, digit);
-	(void)svc_display_fill(pos, TOP_H, bar_w, bar_h, fg);
-	t_last = svc_uptime_ms();
+	(void)app_svc_display_fill(pos, TOP_H, bar_w, bar_h, fg);
+	t_last = app_svc_uptime_ms();
 
 	for (int frame = 1;; frame++) {
-		if (vsync && svc_display_vsync() == -ENOTSUP) {
+		if (vsync && app_svc_display_vsync() == -ENOTSUP) {
 			vsync = false;
-			svc_log("display: no refresh events, pacing by sleep");
+			app_svc_log("display: no refresh events, pacing by sleep");
 		}
 		if (!vsync) {
 			k_sleep(K_TICKS(FRAME_TICKS));
@@ -175,15 +175,15 @@ void app_main(void *arg)
 		}
 
 		if (pos + bar_w + step > info.width) {
-			rc = svc_display_fill(pos, TOP_H, bar_w, bar_h, bg);
+			rc = app_svc_display_fill(pos, TOP_H, bar_w, bar_h, bg);
 			pos = 0U;
 			if (rc == 0) {
-				rc = svc_display_fill(pos, TOP_H, bar_w, bar_h, fg);
+				rc = app_svc_display_fill(pos, TOP_H, bar_w, bar_h, fg);
 			}
 		} else {
-			rc = svc_display_fill(pos, TOP_H, step, bar_h, bg);
+			rc = app_svc_display_fill(pos, TOP_H, step, bar_h, bg);
 			if (rc == 0) {
-				rc = svc_display_fill(pos + bar_w, TOP_H, step, bar_h, fg);
+				rc = app_svc_display_fill(pos + bar_w, TOP_H, step, bar_h, fg);
 			}
 			pos += step;
 		}
@@ -192,7 +192,7 @@ void app_main(void *arg)
 		}
 
 		frames++;
-		now = svc_uptime_ms();
+		now = app_svc_uptime_ms();
 		if (now - t_last >= 1000U) {
 			fps = (frames * 1000U + (now - t_last) / 2U) / (now - t_last);
 			frames = 0U;
@@ -203,7 +203,7 @@ void app_main(void *arg)
 			(void)snprintf(line, sizeof(line),
 				       "display: app %d frame %d, %d failed, %u fps", idx, frame,
 				       failed, fps);
-			svc_log(line);
+			app_svc_log(line);
 		}
 	}
 }

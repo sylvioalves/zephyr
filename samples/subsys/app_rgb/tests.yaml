@@ -15,7 +15,7 @@ tests:
       ordered: true
       regex:
         - "rgb: step 1 red"
-        - "rgb: svc_rgb_set rc=0"
+        - "rgb: app_svc_rgb_set rc=0"
         - "rgb: step 8 off"
         - "rgb: 8 step\\(s\\), 0 failed"
         - "done: rgb app cycled pixel 0 and exited"

@@ -158,7 +158,7 @@ static bool link_started;
 static bool link_ready;
 static bool link_failed;
 static bool broker_resolved;
-/* Set by svc_wifi_connect/disconnect; serviced on the supervisor net thread. */
+/* Set by app_svc_wifi_connect/disconnect; serviced on the supervisor net thread. */
 static bool reconnect_req;
 static bool disconnect_req;
 static K_SEM_DEFINE(link_change_sem, 0, 1);
@@ -169,7 +169,7 @@ static int8_t link_rssi;
 
 #ifdef CONFIG_SETTINGS
 /* Persist the live credentials under "app_net/ssid" and "app_net/psk" so a
- * runtime change made through svc_wifi_connect survives a reboot.
+ * runtime change made through app_svc_wifi_connect survives a reboot.
  */
 static int creds_set(const char *name, size_t len, settings_read_cb read_cb,
 		     void *cb_arg)
@@ -208,7 +208,7 @@ static void creds_save(void) { }
 
 /* Losing the address or the association is what tells the platform the shared
  * link is gone: without it link_ready would stay true after the access point
- * disappears, svc_wifi_status would keep reporting a live link and the net
+ * disappears, app_svc_wifi_status would keep reporting a live link and the net
  * thread's retry (which is gated on the link being down) would never run
  * again. Clearing the flags here hands recovery back to that retry.
  */
@@ -791,7 +791,7 @@ K_THREAD_DEFINE(app_net_tid, 4096, net_thread, NULL, NULL, NULL, 6, 0, 0);
 
 /* ---- services ---- */
 
-int z_impl_svc_net_ready(void)
+int z_impl_app_svc_net_ready(void)
 {
 	if (!app_has_cap(APP_CAP_NET)) {
 		return -EPERM;
@@ -821,8 +821,8 @@ int z_impl_svc_net_ready(void)
 	return link_ready ? 0 : -EIO;
 }
 
-int z_impl_svc_mqtt_open(const char *client_id, const char *pub_topic,
-			 const char *sub_topic)
+int z_impl_app_svc_mqtt_open(const char *client_id, const char *pub_topic,
+			     const char *sub_topic)
 {
 	if (!app_has_cap(APP_CAP_NET)) {
 		return -EPERM;
@@ -858,7 +858,7 @@ int z_impl_svc_mqtt_open(const char *client_id, const char *pub_topic,
 	return rc;
 }
 
-int z_impl_svc_mqtt_recv(char *payload, size_t cap, uint32_t timeout_ms)
+int z_impl_app_svc_mqtt_recv(char *payload, size_t cap, uint32_t timeout_ms)
 {
 	if (!app_has_cap(APP_CAP_NET)) {
 		return -EPERM;
@@ -884,7 +884,7 @@ int z_impl_svc_mqtt_recv(char *payload, size_t cap, uint32_t timeout_ms)
 	return (int)n;
 }
 
-int z_impl_svc_mqtt_publish(const char *payload)
+int z_impl_app_svc_mqtt_publish(const char *payload)
 {
 	if (!app_has_cap(APP_CAP_NET)) {
 		return -EPERM;
@@ -907,7 +907,7 @@ int z_impl_svc_mqtt_publish(const char *payload)
 	return rc;
 }
 
-int z_impl_svc_wifi_status(struct svc_wifi_status *out)
+int z_impl_app_svc_wifi_status(struct app_svc_wifi_status *out)
 {
 	if (!app_has_cap(APP_CAP_NET)) {
 		return -EPERM;
@@ -941,7 +941,7 @@ int z_impl_svc_wifi_status(struct svc_wifi_status *out)
 	return 0;
 }
 
-int z_impl_svc_wifi_connect(const char *ssid, const char *psk)
+int z_impl_app_svc_wifi_connect(const char *ssid, const char *psk)
 {
 	if (!app_has_cap(APP_CAP_NET)) {
 		return -EPERM;
@@ -966,7 +966,7 @@ int z_impl_svc_wifi_connect(const char *ssid, const char *psk)
 	return link_ready ? 0 : -EIO;
 }
 
-int z_impl_svc_wifi_disconnect(void)
+int z_impl_app_svc_wifi_disconnect(void)
 {
 	if (!app_has_cap(APP_CAP_NET)) {
 		return -EPERM;
@@ -985,7 +985,7 @@ int z_impl_svc_wifi_disconnect(void)
 
 /* ---- raw UDP/TCP datagram services ---- */
 
-int z_impl_svc_resolve(const char *host, char *out_ip, size_t cap)
+int z_impl_app_svc_resolve(const char *host, char *out_ip, size_t cap)
 {
 	if (!app_has_cap(APP_CAP_SOCKET)) {
 		return -EPERM;
@@ -1186,23 +1186,23 @@ static int sock_close(bool tcp)
 	return rc;
 }
 
-int z_impl_svc_udp_open(const char *host, uint16_t port)
+int z_impl_app_svc_udp_open(const char *host, uint16_t port)
 {
 	return sock_open(false, host, port);
 }
 
-int z_impl_svc_udp_send(const void *buf, size_t len)
+int z_impl_app_svc_udp_send(const void *buf, size_t len)
 {
 	return sock_send(false, buf, len);
 }
 
-int z_impl_svc_udp_recv(void *buf, size_t cap, uint32_t timeout_ms)
+int z_impl_app_svc_udp_recv(void *buf, size_t cap, uint32_t timeout_ms)
 {
 	return sock_recv(false, buf, cap, timeout_ms, NULL, NULL);
 }
 
-int z_impl_svc_udp_recv_from(void *buf, size_t cap, uint32_t timeout_ms,
-			     char *src_ip, size_t ip_cap, uint16_t *src_port)
+int z_impl_app_svc_udp_recv_from(void *buf, size_t cap, uint32_t timeout_ms,
+				 char *src_ip, size_t ip_cap, uint16_t *src_port)
 {
 	struct in_addr addr = { 0 };
 	uint16_t port = 0;
@@ -1222,27 +1222,27 @@ int z_impl_svc_udp_recv_from(void *buf, size_t cap, uint32_t timeout_ms,
 	return rc;
 }
 
-int z_impl_svc_udp_close(void)
+int z_impl_app_svc_udp_close(void)
 {
 	return sock_close(false);
 }
 
-int z_impl_svc_tcp_connect(const char *host, uint16_t port)
+int z_impl_app_svc_tcp_connect(const char *host, uint16_t port)
 {
 	return sock_open(true, host, port);
 }
 
-int z_impl_svc_tcp_send(const void *buf, size_t len)
+int z_impl_app_svc_tcp_send(const void *buf, size_t len)
 {
 	return sock_send(true, buf, len);
 }
 
-int z_impl_svc_tcp_recv(void *buf, size_t cap, uint32_t timeout_ms)
+int z_impl_app_svc_tcp_recv(void *buf, size_t cap, uint32_t timeout_ms)
 {
 	return sock_recv(true, buf, cap, timeout_ms, NULL, NULL);
 }
 
-int z_impl_svc_tcp_close(void)
+int z_impl_app_svc_tcp_close(void)
 {
 	return sock_close(true);
 }
@@ -1292,15 +1292,15 @@ static int net_service_init(void)
 SYS_INIT(net_service_init, APPLICATION, 99);
 
 #ifdef CONFIG_USERSPACE
-static inline int z_vrfy_svc_net_ready(void)
+static inline int z_vrfy_app_svc_net_ready(void)
 {
-	return z_impl_svc_net_ready();
+	return z_impl_app_svc_net_ready();
 }
-#include <zephyr/syscalls/svc_net_ready_mrsh.c>
+#include <zephyr/syscalls/app_svc_net_ready_mrsh.c>
 
-static inline int z_vrfy_svc_mqtt_open(const char *client_id,
-				       const char *pub_topic,
-				       const char *sub_topic)
+static inline int z_vrfy_app_svc_mqtt_open(const char *client_id,
+					   const char *pub_topic,
+					   const char *sub_topic)
 {
 	char cid[ID_MAX], pt[TOPIC_MAX], st[TOPIC_MAX];
 
@@ -1309,23 +1309,23 @@ static inline int z_vrfy_svc_mqtt_open(const char *client_id,
 	    k_usermode_string_copy(st, (char *)sub_topic, sizeof(st)) != 0) {
 		return -EFAULT;
 	}
-	return z_impl_svc_mqtt_open(cid, pt, st);
+	return z_impl_app_svc_mqtt_open(cid, pt, st);
 }
-#include <zephyr/syscalls/svc_mqtt_open_mrsh.c>
+#include <zephyr/syscalls/app_svc_mqtt_open_mrsh.c>
 
-static inline int z_vrfy_svc_mqtt_publish(const char *payload)
+static inline int z_vrfy_app_svc_mqtt_publish(const char *payload)
 {
 	char buf[PAYLOAD_MAX];
 
 	if (k_usermode_string_copy(buf, (char *)payload, sizeof(buf)) != 0) {
 		return -EFAULT;
 	}
-	return z_impl_svc_mqtt_publish(buf);
+	return z_impl_app_svc_mqtt_publish(buf);
 }
-#include <zephyr/syscalls/svc_mqtt_publish_mrsh.c>
+#include <zephyr/syscalls/app_svc_mqtt_publish_mrsh.c>
 
-static inline int z_vrfy_svc_mqtt_recv(char *payload, size_t cap,
-				       uint32_t timeout_ms)
+static inline int z_vrfy_app_svc_mqtt_recv(char *payload, size_t cap,
+					   uint32_t timeout_ms)
 {
 	char buf[PAYLOAD_MAX];
 
@@ -1334,31 +1334,31 @@ static inline int z_vrfy_svc_mqtt_recv(char *payload, size_t cap,
 	}
 	K_OOPS(K_SYSCALL_MEMORY_WRITE(payload, cap));
 
-	int rc = z_impl_svc_mqtt_recv(buf, cap, timeout_ms);
+	int rc = z_impl_app_svc_mqtt_recv(buf, cap, timeout_ms);
 
 	if (rc > 0 && k_usermode_to_copy(payload, buf, rc + 1) != 0) {
 		return -EFAULT;
 	}
 	return rc;
 }
-#include <zephyr/syscalls/svc_mqtt_recv_mrsh.c>
+#include <zephyr/syscalls/app_svc_mqtt_recv_mrsh.c>
 
-static inline int z_vrfy_svc_wifi_status(struct svc_wifi_status *out)
+static inline int z_vrfy_app_svc_wifi_status(struct app_svc_wifi_status *out)
 {
-	struct svc_wifi_status st;
+	struct app_svc_wifi_status st;
 
 	K_OOPS(K_SYSCALL_MEMORY_WRITE(out, sizeof(*out)));
 
-	int rc = z_impl_svc_wifi_status(&st);
+	int rc = z_impl_app_svc_wifi_status(&st);
 
 	if (rc == 0 && k_usermode_to_copy(out, &st, sizeof(st)) != 0) {
 		return -EFAULT;
 	}
 	return rc;
 }
-#include <zephyr/syscalls/svc_wifi_status_mrsh.c>
+#include <zephyr/syscalls/app_svc_wifi_status_mrsh.c>
 
-static inline int z_vrfy_svc_wifi_connect(const char *ssid, const char *psk)
+static inline int z_vrfy_app_svc_wifi_connect(const char *ssid, const char *psk)
 {
 	char s[SSID_MAX], p[PSK_MAX];
 
@@ -1366,17 +1366,17 @@ static inline int z_vrfy_svc_wifi_connect(const char *ssid, const char *psk)
 	    k_usermode_string_copy(p, (char *)psk, sizeof(p)) != 0) {
 		return -EFAULT;
 	}
-	return z_impl_svc_wifi_connect(s, p);
+	return z_impl_app_svc_wifi_connect(s, p);
 }
-#include <zephyr/syscalls/svc_wifi_connect_mrsh.c>
+#include <zephyr/syscalls/app_svc_wifi_connect_mrsh.c>
 
-static inline int z_vrfy_svc_wifi_disconnect(void)
+static inline int z_vrfy_app_svc_wifi_disconnect(void)
 {
-	return z_impl_svc_wifi_disconnect();
+	return z_impl_app_svc_wifi_disconnect();
 }
-#include <zephyr/syscalls/svc_wifi_disconnect_mrsh.c>
+#include <zephyr/syscalls/app_svc_wifi_disconnect_mrsh.c>
 
-static inline int z_vrfy_svc_resolve(const char *host, char *out_ip, size_t cap)
+static inline int z_vrfy_app_svc_resolve(const char *host, char *out_ip, size_t cap)
 {
 	char h[64];
 
@@ -1389,46 +1389,46 @@ static inline int z_vrfy_svc_resolve(const char *host, char *out_ip, size_t cap)
 	K_OOPS(K_SYSCALL_MEMORY_WRITE(out_ip, cap));
 
 	char buf[64];
-	int rc = z_impl_svc_resolve(h, buf, cap);
+	int rc = z_impl_app_svc_resolve(h, buf, cap);
 
 	if (rc == 0 && k_usermode_to_copy(out_ip, buf, strlen(buf) + 1) != 0) {
 		return -EFAULT;
 	}
 	return rc;
 }
-#include <zephyr/syscalls/svc_resolve_mrsh.c>
+#include <zephyr/syscalls/app_svc_resolve_mrsh.c>
 
-static inline int z_vrfy_svc_udp_open(const char *host, uint16_t port)
+static inline int z_vrfy_app_svc_udp_open(const char *host, uint16_t port)
 {
 	char h[64];
 
 	if (k_usermode_string_copy(h, (char *)host, sizeof(h)) != 0) {
 		return -EFAULT;
 	}
-	return z_impl_svc_udp_open(h, port);
+	return z_impl_app_svc_udp_open(h, port);
 }
-#include <zephyr/syscalls/svc_udp_open_mrsh.c>
+#include <zephyr/syscalls/app_svc_udp_open_mrsh.c>
 
-static inline int z_vrfy_svc_udp_send(const void *buf, size_t len)
+static inline int z_vrfy_app_svc_udp_send(const void *buf, size_t len)
 {
 	K_OOPS(K_SYSCALL_MEMORY_READ(buf, len));
-	return z_impl_svc_udp_send(buf, len);
+	return z_impl_app_svc_udp_send(buf, len);
 }
-#include <zephyr/syscalls/svc_udp_send_mrsh.c>
+#include <zephyr/syscalls/app_svc_udp_send_mrsh.c>
 
-static inline int z_vrfy_svc_udp_recv(void *buf, size_t cap, uint32_t timeout_ms)
+static inline int z_vrfy_app_svc_udp_recv(void *buf, size_t cap, uint32_t timeout_ms)
 {
 	if (cap == 0) {
 		return -EINVAL;
 	}
 	K_OOPS(K_SYSCALL_MEMORY_WRITE(buf, cap));
-	return z_impl_svc_udp_recv(buf, cap, timeout_ms);
+	return z_impl_app_svc_udp_recv(buf, cap, timeout_ms);
 }
-#include <zephyr/syscalls/svc_udp_recv_mrsh.c>
+#include <zephyr/syscalls/app_svc_udp_recv_mrsh.c>
 
-static inline int z_vrfy_svc_udp_recv_from(void *buf, size_t cap,
-					   uint32_t timeout_ms, char *src_ip,
-					   size_t ip_cap, uint16_t *src_port)
+static inline int z_vrfy_app_svc_udp_recv_from(void *buf, size_t cap,
+					       uint32_t timeout_ms, char *src_ip,
+					       size_t ip_cap, uint16_t *src_port)
 {
 	if (cap == 0) {
 		return -EINVAL;
@@ -1440,48 +1440,48 @@ static inline int z_vrfy_svc_udp_recv_from(void *buf, size_t cap,
 	if (src_port != NULL) {
 		K_OOPS(K_SYSCALL_MEMORY_WRITE(src_port, sizeof(*src_port)));
 	}
-	return z_impl_svc_udp_recv_from(buf, cap, timeout_ms, src_ip, ip_cap,
-					src_port);
+	return z_impl_app_svc_udp_recv_from(buf, cap, timeout_ms, src_ip, ip_cap,
+					    src_port);
 }
-#include <zephyr/syscalls/svc_udp_recv_from_mrsh.c>
+#include <zephyr/syscalls/app_svc_udp_recv_from_mrsh.c>
 
-static inline int z_vrfy_svc_udp_close(void)
+static inline int z_vrfy_app_svc_udp_close(void)
 {
-	return z_impl_svc_udp_close();
+	return z_impl_app_svc_udp_close();
 }
-#include <zephyr/syscalls/svc_udp_close_mrsh.c>
+#include <zephyr/syscalls/app_svc_udp_close_mrsh.c>
 
-static inline int z_vrfy_svc_tcp_connect(const char *host, uint16_t port)
+static inline int z_vrfy_app_svc_tcp_connect(const char *host, uint16_t port)
 {
 	char h[64];
 
 	if (k_usermode_string_copy(h, (char *)host, sizeof(h)) != 0) {
 		return -EFAULT;
 	}
-	return z_impl_svc_tcp_connect(h, port);
+	return z_impl_app_svc_tcp_connect(h, port);
 }
-#include <zephyr/syscalls/svc_tcp_connect_mrsh.c>
+#include <zephyr/syscalls/app_svc_tcp_connect_mrsh.c>
 
-static inline int z_vrfy_svc_tcp_send(const void *buf, size_t len)
+static inline int z_vrfy_app_svc_tcp_send(const void *buf, size_t len)
 {
 	K_OOPS(K_SYSCALL_MEMORY_READ(buf, len));
-	return z_impl_svc_tcp_send(buf, len);
+	return z_impl_app_svc_tcp_send(buf, len);
 }
-#include <zephyr/syscalls/svc_tcp_send_mrsh.c>
+#include <zephyr/syscalls/app_svc_tcp_send_mrsh.c>
 
-static inline int z_vrfy_svc_tcp_recv(void *buf, size_t cap, uint32_t timeout_ms)
+static inline int z_vrfy_app_svc_tcp_recv(void *buf, size_t cap, uint32_t timeout_ms)
 {
 	if (cap == 0) {
 		return -EINVAL;
 	}
 	K_OOPS(K_SYSCALL_MEMORY_WRITE(buf, cap));
-	return z_impl_svc_tcp_recv(buf, cap, timeout_ms);
+	return z_impl_app_svc_tcp_recv(buf, cap, timeout_ms);
 }
-#include <zephyr/syscalls/svc_tcp_recv_mrsh.c>
+#include <zephyr/syscalls/app_svc_tcp_recv_mrsh.c>
 
-static inline int z_vrfy_svc_tcp_close(void)
+static inline int z_vrfy_app_svc_tcp_close(void)
 {
-	return z_impl_svc_tcp_close();
+	return z_impl_app_svc_tcp_close();
 }
-#include <zephyr/syscalls/svc_tcp_close_mrsh.c>
+#include <zephyr/syscalls/app_svc_tcp_close_mrsh.c>
 #endif

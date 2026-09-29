@@ -89,7 +89,7 @@ static int granted_counter(int idx, const struct device **out)
 	return 0;
 }
 
-int z_impl_svc_counter_count(void)
+int z_impl_app_svc_counter_count(void)
 {
 	if (!app_has_cap(APP_CAP_COUNTER_DEV)) {
 		return -EPERM;
@@ -97,7 +97,7 @@ int z_impl_svc_counter_count(void)
 	return (int)COUNTER_COUNT;
 }
 
-int z_impl_svc_counter_start(int idx)
+int z_impl_app_svc_counter_start(int idx)
 {
 	const struct device *dev;
 	int rc = granted_counter(idx, &dev);
@@ -119,7 +119,7 @@ int z_impl_svc_counter_start(int idx)
 	return rc;
 }
 
-int z_impl_svc_counter_stop(int idx)
+int z_impl_app_svc_counter_stop(int idx)
 {
 	const struct device *dev;
 	int rc = granted_counter(idx, &dev);
@@ -140,7 +140,7 @@ int z_impl_svc_counter_stop(int idx)
 	return rc;
 }
 
-int z_impl_svc_counter_read(int idx, uint32_t *ticks)
+int z_impl_app_svc_counter_read(int idx, uint32_t *ticks)
 {
 	const struct device *dev;
 	uint32_t val = 0;
@@ -157,7 +157,7 @@ int z_impl_svc_counter_read(int idx, uint32_t *ticks)
 	return 0;
 }
 
-int z_impl_svc_counter_frequency(int idx, uint32_t *hz)
+int z_impl_app_svc_counter_frequency(int idx, uint32_t *hz)
 {
 	const struct device *dev;
 	int rc = granted_counter(idx, &dev);
@@ -170,48 +170,48 @@ int z_impl_svc_counter_frequency(int idx, uint32_t *hz)
 }
 
 #ifdef CONFIG_USERSPACE
-static inline int z_vrfy_svc_counter_count(void)
+static inline int z_vrfy_app_svc_counter_count(void)
 {
-	return z_impl_svc_counter_count();
+	return z_impl_app_svc_counter_count();
 }
-#include <zephyr/syscalls/svc_counter_count_mrsh.c>
+#include <zephyr/syscalls/app_svc_counter_count_mrsh.c>
 
-static inline int z_vrfy_svc_counter_start(int idx)
+static inline int z_vrfy_app_svc_counter_start(int idx)
 {
-	return z_impl_svc_counter_start(idx);
+	return z_impl_app_svc_counter_start(idx);
 }
-#include <zephyr/syscalls/svc_counter_start_mrsh.c>
+#include <zephyr/syscalls/app_svc_counter_start_mrsh.c>
 
-static inline int z_vrfy_svc_counter_stop(int idx)
+static inline int z_vrfy_app_svc_counter_stop(int idx)
 {
-	return z_impl_svc_counter_stop(idx);
+	return z_impl_app_svc_counter_stop(idx);
 }
-#include <zephyr/syscalls/svc_counter_stop_mrsh.c>
+#include <zephyr/syscalls/app_svc_counter_stop_mrsh.c>
 
 /* Bounce through a supervisor value rather than letting the driver write user
  * memory, as the other reading services do.
  */
-static inline int z_vrfy_svc_counter_read(int idx, uint32_t *ticks)
+static inline int z_vrfy_app_svc_counter_read(int idx, uint32_t *ticks)
 {
 	uint32_t val = 0;
-	int rc = z_impl_svc_counter_read(idx, &val);
+	int rc = z_impl_app_svc_counter_read(idx, &val);
 
 	if (rc == 0 && k_usermode_to_copy(ticks, &val, sizeof(val)) != 0) {
 		return -EFAULT;
 	}
 	return rc;
 }
-#include <zephyr/syscalls/svc_counter_read_mrsh.c>
+#include <zephyr/syscalls/app_svc_counter_read_mrsh.c>
 
-static inline int z_vrfy_svc_counter_frequency(int idx, uint32_t *hz)
+static inline int z_vrfy_app_svc_counter_frequency(int idx, uint32_t *hz)
 {
 	uint32_t val = 0;
-	int rc = z_impl_svc_counter_frequency(idx, &val);
+	int rc = z_impl_app_svc_counter_frequency(idx, &val);
 
 	if (rc == 0 && k_usermode_to_copy(hz, &val, sizeof(val)) != 0) {
 		return -EFAULT;
 	}
 	return rc;
 }
-#include <zephyr/syscalls/svc_counter_frequency_mrsh.c>
+#include <zephyr/syscalls/app_svc_counter_frequency_mrsh.c>
 #endif /* CONFIG_USERSPACE */

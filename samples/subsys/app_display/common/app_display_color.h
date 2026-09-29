@@ -17,7 +17,7 @@ static const uint8_t app_display_tint[2][3] = {
 };
 
 /* Pack an RGB color into a pixel of the panel format, in the encoding that
- * svc_display_fill() takes: the pixel bytes, least significant first.
+ * app_svc_display_fill() takes: the pixel bytes, least significant first.
  */
 static inline uint32_t app_display_color(uint32_t fmt, uint8_t r, uint8_t g, uint8_t b)
 {

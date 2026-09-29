@@ -267,7 +267,7 @@ static void beat_app(void *arg)
 {
 	ARG_UNUSED(arg);
 	for (;;) {
-		svc_heartbeat();
+		app_svc_heartbeat();
 		k_msleep(100);
 	}
 }

@@ -129,7 +129,7 @@ static void line_changed(const struct device *dev, struct gpio_callback *cb,
 }
 #endif
 
-int z_impl_svc_gpio_count(void)
+int z_impl_app_svc_gpio_count(void)
 {
 	if (!app_has_cap(APP_CAP_GPIO)) {
 		return -EPERM;
@@ -137,7 +137,7 @@ int z_impl_svc_gpio_count(void)
 	return (int)LINE_COUNT;
 }
 
-int z_impl_svc_gpio_find(const char *name)
+int z_impl_app_svc_gpio_find(const char *name)
 {
 	if (!app_has_cap(APP_CAP_GPIO)) {
 		return -EPERM;
@@ -154,7 +154,7 @@ int z_impl_svc_gpio_find(const char *name)
 	return -ENOENT;
 }
 
-int z_impl_svc_gpio_set(int line, int on)
+int z_impl_app_svc_gpio_set(int line, int on)
 {
 	if (!app_has_cap(APP_CAP_GPIO)) {
 		return -EPERM;
@@ -192,7 +192,7 @@ int z_impl_svc_gpio_set(int line, int on)
 #endif
 }
 
-int z_impl_svc_gpio_watch(int line, int on)
+int z_impl_app_svc_gpio_watch(int line, int on)
 {
 	if (!app_has_cap(APP_CAP_GPIO)) {
 		return -EPERM;
@@ -248,32 +248,32 @@ int z_impl_svc_gpio_watch(int line, int on)
 }
 
 #ifdef CONFIG_USERSPACE
-static inline int z_vrfy_svc_gpio_watch(int line, int on)
+static inline int z_vrfy_app_svc_gpio_watch(int line, int on)
 {
-	return z_impl_svc_gpio_watch(line, on);
+	return z_impl_app_svc_gpio_watch(line, on);
 }
-#include <zephyr/syscalls/svc_gpio_watch_mrsh.c>
+#include <zephyr/syscalls/app_svc_gpio_watch_mrsh.c>
 
-static inline int z_vrfy_svc_gpio_count(void)
+static inline int z_vrfy_app_svc_gpio_count(void)
 {
-	return z_impl_svc_gpio_count();
+	return z_impl_app_svc_gpio_count();
 }
-#include <zephyr/syscalls/svc_gpio_count_mrsh.c>
+#include <zephyr/syscalls/app_svc_gpio_count_mrsh.c>
 
-static inline int z_vrfy_svc_gpio_find(const char *name)
+static inline int z_vrfy_app_svc_gpio_find(const char *name)
 {
 	char buf[IO_NAME_MAX];
 
 	if (k_usermode_string_copy(buf, (char *)name, sizeof(buf)) != 0) {
 		return -EFAULT;
 	}
-	return z_impl_svc_gpio_find(buf);
+	return z_impl_app_svc_gpio_find(buf);
 }
-#include <zephyr/syscalls/svc_gpio_find_mrsh.c>
+#include <zephyr/syscalls/app_svc_gpio_find_mrsh.c>
 
-static inline int z_vrfy_svc_gpio_set(int line, int on)
+static inline int z_vrfy_app_svc_gpio_set(int line, int on)
 {
-	return z_impl_svc_gpio_set(line, on);
+	return z_impl_app_svc_gpio_set(line, on);
 }
-#include <zephyr/syscalls/svc_gpio_set_mrsh.c>
+#include <zephyr/syscalls/app_svc_gpio_set_mrsh.c>
 #endif

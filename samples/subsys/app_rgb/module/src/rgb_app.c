@@ -39,8 +39,8 @@ void app_main(void *arg)
 
 	ARG_UNUSED(arg);
 
-	(void)snprintf(line, sizeof(line), "rgb: %d pixel(s)", svc_rgb_count());
-	svc_log(line);
+	(void)snprintf(line, sizeof(line), "rgb: %d pixel(s)", app_svc_rgb_count());
+	app_svc_log(line);
 
 	for (int c = 0; c < RGB_CYCLES; c++) {
 		for (size_t i = 0; i < ARRAY_SIZE(steps); i++) {
@@ -48,10 +48,10 @@ void app_main(void *arg)
 
 			n++;
 			(void)snprintf(line, sizeof(line), "rgb: step %d %s", n, steps[i].name);
-			svc_log(line);
-			rc = svc_rgb_set(0, steps[i].r, steps[i].g, steps[i].b);
-			(void)snprintf(line, sizeof(line), "rgb: svc_rgb_set rc=%d", rc);
-			svc_log(line);
+			app_svc_log(line);
+			rc = app_svc_rgb_set(0, steps[i].r, steps[i].g, steps[i].b);
+			(void)snprintf(line, sizeof(line), "rgb: app_svc_rgb_set rc=%d", rc);
+			app_svc_log(line);
 			if (rc != 0) {
 				failed++;
 			}
@@ -60,6 +60,6 @@ void app_main(void *arg)
 	}
 
 	(void)snprintf(line, sizeof(line), "rgb: %d step(s), %d failed", n, failed);
-	svc_log(line);
+	app_svc_log(line);
 }
 EXPORT_SYMBOL(app_main);

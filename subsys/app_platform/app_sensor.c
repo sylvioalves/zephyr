@@ -97,7 +97,7 @@ static struct sensor_svc catalog[] = {
  */
 static SVC_LOCK_DEFINE(sensor_lock);
 
-int z_impl_svc_sensor_count(void)
+int z_impl_app_svc_sensor_count(void)
 {
 	if (!app_has_cap(APP_CAP_SENSOR)) {
 		return -EPERM;
@@ -105,7 +105,7 @@ int z_impl_svc_sensor_count(void)
 	return CATALOG_COUNT;
 }
 
-int z_impl_svc_sensor_info(int idx, struct svc_sensor_info *out)
+int z_impl_app_svc_sensor_info(int idx, struct app_svc_sensor_info *out)
 {
 	if (!app_has_cap(APP_CAP_SENSOR)) {
 		return -EPERM;
@@ -114,7 +114,7 @@ int z_impl_svc_sensor_info(int idx, struct svc_sensor_info *out)
 		return -EINVAL;
 	}
 
-	struct svc_sensor_info info;
+	struct app_svc_sensor_info info;
 
 	memset(&info, 0, sizeof(info));
 	(void)strncpy(info.name, catalog[idx].name, sizeof(info.name) - 1);
@@ -124,7 +124,7 @@ int z_impl_svc_sensor_info(int idx, struct svc_sensor_info *out)
 	return 0;
 }
 
-int z_impl_svc_sensor_read(int idx, int32_t *milli_value)
+int z_impl_app_svc_sensor_read(int idx, int32_t *milli_value)
 {
 	if (!app_has_cap(APP_CAP_SENSOR)) {
 		return -EPERM;
@@ -162,38 +162,38 @@ int z_impl_svc_sensor_read(int idx, int32_t *milli_value)
 
 #ifdef CONFIG_USERSPACE
 
-static inline int z_vrfy_svc_sensor_count(void)
+static inline int z_vrfy_app_svc_sensor_count(void)
 {
-	return z_impl_svc_sensor_count();
+	return z_impl_app_svc_sensor_count();
 }
-#include <zephyr/syscalls/svc_sensor_count_mrsh.c>
+#include <zephyr/syscalls/app_svc_sensor_count_mrsh.c>
 
-static inline int z_vrfy_svc_sensor_info(int idx, struct svc_sensor_info *out)
+static inline int z_vrfy_app_svc_sensor_info(int idx, struct app_svc_sensor_info *out)
 {
 	K_OOPS(K_SYSCALL_MEMORY_WRITE(out, sizeof(*out)));
 
-	struct svc_sensor_info info;
-	int rc = z_impl_svc_sensor_info(idx, &info);
+	struct app_svc_sensor_info info;
+	int rc = z_impl_app_svc_sensor_info(idx, &info);
 
 	if (rc == 0) {
 		K_OOPS(k_usermode_to_copy(out, &info, sizeof(info)));
 	}
 	return rc;
 }
-#include <zephyr/syscalls/svc_sensor_info_mrsh.c>
+#include <zephyr/syscalls/app_svc_sensor_info_mrsh.c>
 
-static inline int z_vrfy_svc_sensor_read(int idx, int32_t *milli_value)
+static inline int z_vrfy_app_svc_sensor_read(int idx, int32_t *milli_value)
 {
 	K_OOPS(K_SYSCALL_MEMORY_WRITE(milli_value, sizeof(*milli_value)));
 
 	int32_t v = 0;
-	int rc = z_impl_svc_sensor_read(idx, &v);
+	int rc = z_impl_app_svc_sensor_read(idx, &v);
 
 	if (rc == 0) {
 		K_OOPS(k_usermode_to_copy(milli_value, &v, sizeof(v)));
 	}
 	return rc;
 }
-#include <zephyr/syscalls/svc_sensor_read_mrsh.c>
+#include <zephyr/syscalls/app_svc_sensor_read_mrsh.c>
 
 #endif /* CONFIG_USERSPACE */

@@ -42,7 +42,7 @@ static void dma_done(const struct device *d, void *arg, uint32_t chan, int statu
 }
 #endif
 
-int z_impl_svc_dma_copy(const uint8_t *src, uint8_t *dst, size_t len)
+int z_impl_app_svc_dma_copy(const uint8_t *src, uint8_t *dst, size_t len)
 {
 	if (!app_has_cap(APP_CAP_DMA)) {
 		return -EPERM;
@@ -105,11 +105,11 @@ int z_impl_svc_dma_copy(const uint8_t *src, uint8_t *dst, size_t len)
 }
 
 #ifdef CONFIG_USERSPACE
-static inline int z_vrfy_svc_dma_copy(const uint8_t *src, uint8_t *dst, size_t len)
+static inline int z_vrfy_app_svc_dma_copy(const uint8_t *src, uint8_t *dst, size_t len)
 {
 	K_OOPS(K_SYSCALL_MEMORY_READ(src, len));
 	K_OOPS(K_SYSCALL_MEMORY_WRITE(dst, len));
-	return z_impl_svc_dma_copy(src, dst, len);
+	return z_impl_app_svc_dma_copy(src, dst, len);
 }
-#include <zephyr/syscalls/svc_dma_copy_mrsh.c>
+#include <zephyr/syscalls/app_svc_dma_copy_mrsh.c>
 #endif

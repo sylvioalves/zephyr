@@ -37,25 +37,25 @@ void app_main(void *arg)
 {
 	ARG_UNUSED(arg);
 
-	svc_log("temp-app: waiting for the shared network link");
-	if (svc_net_ready() != 0) {
-		svc_log("temp-app: network not ready");
+	app_svc_log("temp-app: waiting for the shared network link");
+	if (app_svc_net_ready() != 0) {
+		app_svc_log("temp-app: network not ready");
 		return;
 	}
 
-	svc_log("temp-app: opening MQTT session");
-	if (svc_mqtt_open("zephyr-temp", "zephyr/c6/temp", "zephyr/c6/cmd") != 0) {
-		svc_log("temp-app: session failed");
+	app_svc_log("temp-app: opening MQTT session");
+	if (app_svc_mqtt_open("zephyr-temp", "zephyr/c6/temp", "zephyr/c6/cmd") != 0) {
+		app_svc_log("temp-app: session failed");
 		return;
 	}
-	svc_log("temp-app: publishing die temp every 10s");
+	app_svc_log("temp-app: publishing die temp every 10s");
 
 	for (;;) {
 		char payload[8];
 
-		fmt_temp(svc_die_temp_milli(), payload);
-		svc_mqtt_publish(payload);
-		svc_heartbeat();
+		fmt_temp(app_svc_die_temp_milli(), payload);
+		app_svc_mqtt_publish(payload);
+		app_svc_heartbeat();
 		k_msleep(10000);
 	}
 }

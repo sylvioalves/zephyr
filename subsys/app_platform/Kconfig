@@ -311,7 +311,7 @@ config APP_PLATFORM_PSRAM_MAX_BYTES
 	depends on APP_PLATFORM_PSRAM
 	default 1048576
 	help
-	  Upper bound on a single svc_psram_map request. The size an
+	  Upper bound on a single app_svc_psram_map request. The size an
 	  application asks for is rounded up to a power of two for the memory
 	  partition, so this bound also keeps that rounding finite. Requests
 	  above it are refused with -EINVAL.
@@ -343,7 +343,7 @@ config APP_PLATFORM_RING_MAX_BYTES
 	depends on APP_PLATFORM_RING
 	default 4096
 	help
-	  Upper bound on a single svc_ring_bind request. The size is rounded up
+	  Upper bound on a single app_svc_ring_bind request. The size is rounded up
 	  to a power of two for the memory partition, so this bound also keeps
 	  that rounding finite.
 
@@ -354,7 +354,7 @@ config APP_PLATFORM_NET
 	help
 	  Bring up Wi-Fi and the network stack once in the platform and give
 	  each application its own MQTT session, reached through capability-
-	  gated svc_net_ready / svc_mqtt_ calls. An application that publishes
+	  gated app_svc_net_ready / svc_mqtt_ calls. An application that publishes
 	  over MQTT then links none of the network code.
 
 if APP_PLATFORM_NET
@@ -432,7 +432,7 @@ config APP_PLATFORM_EVENTS
 	  Deliver input events to an application through a queue of its own
 	  rather than a single shared semaphore, so one application waiting
 	  does not consume another's events and one application can wait on
-	  several sources at once. Adds svc_event_wait(), on which the
+	  several sources at once. Adds app_svc_event_wait(), on which the
 	  app_events dispatcher builds registered callbacks.
 
 config APP_PLATFORM_INPUT_KEYS
@@ -501,7 +501,7 @@ config APP_PLATFORM_DISPLAY_CLEAR_COLOR
 	depends on APP_PLATFORM_DISPLAY
 	help
 	  Pixel value in the panel's format, with the same encoding as the
-	  color argument of svc_display_fill().
+	  color argument of app_svc_display_fill().
 
 config APP_PLATFORM_MOTION
 	bool "Shared pulse-counter and motor-control PWM services"
@@ -537,7 +537,7 @@ config APP_PLATFORM_BLE_GATT
 	bool "Generic GATT client"
 	depends on APP_PLATFORM_BLE
 	help
-	  Add svc_ble_gatt_read and svc_ble_gatt_write, which let an
+	  Add app_svc_ble_gatt_read and app_svc_ble_gatt_write, which let an
 	  application name a service and characteristic by UUID instead of
 	  being limited to the profiles the platform implements. The platform
 	  still owns the connection and the handles: an application passes
@@ -572,7 +572,7 @@ config APP_PLATFORM_BLE_OTA
 	depends on APP_PLATFORM_LOADER && APP_PLATFORM_REGISTRY
 	depends on FILE_SYSTEM
 	help
-	  Add svc_ble_ota_fetch, which pulls a signed application's manifest,
+	  Add app_svc_ble_ota_fetch, which pulls a signed application's manifest,
 	  signature and module from a BLE peer over GATT and stores them, so a
 	  device with no network connection can still be updated. The transfer
 	  is untrusted: the caller verifies the signature and the module hash

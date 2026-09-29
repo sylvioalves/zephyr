@@ -23,18 +23,18 @@ void app_main(void *arg)
 	ARG_UNUSED(arg);
 
 	if (APP_VERSION == 1) {
-		svc_log("app v1: running (the old release)");
+		app_svc_log("app v1: running (the old release)");
 	} else {
-		svc_log("app v2: running (the updated release, new behavior)");
+		app_svc_log("app v2: running (the updated release, new behavior)");
 	}
 
 	for (int i = 0; i < 20; i++) {
 		if (APP_VERSION == 1) {
-			svc_log("app v1: tick");
+			app_svc_log("app v1: tick");
 		} else {
-			svc_log("app v2: tick (now with extra logging)");
+			app_svc_log("app v2: tick (now with extra logging)");
 		}
-		svc_heartbeat();
+		app_svc_heartbeat();
 		k_msleep(500);
 	}
 }

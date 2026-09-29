@@ -14,7 +14,7 @@
  * @brief Callback dispatch for application input events.
  *
  * Registered handlers run on the application's own thread, in user mode and in
- * its own memory domain: this is a loop around @ref svc_event_wait, not a call
+ * its own memory domain: this is a loop around @ref app_svc_event_wait, not a call
  * from the platform into the application. A handler that faults is an ordinary
  * application fault the platform reclaims, and no platform thread is ever
  * parked inside application code.
@@ -88,7 +88,7 @@ static inline void app_dispatch_stop(struct app_dispatch *d)
  * @param d          Dispatch table.
  * @param timeout_ms Idle timeout in milliseconds.
  * @retval 0 when stopped, -EAGAIN on the idle timeout, or a negative errno
- *         from @ref svc_event_wait.
+ *         from @ref app_svc_event_wait.
  */
 static inline int app_dispatch_run(struct app_dispatch *d, int32_t timeout_ms)
 {
@@ -96,7 +96,7 @@ static inline int app_dispatch_run(struct app_dispatch *d, int32_t timeout_ms)
 
 	while (!d->stop) {
 		struct app_event evt;
-		int rc = svc_event_wait(&evt, timeout_ms);
+		int rc = app_svc_event_wait(&evt, timeout_ms);
 
 		if (rc != 0) {
 			return rc;

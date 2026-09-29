@@ -11,8 +11,8 @@ mode and granted one service UUID. From there it serves a GATT service: a
 central discovers the service, reads a counter the application publishes and
 writes to a second characteristic, which the application receives as an event.
 
-The module links no Bluetooth code. It calls ``svc_ble_serve_start()`` to
-publish the service, ``svc_ble_serve_set()`` to update a value and takes a
+The module links no Bluetooth code. It calls ``app_svc_ble_serve_start()`` to
+publish the service, ``app_svc_ble_serve_set()`` to update a value and takes a
 peer's write through the dispatch loop, so the host owns the connection, the
 attribute table and the value buffers throughout. The application never sees a
 connection object or an attribute handle.

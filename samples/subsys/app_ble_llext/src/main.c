@@ -19,7 +19,7 @@ static const uint8_t ble_llext_app_hash[] = {
 };
 
 /* The service the application is allowed to serve. It must match the UUID the
- * module passes to svc_ble_serve_start().
+ * module passes to app_svc_ble_serve_start().
  */
 static const uint8_t svc_uuid[16] = {
 	0xab, 0x89, 0x67, 0x45, 0x23, 0x01, 0x7d, 0x8c,

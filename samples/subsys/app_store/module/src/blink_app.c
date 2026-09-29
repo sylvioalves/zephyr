@@ -24,9 +24,9 @@ void app_main(void *arg)
 	ARG_UNUSED(arg);
 
 	for (int i = 0; i < 5; i++) {
-		svc_log("store app: running from a verified install");
+		app_svc_log("store app: running from a verified install");
 		k_msleep(500);
 	}
-	svc_log("store app: done");
+	app_svc_log("store app: done");
 }
 EXPORT_SYMBOL(app_main);

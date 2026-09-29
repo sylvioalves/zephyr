@@ -12,7 +12,7 @@
  * interference surfaces as a verify mismatch. A per-instance tag, derived from
  * the mapped base address, distinguishes the two instances' data.
  *
- * The module only uses the user-mode service syscalls (svc_*) and builds its
+ * The module only uses the user-mode service syscalls (app_svc_*) and builds its
  * log strings by hand, so it has no dependency on libc symbols that would need
  * to be resolved at load time.
  */
@@ -62,12 +62,12 @@ void app_main(void *arg)
 	uintptr_t addr = 0;
 	size_t size = 0;
 
-	svc_log("app: requesting external RAM region");
+	app_svc_log("app: requesting external RAM region");
 
-	if (svc_psram_map(REGION_SIZE, &addr, &size) != 0) {
-		svc_log("map FAILED");
+	if (app_svc_psram_map(REGION_SIZE, &addr, &size) != 0) {
+		app_svc_log("map FAILED");
 		for (;;) {
-			svc_heartbeat();
+			app_svc_heartbeat();
 			k_msleep(1000);
 		}
 	}
@@ -84,7 +84,7 @@ void app_main(void *arg)
 	i = put_str(line, i, ": mapped, size=");
 	i = put_u32(line, i, (uint32_t)size);
 	line[i] = '\0';
-	svc_log(line);
+	app_svc_log(line);
 
 	volatile uint8_t *mem = (volatile uint8_t *)addr;
 
@@ -124,10 +124,10 @@ void app_main(void *arg)
 	i = put_u32(line, i, errors);
 	i = put_str(line, i, errors ? " FAILED" : " OK");
 	line[i] = '\0';
-	svc_log(line);
+	app_svc_log(line);
 
 	for (;;) {
-		svc_heartbeat();
+		app_svc_heartbeat();
 		k_msleep(1000);
 	}
 }

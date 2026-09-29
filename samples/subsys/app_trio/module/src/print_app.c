@@ -18,15 +18,15 @@ void app_main(void *arg)
 {
 	ARG_UNUSED(arg);
 
-	if (svc_ipc_register("printer") != 0) {
-		svc_log("printer: could not register name");
+	if (app_svc_ipc_register("printer") != 0) {
+		app_svc_log("printer: could not register name");
 		return;
 	}
-	svc_log("printer: registered, waiting for temps over IPC");
+	app_svc_log("printer: registered, waiting for temps over IPC");
 
 	for (;;) {
 		char temp[16];
-		int n = svc_ipc_recv(temp, sizeof(temp), 10000);
+		int n = app_svc_ipc_recv(temp, sizeof(temp), 10000);
 
 		if (n <= 0) {
 			continue;
@@ -45,7 +45,7 @@ void app_main(void *arg)
 		line[i++] = ' ';
 		line[i++] = 'C';
 		line[i] = '\0';
-		svc_log(line);
+		app_svc_log(line);
 	}
 }
 EXPORT_SYMBOL(app_main);
