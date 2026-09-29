@@ -16,6 +16,7 @@
 #include <zephyr/app_platform/app_platform.h>
 #include <zephyr/app_platform/app_caps.h>
 #include <zephyr/app_platform/app_services.h>
+#include <zephyr/app_memory/app_memdomain.h>
 #include <zephyr/kernel.h>
 #include <zephyr/fs/fs.h>
 #include <errno.h>
@@ -667,6 +668,134 @@ ZTEST(lifecycle, test_request_stop)
 	k_msleep(20);
 	zassert_equal(app_platform_request_stop(id, 100), -ETIMEDOUT);
 	zassert_true(wait_slot_free("stubborn", 2000));
+}
+
+ZTEST(lifecycle, test_launch_stopped)
+{
+	struct app_def def = {
+		.name = "held",
+		.source = APP_BUILTIN,
+		.entry = quitter_app,
+		.caps = APP_CAP_LOG,
+		.stopped = true,
+	};
+	struct app_platform_status st;
+	int id = app_platform_launch(&def);
+
+	zassert_true(id >= 0, "launch failed (%d)", id);
+	k_msleep(50);
+	zassert_equal(app_platform_status(id, &st), 0, "a stopped launch ran and exited");
+	zassert_false(st.active, "a stopped launch is running");
+	zassert_equal(app_platform_launch(&def), -EEXIST);
+	if (IS_ENABLED(CONFIG_USERSPACE)) {
+		zassert_not_null(app_platform_domain(id));
+	}
+	zassert_equal(app_platform_start(id), id);
+	zassert_true(wait_slot_free("held", 2000), "the started application did not run");
+
+	id = app_platform_launch(&def);
+	zassert_true(id >= 0, "launch failed (%d)", id);
+	zassert_equal(app_platform_remove(id), 0);
+	zassert_true(wait_slot_free("held", 2000), "a never started application kept its slot");
+}
+
+ZTEST(lifecycle, test_launch_stopped_module)
+{
+	const struct app_launch_opts opts = { .stopped = true };
+	struct app_platform_status st;
+
+	for (int round = 0; round < 2; round++) {
+		struct app_manifest mf = manifest_copy();
+		size_t len = fresh_module();
+		struct llext *ext = NULL;
+		void *entry = NULL;
+		int id;
+
+		zassert_equal(app_loader_verify_load_manifest(&mf, mod_sig, ARRAY_SIZE(mod_sig),
+							      work, len, mod_pubkey,
+							      ARRAY_SIZE(mod_pubkey), "app_main",
+							      &ext, &entry), 0);
+		id = app_platform_launch_llext_opts(mf.name, ext, (app_entry_t)entry, NULL,
+						    APP_CAP_LOG, &opts);
+		zassert_true(id >= 0, "launch failed (%d)", id);
+		zassert_equal(app_platform_status(id, &st), 0);
+		zassert_false(st.active, "a stopped launch is running");
+		zassert_true(st.module_bytes > 0U, "the module is not mapped");
+		if (round == 1) {
+			zassert_equal(app_platform_start(id), id);
+		}
+		zassert_equal(app_platform_remove(id), 0);
+		zassert_true(wait_slot_free(mf.name, 2000), "round %d slot not freed", round);
+	}
+}
+
+#ifdef CONFIG_USERSPACE
+K_APPMEM_PARTITION_DEFINE(relaunch_part);
+K_APP_BMEM(relaunch_part) static volatile uint32_t relaunch_runs;
+#else
+static volatile uint32_t relaunch_runs;
+#endif
+
+/* Fault on the first run only, then keep running. */
+static void fault_once_app(void *arg)
+{
+	ARG_UNUSED(arg);
+	if (relaunch_runs++ == 0U) {
+		crasher_app(NULL);
+	}
+	for (;;) {
+		k_msleep(10);
+	}
+}
+
+ZTEST(lifecycle, test_fault_relaunch_keeps_slot)
+{
+	struct app_def filler = {
+		.name = "filler",
+		.source = APP_BUILTIN,
+		.entry = quitter_app,
+		.caps = APP_CAP_LOG,
+		.stopped = true,
+	};
+	struct app_def def = {
+		.name = "recrash",
+		.source = APP_BUILTIN,
+		.entry = fault_once_app,
+		.caps = APP_CAP_LOG,
+		.stopped = true,
+	};
+	struct k_mem_domain *dom;
+	struct app_platform_status st;
+	bool relaunched = false;
+	int fid = app_platform_launch(&filler);
+	int id = app_platform_launch(&def);
+
+	zassert_true(fid >= 0 && id > fid, "launch failed (%d, %d)", fid, id);
+	relaunch_runs = 0U;
+	dom = app_platform_domain(id);
+#ifdef CONFIG_USERSPACE
+	zassert_equal(k_mem_domain_add_partition(dom, &relaunch_part), 0);
+#endif
+	zassert_equal(app_platform_set_restart(id, true), 0);
+	zassert_equal(app_platform_remove(fid), 0);
+	zassert_true(wait_slot_free("filler", 2000));
+	zassert_equal(app_platform_start(id), id);
+
+	for (int i = 0; i < 400 && !relaunched; i++) {
+		relaunched = app_platform_status(id, &st) == 0 && st.active && st.restarts == 1U &&
+			     strcmp(st.name, "recrash") == 0;
+		k_msleep(5);
+	}
+	zassert_true(relaunched, "the fault relaunch did not take the same slot");
+	k_msleep(50);
+	zassert_equal(relaunch_runs, 2U, "the relaunch ran %u times", relaunch_runs);
+	zassert_equal(app_platform_remove(id), 0);
+	zassert_true(wait_slot_free("recrash", 2000));
+#ifdef CONFIG_USERSPACE
+	zassert_equal(k_mem_domain_remove_partition(dom, &relaunch_part), 0);
+#else
+	ARG_UNUSED(dom);
+#endif
 }
 
 static void file_writer_app(void *arg)
