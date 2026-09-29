@@ -19,8 +19,6 @@
 #include <string.h>
 #include <errno.h>
 
-#include "launch.h"
-
 #define HEAP_SZ  992U
 #define POOL_SZ  CONFIG_APP_PLATFORM_APP_HEAP_POOL_SIZE
 #define HEAP_MAX CONFIG_APP_PLATFORM_APP_HEAP_MAX_BYTES
@@ -114,8 +112,9 @@ static int launch(const char *name, app_entry_t entry, app_caps_t caps, size_t h
 		.entry = entry,
 		.caps = caps,
 		.heap_size = heap_size,
+		.stopped = true,
 	};
-	int id = launch_app(&def);
+	int id = app_platform_launch(&def);
 
 #ifdef CONFIG_USERSPACE
 	if (id >= 0) {
@@ -127,6 +126,9 @@ static int launch(const char *name, app_entry_t entry, app_caps_t caps, size_t h
 		doms[id] = dom;
 	}
 #endif
+	if (id >= 0) {
+		zassert_equal(app_platform_start(id), id, "%s did not start", name);
+	}
 	return id;
 }
 

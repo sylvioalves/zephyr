@@ -81,6 +81,21 @@ static void add_report_part(int id)
 #endif
 }
 
+/* Launch an application stopped, add the report partition, then start it. */
+static int launch_reporting(const struct app_def *def)
+{
+	struct app_def d = *def;
+	int id;
+
+	d.stopped = true;
+	id = app_platform_launch(&d);
+	if (id >= 0) {
+		add_report_part(id);
+		zassert_equal(app_platform_start(id), id, "%s did not start", d.name);
+	}
+	return id;
+}
+
 static bool wait_slot_free(const char *name, int ms)
 {
 	for (int i = 0; i < ms / 5; i++) {
@@ -105,10 +120,9 @@ static void expect_rc(const char *name, app_entry_t entry, app_caps_t caps,
 	report_rc = -9999;
 	report_done = 0;
 
-	int id = app_platform_launch(&def);
+	int id = launch_reporting(&def);
 
 	zassert_true(id >= 0, "%s launch failed", name);
-	add_report_part(id);
 	zassert_true(wait_slot_free(name, 2000), "%s never exited", name);
 	zassert_equal(report_done, 1, "%s trapped instead of reporting", name);
 	zassert_equal(report_rc, expected_rc, "%s rc %d != %d", name, report_rc,
@@ -497,9 +511,8 @@ static void launch_held(const char *name, app_entry_t entry, app_caps_t caps)
 	holding = 0;
 	release = 0;
 
-	id = app_platform_launch(&def);
+	id = launch_reporting(&def);
 	zassert_true(id >= 0, "%s launch failed", name);
-	add_report_part(id);
 	for (int i = 0; i < 400 && holding == 0; i++) {
 		k_msleep(5);
 	}
@@ -1103,9 +1116,8 @@ ZTEST(devices, test_display_bad_buffer_leaves_lock_free)
 
 	grant_display_all(&vp_left);
 	report_done = 0;
-	id = app_platform_launch(&def);
+	id = launch_reporting(&def);
 	zassert_true(id >= 0, "launch failed");
-	add_report_part(id);
 	zassert_true(wait_slot_free("d_bp", 2000), "d_bp was not reclaimed");
 	zassert_equal(report_done, 0, "a kernel pointer was accepted");
 
@@ -1127,9 +1139,8 @@ ZTEST(devices, test_display_supervisor_lock_excludes_apps)
 	report_rc = -9999;
 	report_done = 0;
 	zassert_ok(app_platform_display_lock(K_NO_WAIT));
-	id = app_platform_launch(&def);
+	id = launch_reporting(&def);
 	zassert_true(id >= 0, "launch failed");
-	add_report_part(id);
 	k_msleep(50);
 	zassert_equal(report_done, 0, "an application drew under the supervisor lock");
 	app_platform_display_unlock();
@@ -1151,9 +1162,8 @@ ZTEST(devices, test_display_vsync_wakes_waiter)
 	grant_display_all(&vp_left);
 	report_rc = -9999;
 	report_done = 0;
-	id = app_platform_launch(&def);
+	id = launch_reporting(&def);
 	zassert_true(id >= 0, "launch failed");
-	add_report_part(id);
 	k_msleep(20);
 	zassert_equal(report_done, 0, "the wait returned before a refresh");
 	capture_vsync();
@@ -1321,6 +1331,7 @@ ZTEST(devices, test_fault_is_contained)
 
 	const struct app_def def = {
 		.name = "flt", .source = APP_BUILTIN, .entry = fault_once, .caps = APP_CAP_LOG,
+		.stopped = true,
 	};
 	atomic_val_t calls = atomic_get(&own_handler_calls);
 	int id;
@@ -1331,6 +1342,7 @@ ZTEST(devices, test_fault_is_contained)
 	zassert_true(id >= 0, "flt launch failed");
 	add_report_part(id);
 	zassert_equal(app_platform_set_restart(id, true), 0);
+	zassert_equal(app_platform_start(id), id);
 
 	for (int i = 0; i < 400 && report_done == 0; i++) {
 		k_msleep(5);
@@ -1380,9 +1392,8 @@ ZTEST(devices, test_service_fault_breaks_only_its_lock)
 	runs = test_svc_locked_hook_runs();
 
 	report_done = 0;
-	id = app_platform_launch(&def);
+	id = launch_reporting(&def);
 	zassert_true(id >= 0, "lk_flt launch failed");
-	add_report_part(id);
 	zassert_true(wait_slot_free("lk_flt", 2000), "faulted slot never reclaimed");
 	zassert_equal(report_done, 0, "lk_flt did not fault");
 	zassert_true(test_svc_locked_hook_runs() > runs, "reclaim hook did not run");

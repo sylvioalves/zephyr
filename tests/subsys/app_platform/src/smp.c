@@ -95,7 +95,7 @@ static bool wait_given_up(const char *name, int ms)
 	return gone >= GONE_MS / 5;
 }
 
-static int launch_on(const char *name, app_entry_t entry, uint32_t cpu_mask)
+static int launch_on(const char *name, app_entry_t entry, uint32_t cpu_mask, bool restart)
 {
 	const struct app_def def = {
 		.name = name,
@@ -103,9 +103,16 @@ static int launch_on(const char *name, app_entry_t entry, uint32_t cpu_mask)
 		.entry = entry,
 		.caps = PIN_CAPS,
 		.cpu_mask = cpu_mask,
+		.stopped = true,
 	};
+	int id = app_platform_launch(&def);
 
-	return app_platform_launch(&def);
+	if (id < 0) {
+		return id;
+	}
+	zassert_equal(app_platform_set_restart(id, restart), 0);
+	zassert_equal(app_platform_start(id), id, "%s did not start", name);
+	return id;
 }
 
 static void busy_worker(void *arg)
@@ -136,7 +143,7 @@ static void run_busy(const char *name, uint32_t cpu_mask)
 	int id;
 
 	watch(name);
-	id = launch_on(name, busy_app, cpu_mask);
+	id = launch_on(name, busy_app, cpu_mask, false);
 	zassert_true(id >= 0, "launch rc %d", id);
 	k_msleep(RUN_MS);
 	watch_name = NULL;
@@ -178,7 +185,7 @@ ZTEST(smp, test_unpinned_app_runs_anywhere)
 ZTEST(smp, test_stop_start_keeps_pin)
 {
 	int cpu = arch_num_cpus() - 1;
-	int id = launch_on("t_restart", busy_app, BIT(cpu));
+	int id = launch_on("t_restart", busy_app, BIT(cpu), false);
 
 	zassert_true(id >= 0, "launch rc %d", id);
 	k_msleep(RUN_MS / 4);
@@ -197,7 +204,6 @@ static void crash_app(void *arg)
 	volatile uint32_t *p = NULL;
 
 	ARG_UNUSED(arg);
-	k_busy_wait(1000);
 	*p = 0xdead;
 }
 
@@ -208,9 +214,8 @@ ZTEST(smp, test_fault_on_pinned_cpu_is_reclaimed)
 	int id;
 
 	watch("t_crash");
-	id = launch_on("t_crash", crash_app, BIT(cpu));
+	id = launch_on("t_crash", crash_app, BIT(cpu), true);
 	zassert_true(id >= 0, "launch rc %d", id);
-	zassert_equal(app_platform_set_restart(id, true), 0);
 	zassert_true(wait_given_up("t_crash", 10000), "faulting application was not reclaimed");
 	watch_name = NULL;
 
@@ -228,7 +233,7 @@ ZTEST(smp, test_fault_on_pinned_cpu_is_reclaimed)
 
 ZTEST(smp, test_cpu_mask_checked)
 {
-	zassert_equal(launch_on("t_bad", busy_app, BIT(arch_num_cpus())), -EINVAL);
+	zassert_equal(launch_on("t_bad", busy_app, BIT(arch_num_cpus()), false), -EINVAL);
 	zassert_equal(slot_of("t_bad"), -1);
 }
 
@@ -303,7 +308,7 @@ ZTEST(smp, test_domain_change_reaches_other_cpu)
 	access_done = 0U;
 	late_data = 0U;
 
-	id = launch_on("t_late", late_app, BIT(app_cpu));
+	id = launch_on("t_late", late_app, BIT(app_cpu), false);
 	zassert_true(id >= 0, "launch rc %d", id);
 	dom = app_platform_domain(id);
 	if (has_partition(dom, &late_part)) {
