@@ -138,6 +138,11 @@ struct llext {
 	/** Total llext allocation size */
 	size_t alloc_size;
 
+#ifdef CONFIG_LLEXT_CONTIGUOUS_REGIONS
+	/** Heap block holding the memory partition regions, or NULL */
+	void *region_block;
+#endif
+
 	/**
 	 * Table of all global symbols in the extension; used internally as
 	 * part of the linking process. E.g. if the extension is built out of

@@ -66,24 +66,17 @@ static void llext_init_mem_part(struct llext *ext, enum llext_mem mem_idx,
 	LOG_DBG("region %d: start %#zx, size %zd", mem_idx, (size_t)start, len);
 }
 
-static int llext_copy_region(struct llext_loader *ldr, struct llext *ext,
-			      enum llext_mem mem_idx, const struct llext_load_param *ldr_parm)
+/*
+ * Calculate the minimum region size and alignment that can satisfy
+ * MMU/MPU requirements. This only applies to regions that contain
+ * program-accessible data (not to string tables, for example).
+ */
+static int llext_region_layout(const elf_shdr_t *region, enum llext_mem mem_idx,
+			       uintptr_t *alloc, uintptr_t *align)
 {
-	int ret;
-	elf_shdr_t *region = ldr->sects + mem_idx;
 	uintptr_t region_alloc = region->sh_size;
 	uintptr_t region_align = region->sh_addralign;
 
-	if (!region_alloc) {
-		return 0;
-	}
-	ext->mem_size[mem_idx] = region_alloc;
-
-	/*
-	 * Calculate the minimum region size and alignment that can satisfy
-	 * MMU/MPU requirements. This only applies to regions that contain
-	 * program-accessible data (not to string tables, for example).
-	 */
 	if (region->sh_flags & SHF_ALLOC) {
 		if (IS_ENABLED(CONFIG_MMU)) {
 			/* MMU targets map memory in page-sized chunks. Round
@@ -120,6 +113,72 @@ static int llext_copy_region(struct llext_loader *ldr, struct llext *ext,
 				return -ENOTSUP;
 			}
 		}
+	}
+
+	*alloc = region_alloc;
+	*align = region_align;
+	return 0;
+}
+
+/* Copy the contents of a region from the ELF file, or zero it if it has none. */
+static int llext_fill_region(struct llext_loader *ldr, const elf_shdr_t *region, void *mem)
+{
+	uintptr_t base = (uintptr_t)mem;
+	size_t offset = region->sh_offset;
+	size_t length = region->sh_size;
+	int ret;
+
+	if (region->sh_type == SHT_NOBITS) {
+		memset(mem, 0, region->sh_size);
+		return 0;
+	}
+
+	if (region->sh_flags & SHF_ALLOC) {
+		/* zero out any prepad bytes, not part of the data area */
+		size_t prepad = region->sh_info;
+
+		memset((void *)base, 0, prepad);
+		base += prepad;
+		offset += prepad;
+		length -= prepad;
+	}
+
+	/* actual data area without prepad bytes */
+	ret = llext_seek(ldr, offset);
+	if (ret != 0) {
+		return ret;
+	}
+
+	return llext_read(ldr, (void *)base, length);
+}
+
+/*
+ * Place a region: at @p dest when the caller already reserved room for it,
+ * otherwise in the ELF buffer or in a heap allocation of its own.
+ */
+static int llext_copy_region(struct llext_loader *ldr, struct llext *ext,
+			      enum llext_mem mem_idx, const struct llext_load_param *ldr_parm,
+			      void *dest)
+{
+	int ret;
+	elf_shdr_t *region = ldr->sects + mem_idx;
+	uintptr_t region_alloc;
+	uintptr_t region_align;
+
+	if (!region->sh_size) {
+		return 0;
+	}
+	ext->mem_size[mem_idx] = region->sh_size;
+
+	ret = llext_region_layout(region, mem_idx, &region_alloc, &region_align);
+	if (ret != 0) {
+		return ret;
+	}
+
+	if (dest != NULL) {
+		ext->mem[mem_idx] = dest;
+		llext_init_mem_part(ext, mem_idx, (uintptr_t)dest, region_alloc);
+		return llext_fill_region(ldr, region, dest);
 	}
 
 	if (ldr->storage == LLEXT_STORAGE_WRITABLE ||           /* writable storage         */
@@ -211,33 +270,9 @@ static int llext_copy_region(struct llext_loader *ldr, struct llext *ext,
 	llext_init_mem_part(ext, mem_idx, (uintptr_t)ext->mem[mem_idx],
 		region_alloc);
 
-	if (region->sh_type == SHT_NOBITS) {
-		memset(ext->mem[mem_idx], 0, region->sh_size);
-	} else {
-		uintptr_t base = (uintptr_t)ext->mem[mem_idx];
-		size_t offset = region->sh_offset;
-		size_t length = region->sh_size;
-
-		if (region->sh_flags & SHF_ALLOC) {
-			/* zero out any prepad bytes, not part of the data area */
-			size_t prepad = region->sh_info;
-
-			memset((void *)base, 0, prepad);
-			base += prepad;
-			offset += prepad;
-			length -= prepad;
-		}
-
-		/* actual data area without prepad bytes */
-		ret = llext_seek(ldr, offset);
-		if (ret != 0) {
-			goto err;
-		}
-
-		ret = llext_read(ldr, (void *)base, length);
-		if (ret != 0) {
-			goto err;
-		}
+	ret = llext_fill_region(ldr, region, ext->mem[mem_idx]);
+	if (ret != 0) {
+		goto err;
 	}
 
 	ext->mem_on_heap[mem_idx] = true;
@@ -259,30 +294,142 @@ int llext_copy_strings(struct llext_loader *ldr, struct llext *ext,
 {
 	llext_heap_reset(ext);
 
-	int ret = llext_copy_region(ldr, ext, LLEXT_MEM_SHSTRTAB, ldr_parm);
+	int ret = llext_copy_region(ldr, ext, LLEXT_MEM_SHSTRTAB, ldr_parm, NULL);
 
 	if (!ret) {
-		ret = llext_copy_region(ldr, ext, LLEXT_MEM_STRTAB, ldr_parm);
+		ret = llext_copy_region(ldr, ext, LLEXT_MEM_STRTAB, ldr_parm, NULL);
 	}
 
 	return ret;
 }
 
+#ifdef CONFIG_LLEXT_CONTIGUOUS_REGIONS
+/* Partition regions in the order they are placed in the region block. */
+static const enum llext_mem block_order[] = {
+	LLEXT_MEM_TEXT,
+#ifdef CONFIG_LLEXT_VENEERS
+	LLEXT_MEM_VENEER,
+#endif
+	LLEXT_MEM_RODATA,
+	LLEXT_MEM_DATA,
+	LLEXT_MEM_BSS,
+};
+
+/* Reserve one heap block for the partition regions and return the place of
+ * each region in it. Data and BSS are laid out as one region, whose size is
+ * returned in @p data_bss_size, so that a single partition covers both.
+ */
+static int llext_alloc_region_block(struct llext_loader *ldr, struct llext *ext,
+				    void *dest[LLEXT_MEM_PARTITIONS], uintptr_t *data_bss_size)
+{
+	const elf_shdr_t *data = ldr->sects + LLEXT_MEM_DATA;
+	const elf_shdr_t *bss = ldr->sects + LLEXT_MEM_BSS;
+	bool merge = (data->sh_size != 0) && (bss->sh_size != 0) &&
+		     (data->sh_flags & SHF_ALLOC) && (bss->sh_flags & SHF_ALLOC);
+	uintptr_t offset[LLEXT_MEM_PARTITIONS];
+	uintptr_t bss_offset = 0;
+	uintptr_t block_size = 0;
+	uintptr_t block_align = 1;
+
+	for (size_t i = 0; i < ARRAY_SIZE(block_order); i++) {
+		enum llext_mem mem_idx = block_order[i];
+		elf_shdr_t region = ldr->sects[mem_idx];
+		uintptr_t alloc;
+		uintptr_t align;
+		int ret;
+
+		if (region.sh_size == 0 || !(region.sh_flags & SHF_ALLOC) ||
+		    (merge && mem_idx == LLEXT_MEM_BSS)) {
+			continue;
+		}
+
+		if (merge && mem_idx == LLEXT_MEM_DATA) {
+			bss_offset = ROUND_UP(data->sh_size, MAX(bss->sh_addralign, 1));
+			region.sh_size = bss_offset + bss->sh_size;
+			region.sh_addralign = MAX(data->sh_addralign, bss->sh_addralign);
+		}
+
+		ret = llext_region_layout(&region, mem_idx, &alloc, &align);
+		if (ret != 0) {
+			return ret;
+		}
+
+		block_size = ROUND_UP(block_size, MAX(align, 1));
+		offset[mem_idx] = block_size;
+		block_size += alloc;
+		block_align = MAX(block_align, align);
+
+		if (merge && mem_idx == LLEXT_MEM_DATA) {
+			offset[LLEXT_MEM_BSS] = offset[mem_idx] + bss_offset;
+			*data_bss_size = alloc;
+		}
+	}
+
+	if (block_size == 0) {
+		return 0;
+	}
+
+	ext->region_block = llext_aligned_alloc_instr(ext, block_align, block_size);
+	if (ext->region_block == NULL) {
+		LOG_ERR("Failed allocating %zd bytes %zd-aligned for the region block",
+			(size_t)block_size, (size_t)block_align);
+		return -ENOMEM;
+	}
+	ext->alloc_size += block_size;
+
+	for (size_t i = 0; i < ARRAY_SIZE(block_order); i++) {
+		enum llext_mem mem_idx = block_order[i];
+		const elf_shdr_t *region = ldr->sects + mem_idx;
+
+		if (region->sh_size != 0 && (region->sh_flags & SHF_ALLOC)) {
+			dest[mem_idx] = (uint8_t *)ext->region_block + offset[mem_idx];
+		}
+	}
+
+	return 0;
+}
+#endif /* CONFIG_LLEXT_CONTIGUOUS_REGIONS */
+
 int llext_copy_regions(struct llext_loader *ldr, struct llext *ext,
 		       const struct llext_load_param *ldr_parm)
 {
+	void *dest[LLEXT_MEM_PARTITIONS] = { NULL };
+
+#ifdef CONFIG_LLEXT_CONTIGUOUS_REGIONS
+	uintptr_t data_bss_size = 0;
+
+	/* A detached section is addressed through the text region in place in
+	 * the ELF buffer, so an extension with one keeps its regions there.
+	 */
+	if (!ldr_parm->pre_located && ldr_parm->section_detached == NULL) {
+		int ret = llext_alloc_region_block(ldr, ext, dest, &data_bss_size);
+
+		if (ret < 0) {
+			return ret;
+		}
+	}
+#endif
+
 	for (enum llext_mem mem_idx = 0; mem_idx < LLEXT_MEM_COUNT; mem_idx++) {
 		/* strings have already been copied */
 		if (ext->mem[mem_idx]) {
 			continue;
 		}
 
-		int ret = llext_copy_region(ldr, ext, mem_idx, ldr_parm);
+		int ret = llext_copy_region(ldr, ext, mem_idx, ldr_parm,
+					    mem_idx < LLEXT_MEM_PARTITIONS ? dest[mem_idx] : NULL);
 
 		if (ret < 0) {
 			return ret;
 		}
 	}
+
+#ifdef CONFIG_LLEXT_CONTIGUOUS_REGIONS
+	if (data_bss_size != 0) {
+		ext->mem_parts[LLEXT_MEM_DATA].size = data_bss_size;
+		ext->mem_parts[LLEXT_MEM_BSS].size = 0;
+	}
+#endif
 
 	if (IS_ENABLED(CONFIG_LLEXT_LOG_LEVEL_DBG)) {
 		LOG_DBG("gdb add-symbol-file flags:");
@@ -387,6 +534,13 @@ void llext_free_regions(struct llext *ext)
 		}
 	}
 
+#ifdef CONFIG_LLEXT_CONTIGUOUS_REGIONS
+	if (ext->region_block != NULL) {
+		llext_free_instr(ext, ext->region_block);
+		ext->region_block = NULL;
+	}
+#endif
+
 	llext_heap_reset(ext);
 }
 
@@ -396,7 +550,7 @@ int llext_add_domain(struct llext *ext, struct k_mem_domain *domain)
 	int ret = 0;
 
 	for (int i = 0; i < LLEXT_MEM_PARTITIONS; i++) {
-		if (ext->mem_size[i] == 0) {
+		if (ext->mem_parts[i].size == 0) {
 			continue;
 		}
 		ret = k_mem_domain_add_partition(domain, &ext->mem_parts[i]);

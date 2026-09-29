@@ -140,6 +140,21 @@ config LLEXT_DATA_HEAP_SIZE
 	help
 	  Data heap size in kilobytes available to llext.
 
+config LLEXT_CONTIGUOUS_REGIONS
+	bool "Place the regions of an extension in one heap block"
+	depends on USERSPACE
+	depends on !HARVARD
+	depends on !LLEXT_HEAP_MEMBLK
+	help
+	  Copy the text, read-only data, data and BSS regions of an extension
+	  into one block of the LLEXT heap, in that order, instead of one
+	  allocation per region, and lay out data and BSS as one memory
+	  partition. An extension then needs one memory domain partition less,
+	  and memory protection hardware that can share the boundary between
+	  adjacent partitions needs fewer entries for it. The regions are always
+	  copied, even when they could be used in place from the ELF buffer,
+	  except for an extension loaded with detached sections.
+
 config LLEXT_BUILD_PIC
 	bool "Use -fPIC when building LLEXT"
 	depends on XTENSA
