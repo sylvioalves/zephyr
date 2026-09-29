@@ -7,7 +7,11 @@
 # name and digest of each input. It is written as a C initializer to OUT_H and
 # as a hex string, the signer's input, to OUT_ID.
 #
-# Inputs: SYSCALL_LIST, HEADER_DIR, OUT_H, OUT_ID.
+# A firmware without user mode also hashes ISOLATION=none: its applications
+# call the services directly instead of through system calls, so a module built
+# for one mode must not load in the other.
+#
+# Inputs: SYSCALL_LIST, HEADER_DIR, ISOLATION, OUT_H, OUT_ID.
 
 file(GLOB headers ${HEADER_DIR}/*.h)
 list(SORT headers)
@@ -19,6 +23,9 @@ foreach(header ${headers})
   file(SHA256 ${header} digest)
   string(APPEND abi "${name}:${digest}\n")
 endforeach()
+if(ISOLATION STREQUAL "none")
+  string(APPEND abi "isolation:none\n")
+endif()
 
 string(SHA256 abi "${abi}")
 string(SUBSTRING ${abi} 0 32 id)

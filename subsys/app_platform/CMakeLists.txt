@@ -56,6 +56,7 @@ if(CONFIG_APP_PLATFORM_LOADER)
     COMMAND ${CMAKE_COMMAND}
       -DSYSCALL_LIST=${syscall_list}
       -DHEADER_DIR=${abi_dir}
+      -DISOLATION=$<IF:$<BOOL:${CONFIG_USERSPACE}>,userspace,none>
       -DOUT_H=${abi_h}
       -DOUT_ID=${APP_PLATFORM_ABI_FILE}
       -P ${CMAKE_CURRENT_SOURCE_DIR}/cmake/abi_id.cmake
