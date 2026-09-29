@@ -472,7 +472,7 @@ static void run_cleanup(int id, bool full, struct llext *ext)
 			 * application takes the slot next.
 			 */
 			for (int i = 0; i < LLEXT_MEM_PARTITIONS; i++) {
-				if (ext->mem_size[i] != 0) {
+				if (ext->mem_parts[i].size != 0) {
 					(void)k_mem_domain_remove_partition(
 						&apps[id].domain, &ext->mem_parts[i]);
 				}

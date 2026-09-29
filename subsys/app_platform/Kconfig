@@ -102,6 +102,7 @@ config APP_PLATFORM_LOADER
 	bool "Verified llext application loader"
 	depends on LLEXT
 	depends on PSA_CRYPTO
+	imply LLEXT_CONTIGUOUS_REGIONS
 	help
 	  Verify a downloaded module by SHA-256 and load it as an llext, so a
 	  tampered or corrupted module is rejected and never linked. Enable a
