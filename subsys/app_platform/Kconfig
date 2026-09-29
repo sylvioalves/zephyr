@@ -50,6 +50,23 @@ config APP_PLATFORM_APP_PRIORITY
 	  Preemptible priority every application thread runs at. Keep it below
 	  the supervisor so a busy application cannot delay a reclaim.
 
+config APP_PLATFORM_APP_THREADS
+	int "Worker threads per application"
+	default 0
+	range 0 8
+	help
+	  Threads an application with APP_CAP_THREAD may run next to the one
+	  its entry point runs on. Their stacks are reserved per slot at build
+	  time, so this multiplies by APP_PLATFORM_MAX_APPS. Zero leaves worker
+	  threads out.
+
+config APP_PLATFORM_APP_THREAD_STACK_SIZE
+	int "Worker thread stack size"
+	default APP_PLATFORM_APP_STACK_SIZE
+	depends on APP_PLATFORM_APP_THREADS > 0
+	help
+	  Stack reserved for each worker thread of each application slot.
+
 config APP_PLATFORM_SUPERVISOR_STACK_SIZE
 	int "Supervisor thread stack size"
 	default 2048

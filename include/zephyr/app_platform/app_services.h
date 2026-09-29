@@ -63,6 +63,50 @@ __syscall void app_svc_heartbeat(void);
  */
 __syscall int app_svc_stop_requested(void);
 
+/** Entry point of an application worker thread. */
+typedef void (*app_thread_entry_t)(void *arg);
+
+/**
+ * @brief Start a worker thread in the calling application. Needs
+ *        @ref APP_CAP_THREAD.
+ *
+ * The worker runs in the application's group with its memory access and
+ * capabilities, and ends when @p entry returns. A fault in any thread of the
+ * application reclaims the whole application, and the workers end with the
+ * thread the application's entry point runs on. Up to
+ * CONFIG_APP_PLATFORM_APP_THREADS workers run at once.
+ *
+ * @param entry       Function the worker runs.
+ * @param arg         Argument passed to @p entry.
+ * @param prio_offset Priority below the application's own, 0 for the same.
+ *
+ * @return A positive handle for @ref app_svc_thread_join on success.
+ * @retval -EPERM without @ref APP_CAP_THREAD.
+ * @retval -EINVAL @p entry is NULL or @p prio_offset is negative.
+ * @retval -EAGAIN every worker of the application is running.
+ * @retval -ESRCH the application is stopping.
+ * @retval -ENOTSUP the platform was built without worker threads.
+ */
+__syscall int app_svc_thread_spawn(app_thread_entry_t entry, void *arg, int prio_offset);
+
+/**
+ * @brief Wait for a worker thread of the calling application to end. Needs
+ *        @ref APP_CAP_THREAD.
+ *
+ * @param handle     Handle returned by @ref app_svc_thread_spawn.
+ * @param timeout_ms Milliseconds to wait, 0 to poll, or negative to wait
+ *                   forever.
+ *
+ * @retval 0 The worker has ended.
+ * @retval -EPERM without @ref APP_CAP_THREAD.
+ * @retval -EINVAL @p handle is not a worker handle.
+ * @retval -ESRCH @p handle names a worker that was replaced by a newer one.
+ * @retval -EDEADLK a worker waiting for itself.
+ * @retval -EBUSY the worker is still running and @p timeout_ms is 0.
+ * @retval -EAGAIN the worker is still running after @p timeout_ms.
+ */
+__syscall int app_svc_thread_join(int handle, int32_t timeout_ms);
+
 /**
  * @brief Compute a SHA-256 digest. Needs @ref APP_CAP_CRYPTO.
  *

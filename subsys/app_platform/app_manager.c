@@ -19,6 +19,7 @@
  */
 
 #include <zephyr/app_platform/app_platform.h>
+#include <zephyr/app_platform/app_services.h>
 
 #include <zephyr/kernel.h>
 #include <zephyr/fatal.h>
@@ -60,12 +61,14 @@ LOG_MODULE_REGISTER(app_platform, CONFIG_APP_PLATFORM_LOG_LEVEL);
 #define APP_NAME_LEN APP_PLATFORM_NAME_LEN
 
 /* Threads of one application; the first is the one its entry point runs on. */
-#define APP_THREADS 1
+#define APP_WORKERS CONFIG_APP_PLATFORM_APP_THREADS
+#define APP_THREADS (1 + APP_WORKERS)
 
 /* One thread of an application and the service locks it holds. */
 struct app_thread {
 	struct k_thread     thread;
 	bool                live;      /* created and not yet reaped */
+	uint8_t             gen;       /* worker generation, part of its handle */
 	uint8_t             svc_holds; /* service locks this thread holds */
 	struct svc_lock    *svc_held[SVC_HOLD_MAX];
 };
@@ -101,6 +104,11 @@ struct running_app {
 
 static struct running_app apps[MAX_APPS];
 static K_THREAD_STACK_ARRAY_DEFINE(app_stacks, MAX_APPS, APP_STACK);
+#if APP_WORKERS > 0
+static K_THREAD_STACK_ARRAY_DEFINE(worker_stacks, MAX_APPS * APP_WORKERS,
+				   CONFIG_APP_PLATFORM_APP_THREAD_STACK_SIZE);
+static SVC_LOCK_DEFINE(spawn_lock);
+#endif
 
 static void trampoline(void *entry, void *arg, void *u2);
 
@@ -869,6 +877,120 @@ static void trampoline(void *entry, void *arg, void *u2)
 	 */
 	k_thread_abort(k_current_get());
 }
+
+#if APP_WORKERS > 0
+/* A worker slot never started or whose thread has ended. */
+static struct app_thread *free_worker(struct running_app *a, int *slot)
+{
+	for (int j = 1; j < APP_THREADS; j++) {
+		struct app_thread *t = &a->threads[j];
+
+		if (!t->live || k_thread_join(&t->thread, K_NO_WAIT) == 0) {
+			*slot = j;
+			return t;
+		}
+	}
+	return NULL;
+}
+#endif
+
+int z_impl_app_svc_thread_spawn(app_thread_entry_t entry, void *arg, int prio_offset)
+{
+#if APP_WORKERS > 0
+	struct app_thread *self = NULL;
+	struct running_app *a = app_of_self(&self);
+	struct app_thread *t;
+	char name[APP_NAME_LEN + 4];
+	k_tid_t tid;
+	int slot = 0;
+	int id;
+	int rc;
+
+	if (a == NULL || !app_has_cap(APP_CAP_THREAD)) {
+		return -EPERM;
+	}
+	if (entry == NULL || prio_offset < 0) {
+		return -EINVAL;
+	}
+
+	/* Keeps a stop deferred until the new worker is recorded. */
+	rc = app_service_lock(&spawn_lock, K_FOREVER);
+	if (rc != 0) {
+		return rc;
+	}
+	if (a->stopping) {
+		rc = -ESRCH;
+		goto out;
+	}
+	t = free_worker(a, &slot);
+	if (t == NULL) {
+		rc = -EAGAIN;
+		goto out;
+	}
+
+	id = a - apps;
+	t->gen++;
+	t->svc_holds = 0U;
+	tid = k_thread_create(&t->thread, worker_stacks[id * APP_WORKERS + slot - 1],
+			      K_THREAD_STACK_SIZEOF(worker_stacks[0]), trampoline,
+			      (void *)entry, arg, NULL,
+			      MIN(APP_PRIO + prio_offset, K_LOWEST_APPLICATION_THREAD_PRIO),
+			      K_USER, K_FOREVER);
+	(void)snprintk(name, sizeof(name), "%s.w%d", a->name, slot);
+	k_thread_name_set(tid, name);
+#ifdef CONFIG_USERSPACE
+	k_mem_domain_add_thread(&a->domain, tid);
+#endif
+	t->live = true;
+	k_thread_start(tid);
+	rc = ((int)t->gen << 4) | slot;
+out:
+	(void)app_service_unlock(&spawn_lock);
+	return rc;
+#else
+	ARG_UNUSED(entry);
+	ARG_UNUSED(arg);
+	ARG_UNUSED(prio_offset);
+	return -ENOTSUP;
+#endif
+}
+
+int z_impl_app_svc_thread_join(int handle, int32_t timeout_ms)
+{
+	struct app_thread *self = NULL;
+	struct running_app *a = app_of_self(&self);
+	int slot = handle & 0xF;
+	struct app_thread *t;
+
+	if (a == NULL || !app_has_cap(APP_CAP_THREAD)) {
+		return -EPERM;
+	}
+	if (handle <= 0 || (handle >> 4) > UINT8_MAX || slot < 1 || slot >= APP_THREADS) {
+		return -EINVAL;
+	}
+	t = &a->threads[slot];
+	if (!t->live || t->gen != (uint8_t)(handle >> 4)) {
+		return -ESRCH;
+	}
+	if (t == self) {
+		return -EDEADLK;
+	}
+	return k_thread_join(&t->thread, timeout_ms < 0 ? K_FOREVER : K_MSEC(timeout_ms));
+}
+
+#ifdef CONFIG_USERSPACE
+static inline int z_vrfy_app_svc_thread_spawn(app_thread_entry_t entry, void *arg, int prio_offset)
+{
+	return z_impl_app_svc_thread_spawn(entry, arg, prio_offset);
+}
+#include <zephyr/syscalls/app_svc_thread_spawn_mrsh.c>
+
+static inline int z_vrfy_app_svc_thread_join(int handle, int32_t timeout_ms)
+{
+	return z_impl_app_svc_thread_join(handle, timeout_ms);
+}
+#include <zephyr/syscalls/app_svc_thread_join_mrsh.c>
+#endif
 
 int app_platform_init(void)
 {

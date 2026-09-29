@@ -71,9 +71,10 @@ typedef uint64_t app_caps_t;
 #define APP_CAP_FS      APP_CAP_BIT(36)  /**< files under the app's private root */
 #define APP_CAP_RGB     APP_CAP_BIT(37)  /**< set granted addressable RGB LED pixels */
 #define APP_CAP_DISPLAY APP_CAP_BIT(38)  /**< draw inside a granted display viewport */
+#define APP_CAP_THREAD  APP_CAP_BIT(39)  /**< start and join worker threads */
 
 /** Highest capability bit currently allocated. */
-#define APP_CAP_LAST    APP_CAP_DISPLAY
+#define APP_CAP_LAST    APP_CAP_THREAD
 
 /**
  * @brief Grant every defined capability (for a fully trusted application).
