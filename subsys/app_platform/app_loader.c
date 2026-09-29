@@ -52,6 +52,12 @@ LOG_MODULE_DECLARE(app_platform, CONFIG_APP_PLATFORM_LOG_LEVEL);
 
 static const uint8_t abi_id[APP_MANIFEST_ABI_ID_LEN] = APP_PLATFORM_ABI_ID;
 
+#if defined(CONFIG_MBEDTLS_PSA_CRYPTO_LEGACY_RNG) && defined(CONFIG_MBEDTLS_HEAP_SIZE)
+BUILD_ASSERT(CONFIG_MBEDTLS_HEAP_SIZE >= 4096,
+	     "Without an entropy driver mbed TLS runs its own DRBG, and verifying a module "
+	     "then needs CONFIG_MBEDTLS_HEAP_SIZE of at least 4096");
+#endif
+
 static int sha256(const uint8_t *buf, size_t len, uint8_t out[32])
 {
 	size_t olen;
