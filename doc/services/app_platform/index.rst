@@ -127,6 +127,34 @@ The threads of one application coordinate through semaphores the platform keeps 
 handle and never holds the kernel object, so the calls behave the same with and without user
 mode. They are released when the application ends.
 
+Per-application heap
+====================
+
+An application may declare a heap: a loadable one in the ``heap_size`` field of its signed
+manifest, which the signing script fills from ``APP_HEAP_SIZE``, and a built-in one in
+:c:member:`app_def.heap_size`. Because the size is signed, whoever launches a module cannot change
+the memory it gets. The platform carves the heap from a pool of internal RAM of
+:kconfig:option:`CONFIG_APP_PLATFORM_APP_HEAP_POOL_SIZE` bytes, zeroes it, initializes a heap at
+its start and, with user mode, maps it into the application's memory domain before the first
+thread starts. The region is rounded up to what the memory protection hardware maps: a naturally
+aligned power of two with an MPU or PMP, whole pages with an MMU. A launch fails when the heap is
+larger than :kconfig:option:`CONFIG_APP_PLATFORM_APP_HEAP_MAX_BYTES` (``-E2BIG``), when the pool
+has no room for it (``-ENOMEM``), or when the pool size is zero (``-ENOTSUP``). With user mode the
+heap takes one memory partition of the application's domain, next to the partitions of a loaded
+module.
+
+The application allocates with :c:func:`app_malloc`, :c:func:`app_calloc`,
+:c:func:`app_realloc`, :c:func:`app_aligned_alloc` and :c:func:`app_free` from
+:zephyr_file:`include/zephyr/app_platform/app_heap.h`. They run the allocator in the calling
+thread, so the heap metadata is only ever walked by the application that owns it, and a corrupted
+heap faults that application alone. The threads of one application share the heap through a lock
+word in the region. :c:func:`app_svc_heap_info` returns the region's address and size.
+
+A stopped application keeps its region, which is zeroed and initialized again when it starts. A
+removed application's region is unmapped, zeroed and returned to the pool by the reaper, without
+taking any service lock, so the next application in the slot neither sees the old contents nor
+can reach the old region.
+
 Loading and verification
 ========================
 
@@ -158,6 +186,8 @@ main options are:
   are installed, and which start at boot.
 * :kconfig:option:`CONFIG_APP_PLATFORM_SERVICES` - the shared, capability-gated
   service library.
+* :kconfig:option:`CONFIG_APP_PLATFORM_APP_HEAP_POOL_SIZE` - internal RAM for
+  per-application heaps. Zero leaves the feature out.
 
 The platform requires :kconfig:option:`CONFIG_TASK_WDT`. It enables
 :kconfig:option:`CONFIG_USERSPACE` by default where the architecture supports it; see
