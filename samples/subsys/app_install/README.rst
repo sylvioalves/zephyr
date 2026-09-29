@@ -35,22 +35,35 @@ Building and running
 Host workflow
 *************
 
-Prepare the two files (the build emits the module and the manifest bytes), then
-upload and install. ``smpmgr`` drives the SMP transport over serial:
+The build signs the bundled reference app (named ``uploaded``) and writes it as an installable
+bundle, ``build/bundle/uploaded.llext`` and ``build/bundle/uploaded.manifest``. ``west app
+install`` uploads both files over the MCUmgr SMP transport carried by the shell and then runs
+``store install`` on the device through the MCUmgr shell management group:
 
 .. code-block:: console
 
-   smpmgr --port /dev/ttyUSB1 file upload app.manifest /lfs/myapp.manifest.new
-   smpmgr --port /dev/ttyUSB1 file upload app.llext    /lfs/myapp.llext.new
-
-On the device shell:
+   west app install -d build -p /dev/ttyUSB1
 
 .. code-block:: console
 
-   uart:~$ store install myapp
-   installed and launched 'myapp' v1 (isolated app 0)
+   installing "uploaded" v1 from .../build/bundle
+   uploaded uploaded.llext (2976 bytes) and uploaded.manifest
+   device: installed and launched 'uploaded' v1 (isolated app 0)
+
+The command exits non-zero with the device's error code when the device refuses the app. The
+same steps can be done by hand with any SMP client, followed by the shell command:
+
+.. code-block:: console
+
+   smpmgr --port /dev/ttyUSB1 file upload uploaded.manifest /lfs/uploaded.manifest.new
+   smpmgr --port /dev/ttyUSB1 file upload uploaded.llext    /lfs/uploaded.llext.new
+
+.. code-block:: console
+
+   uart:~$ store install uploaded
+   installed and launched 'uploaded' v1 (isolated app 0)
    uart:~$ store list
-     myapp  v1  (autostart)
+     uploaded  v1  (autostart)
 
 A tampered upload is rejected: if the module bytes do not match the signed
 manifest hash, ``store install`` fails and the app is never launched.
