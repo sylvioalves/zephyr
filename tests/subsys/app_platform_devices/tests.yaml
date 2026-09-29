@@ -19,3 +19,7 @@ tests:
     timeout: 60
     extra_configs:
       - CONFIG_APP_PLATFORM_FATAL_HANDLER=n
+  app_platform.devices.no_userspace:
+    timeout: 60
+    extra_configs:
+      - CONFIG_USERSPACE=n

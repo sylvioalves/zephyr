@@ -65,6 +65,7 @@ static int slot_of(const char *name)
  */
 static void add_report_part(int id)
 {
+#ifdef CONFIG_USERSPACE
 	struct k_mem_domain *dom = app_platform_domain(id);
 
 	for (int i = 0; i < CONFIG_MAX_DOMAIN_PARTITIONS; i++) {
@@ -75,6 +76,9 @@ static void add_report_part(int id)
 	}
 	zassert_equal(k_mem_domain_add_partition(dom, &report_part), 0,
 		      "report partition not added");
+#else
+	ARG_UNUSED(id);
+#endif
 }
 
 static bool wait_slot_free(const char *name, int ms)
@@ -1086,6 +1090,9 @@ ZTEST(devices, test_display_cleared_on_reclaim)
 
 ZTEST(devices, test_display_bad_buffer_leaves_lock_free)
 {
+	/* Needs memory protection to trap the stray access. */
+	Z_TEST_SKIP_IFNDEF(CONFIG_USERSPACE);
+
 	const struct app_def def = {
 		.name = "d_bp", .source = APP_BUILTIN, .entry = disp_write_kernel_ptr,
 		.caps = APP_CAP_LOG | APP_CAP_DISPLAY,
@@ -1307,6 +1314,9 @@ static void fault_once(void *a)
 
 ZTEST(devices, test_fault_is_contained)
 {
+	/* Needs memory protection to trap the stray access. */
+	Z_TEST_SKIP_IFNDEF(CONFIG_USERSPACE);
+
 	const struct app_def def = {
 		.name = "flt", .source = APP_BUILTIN, .entry = fault_once, .caps = APP_CAP_LOG,
 	};

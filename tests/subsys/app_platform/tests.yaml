@@ -17,3 +17,13 @@ common:
 tests:
   app_platform.core:
     timeout: 60
+    extra_configs:
+      - CONFIG_USERSPACE=y
+      - CONFIG_MAX_THREAD_BYTES=3
+      - CONFIG_PRIVILEGED_STACK_SIZE=3072
+  # Supervisor-mode applications: the suites that pit an application against
+  # memory protection are left out.
+  app_platform.core.no_userspace:
+    timeout: 60
+    extra_configs:
+      - CONFIG_USERSPACE=n
