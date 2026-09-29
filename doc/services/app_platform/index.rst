@@ -171,6 +171,21 @@ module whose identifier differs from the running firmware's with ``-ENOEXEC``.
 A module built for another firmware configuration therefore fails to load
 instead of invoking the wrong system calls.
 
+Installing from the host
+========================
+
+``west app install`` installs a signed module on a running device over its serial shell. It
+finds the bundle a build produced, a ``<name>.llext`` module next to the ``<name>.manifest`` file
+that holds the signed manifest and its signature, uploads both into the device storage with the
+MCUmgr file system group carried by the shell, and runs the device's install command through the
+MCUmgr shell management group. The device performs the verification described above and the
+command exits non-zero with the device's error when it refuses the module. See
+:ref:`app_install_sample` for a firmware that accepts it:
+
+.. code-block:: console
+
+   west app install -d build -p /dev/ttyUSB0
+
 Configuration
 *************
 
