@@ -888,7 +888,7 @@ int app_platform_remove(int id)
 	return 0;
 }
 
-static int launch(const struct app_def *def, struct llext *ext, bool restart);
+static int launch(const struct app_def *def, struct llext *ext, int prev);
 
 static void supervisor(void *p1, void *p2, void *p3)
 {
@@ -955,14 +955,11 @@ static void supervisor(void *p1, void *p2, void *p3)
 				LOG_ERR("app '%s' not restarted: cleanup stuck", name);
 				continue;
 			}
-			int nid = launch(&def, NULL, true);
+			int nid = launch(&def, NULL, req.id);
 
 			if (nid < 0) {
 				LOG_ERR("app '%s' could not be restarted", name);
 			} else {
-				/* The relaunch takes a fresh slot, so the count
-				 * has to follow the application, not the slot.
-				 */
 				apps[nid].restarts = restarts + 1U;
 			}
 		}
@@ -1117,9 +1114,10 @@ int app_platform_init(void)
 }
 
 /* Common launch: find a free slot, set up the domain and, unless the definition
- * asks for a stopped launch, start a user-mode thread.
+ * asks for a stopped launch, start a user-mode thread. A relaunch after a fault
+ * passes the slot it held in @p prev and takes it again when it is free.
  */
-static int launch(const struct app_def *def, struct llext *ext, bool restart)
+static int launch(const struct app_def *def, struct llext *ext, int prev)
 {
 	const char *name = def->name;
 	size_t heap_size = def->heap_size;
@@ -1135,7 +1133,9 @@ static int launch(const struct app_def *def, struct llext *ext, bool restart)
 		}
 	}
 
-	for (int i = 0; i < MAX_APPS; i++) {
+	for (int n = 0; n < MAX_APPS; n++) {
+		int i = (prev >= 0) ? (prev + n) % MAX_APPS : n;
+
 		if (apps[i].active || apps[i].cleaning) {
 			continue;   /* in use or pending reaper cleanup */
 		}
@@ -1147,7 +1147,7 @@ static int launch(const struct app_def *def, struct llext *ext, bool restart)
 		a->entry = def->entry;
 		a->arg = def->arg;
 		a->caps = def->caps;
-		a->restart = restart;
+		a->restart = prev >= 0;
 		a->monitored = def->monitored;
 		a->faulted = false;
 		a->stop_requested = false;
@@ -1218,7 +1218,7 @@ static int launch(const struct app_def *def, struct llext *ext, bool restart)
 
 int app_platform_launch(const struct app_def *def)
 {
-	return launch(def, NULL, false);
+	return launch(def, NULL, -1);
 }
 
 #ifdef CONFIG_LLEXT
@@ -1254,7 +1254,7 @@ int app_platform_launch_llext_opts(const char *name, struct llext *ext, app_entr
 	}
 	def.heap_size = app_loader_heap_size(ext);
 #endif
-	return launch(&def, ext, false);
+	return launch(&def, ext, -1);
 }
 #endif
 
