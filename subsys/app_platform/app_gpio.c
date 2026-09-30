@@ -73,7 +73,6 @@ void app_platform_clear_gpio_grants(int id)
 	line_active[id] = 0U;
 	(void)app_service_unlock(&line_lock);
 }
-static bool gpio_ready;
 
 void app_platform_grant_gpio(int id, uint32_t line_mask)
 {
@@ -82,9 +81,11 @@ void app_platform_grant_gpio(int id, uint32_t line_mask)
 	}
 }
 
+#if HAS_LINES
+static bool gpio_ready;
+
 static void gpio_ready_init(void)
 {
-#if HAS_LINES
 	if (gpio_ready) {
 		return;
 	}
@@ -94,8 +95,8 @@ static void gpio_ready_init(void)
 		}
 	}
 	gpio_ready = true;
-#endif
 }
+#endif
 
 #if HAS_LINES && defined(CONFIG_APP_PLATFORM_EVENTS)
 /* Bit N set means application N is watching this line. A line is configured as
