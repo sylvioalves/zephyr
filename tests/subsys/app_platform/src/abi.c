@@ -19,6 +19,9 @@
 /* Argument that makes the test module check the kernel services and return. */
 #define TIME_PROBE ((void *)0x5449U)
 
+/* Argument that makes the test module check 64-bit division and return. */
+#define DIV_PROBE ((void *)0x4449U)
+
 static const uint8_t mod_bytes[] = {
 #include "test_mod.inc"
 };
@@ -86,6 +89,49 @@ ZTEST(module_abi, test_kernel_services)
 	}
 }
 
+static atomic_t abi_faults;
+
+static void abi_reclaimed(int id)
+{
+	struct app_platform_status st;
+
+	if (app_platform_status(id, &st) == 0 && st.faulted) {
+		atomic_inc(&abi_faults);
+	}
+}
+
+ZTEST(module_abi, test_64bit_division)
+{
+	struct app_manifest mf;
+	struct llext *ext = NULL;
+	void *entry = NULL;
+	atomic_val_t faults = atomic_get(&abi_faults);
+	int id;
+
+	/* A kernel-mode module runs from RAM these targets do not execute. */
+	if (!IS_ENABLED(CONFIG_USERSPACE) &&
+	    ((IS_ENABLED(CONFIG_ARM_MPU) && IS_ENABLED(CONFIG_XIP)) ||
+	     IS_ENABLED(CONFIG_PMP_DATA_EXECUTION_PREVENTION))) {
+		ztest_test_skip();
+	}
+
+	memcpy(abi_work, mod_bytes, sizeof(mod_bytes));
+	memcpy(&mf, mod_manifest, sizeof(mf));
+	zassert_equal(app_loader_verify_load_manifest(&mf, sizeof(mf), mod_sig, sizeof(mod_sig),
+						      abi_work, sizeof(mod_bytes), mod_pubkey,
+						      sizeof(mod_pubkey), "app_main", &ext, &entry),
+		      0);
+
+	id = app_platform_launch_llext(mf.name, ext, (app_entry_t)entry, DIV_PROBE, APP_CAP_LOG);
+	zassert_true(id >= 0, "launch rc %d", id);
+	if (!wait_slot_free(mf.name, 3000)) {
+		(void)app_platform_remove(id);
+		zassert_true(wait_slot_free(mf.name, 2000), "the module was not removed");
+		ztest_test_fail();
+	}
+	zassert_equal(atomic_get(&abi_faults), faults, "the module faulted");
+}
+
 ZTEST(module_abi, test_missing_service_fails_to_link)
 {
 	struct llext_buf_loader buf_loader =
@@ -97,4 +143,10 @@ ZTEST(module_abi, test_missing_service_fails_to_link)
 	zassert_is_null(ext);
 }
 
-ZTEST_SUITE(module_abi, NULL, NULL, NULL, NULL, NULL);
+static void *module_abi_setup(void)
+{
+	zassert_equal(app_platform_on_reclaim(abi_reclaimed), 0);
+	return NULL;
+}
+
+ZTEST_SUITE(module_abi, NULL, module_abi_setup, NULL, NULL, NULL);

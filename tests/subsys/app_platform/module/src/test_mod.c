@@ -49,6 +49,21 @@ static int put_u32(char *out, int i, uint32_t v)
 /* Argument that makes the module check the kernel services and return. */
 #define TIME_PROBE ((void *)0x5449U)
 
+/* Argument that makes the module check 64-bit division and return. */
+#define DIV_PROBE ((void *)0x4449U)
+
+static bool div_probe(uintptr_t divisor)
+{
+	uint64_t n = (uint64_t)app_uptime_get() + 0x123456789aULL;
+	int64_t s = -(int64_t)n;
+	uint64_t q = n / divisor;
+	uint64_t r = n % divisor;
+	int64_t sq = s / (int64_t)divisor;
+	int64_t sr = s % (int64_t)divisor;
+
+	return q * divisor + r == n && r < divisor && sq * (int64_t)divisor + sr == s && sr <= 0;
+}
+
 static bool time_probe(void)
 {
 	int64_t start = app_uptime_get();
@@ -94,6 +109,12 @@ void app_main(void *arg)
 {
 	if (arg == HEAP_PROBE) {
 		while (!heap_probe()) {
+			app_sleep_ms(1000);
+		}
+		return;
+	}
+	if (arg == DIV_PROBE) {
+		while (!div_probe((uintptr_t)arg)) {
 			app_sleep_ms(1000);
 		}
 		return;
