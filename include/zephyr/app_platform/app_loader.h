@@ -8,6 +8,7 @@
 #define ZEPHYR_INCLUDE_APP_PLATFORM_LOADER_H_
 
 #include <zephyr/llext/llext.h>
+#include <zephyr/app_platform/app_caps.h>
 #include <zephyr/app_platform/app_manifest.h>
 
 /**
@@ -115,7 +116,8 @@ int app_loader_verify_load_signed(const char *name, const uint8_t *buf,
  *
  * @retval 0 on success.
  * @retval -EPERM if the signature or module binding does not check.
- * @retval -EBADMSG if the manifest is malformed or its length is not accepted.
+ * @retval -EBADMSG if the manifest is malformed, its length is not accepted or
+ *         it requires a capability it does not request.
  * @retval -ENOTSUP if the manifest has the previous format; reinstall the application.
  * @retval -ENOEXEC if the manifest names another interface major version, or the
  *         module was built for another floating-point ABI or instruction set.
@@ -155,7 +157,8 @@ int app_loader_verify_load_manifest(const struct app_manifest *mf, size_t mf_len
  *
  * @retval 0 on success.
  * @retval -EPERM if the signature or module binding does not check.
- * @retval -EBADMSG if the manifest is malformed or its length is not accepted.
+ * @retval -EBADMSG if the manifest is malformed, its length is not accepted or
+ *         it requires a capability it does not request.
  * @retval -ENOTSUP if the manifest has the previous format; reinstall the application.
  * @retval -ENOEXEC if the manifest names another interface major version, or the
  *         module was built for another floating-point ABI or instruction set.
@@ -198,6 +201,22 @@ bool app_loader_is_verified(const struct llext *ext);
  *         verified.
  */
 size_t app_loader_heap_size(const struct llext *ext);
+
+/**
+ * @brief Capabilities the signed manifest of a verified extension declares.
+ *
+ * The platform launch path grants the application the requested capabilities
+ * that the launcher allows, and refuses the launch when a required one is not
+ * allowed, see @ref app_platform_launch_llext.
+ *
+ * @param ext Extension to query.
+ * @param[out] requested Receives the capabilities the application asks for.
+ * @param[out] required Receives the capabilities it cannot run without.
+ * @retval 0 on success.
+ * @retval -ENOENT @p ext is not verified, or was verified without a manifest.
+ */
+int app_loader_manifest_caps(const struct llext *ext, app_caps_t *requested,
+			     app_caps_t *required);
 
 /**
  * @brief Drop an extension from the verified set.

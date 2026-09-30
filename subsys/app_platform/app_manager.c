@@ -390,6 +390,7 @@ int app_platform_status(int id, struct app_platform_status *out)
 		.restarts = a->restarts,
 		.module_bytes = a->module_bytes,
 		.heap_bytes = app_platform_heap_bytes(id),
+		.caps = a->caps,
 	};
 
 	/* Thread-level stats are only meaningful while the app is running. */
@@ -1332,19 +1333,48 @@ int app_platform_launch(const struct app_def *def)
 
 #ifdef CONFIG_LLEXT
 int app_platform_launch_llext(const char *name, struct llext *ext,
-			      app_entry_t entry, void *arg, app_caps_t caps)
+			      app_entry_t entry, void *arg, app_caps_t ceiling)
 {
-	return app_platform_launch_llext_opts(name, ext, entry, arg, caps, NULL);
+	return app_platform_launch_llext_opts(name, ext, entry, arg, ceiling, NULL);
 }
 
+#ifdef CONFIG_APP_PLATFORM_LOADER
+static int module_caps(const char *name, const struct llext *ext, app_caps_t ceiling,
+		       app_caps_t *caps)
+{
+	app_caps_t requested;
+	app_caps_t required;
+	app_caps_t missing;
+
+	if (app_loader_manifest_caps(ext, &requested, &required) != 0) {
+		*caps = ceiling;
+		return 0;
+	}
+	missing = required & ~ceiling;
+	if (missing != 0U) {
+		LOG_ERR("refusing to launch '%s': required capabilities 0x%08x%08x not allowed",
+			name, (uint32_t)(missing >> 32), (uint32_t)missing);
+		return -EPERM;
+	}
+	missing = requested & ~ceiling;
+	if (missing != 0U) {
+		LOG_WRN("'%s': requested capabilities 0x%08x%08x not allowed, dropped", name,
+			(uint32_t)(missing >> 32), (uint32_t)missing);
+	}
+	*caps = requested & ceiling;
+	return 0;
+}
+#endif
+
 int app_platform_launch_llext_opts(const char *name, struct llext *ext, app_entry_t entry,
-				   void *arg, app_caps_t caps, const struct app_launch_opts *opts)
+				   void *arg, app_caps_t ceiling,
+				   const struct app_launch_opts *opts)
 {
 	struct app_def def = {
 		.name = name,
 		.source = APP_LOADABLE,
 		.entry = entry,
-		.caps = caps,
+		.caps = ceiling,
 		.arg = arg,
 	};
 
@@ -1361,6 +1391,9 @@ int app_platform_launch_llext_opts(const char *name, struct llext *ext, app_entr
 	 */
 	if (!app_loader_is_verified(ext)) {
 		LOG_ERR("refusing to launch '%s': extension not verified", name);
+		return -EPERM;
+	}
+	if (module_caps(name, ext, ceiling, &def.caps) != 0) {
 		return -EPERM;
 	}
 	def.heap_size = app_loader_heap_size(ext);

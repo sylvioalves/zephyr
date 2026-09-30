@@ -197,6 +197,7 @@ static int elf_bounds_ok(const char *name, const uint8_t *buf, size_t len)
 struct verified_ext {
 	const struct llext *ext;
 	size_t heap_size;
+	bool manifest;
 	uint64_t requested_caps;
 	uint64_t required_caps;
 };
@@ -214,6 +215,7 @@ static void verified_add(const struct llext *ext, const struct app_manifest *mf)
 			verified[i] = (struct verified_ext){.ext = ext};
 			if (mf != NULL) {
 				verified[i].heap_size = mf->heap_size;
+				verified[i].manifest = true;
 				verified[i].requested_caps = mf->requested_caps;
 				verified[i].required_caps = mf->required_caps;
 			}
@@ -262,6 +264,29 @@ size_t app_loader_heap_size(const struct llext *ext)
 	}
 	k_mutex_unlock(&verified_lock);
 	return heap_size;
+}
+
+int app_loader_manifest_caps(const struct llext *ext, app_caps_t *requested,
+			     app_caps_t *required)
+{
+	int rc = -ENOENT;
+
+	if (ext == NULL) {
+		return -ENOENT;
+	}
+	k_mutex_lock(&verified_lock, K_FOREVER);
+	for (int i = 0; i < VERIFIED_MAX; i++) {
+		if (verified[i].ext == ext) {
+			if (verified[i].manifest) {
+				*requested = verified[i].requested_caps;
+				*required = verified[i].required_caps;
+				rc = 0;
+			}
+			break;
+		}
+	}
+	k_mutex_unlock(&verified_lock);
+	return rc;
 }
 
 void app_loader_forget(const struct llext *ext)
@@ -527,6 +552,10 @@ static int manifest_verify(const struct app_manifest *mf, size_t mf_len, const u
 	if (ecdsa_verify(pubkey, pubkey_len, digest, sig, sig_len) != 0) {
 		LOG_WRN("manifest signature invalid, rejected");
 		return -EPERM;
+	}
+	if ((mf->required_caps & ~mf->requested_caps) != 0U) {
+		LOG_WRN("'%s' requires capabilities it does not request, rejected", mf->name);
+		return -EBADMSG;
 	}
 	if (mf->abi_major != APP_ABI_MAJOR) {
 		LOG_WRN("'%s' built for interface %u, this firmware exports %u, rejected",

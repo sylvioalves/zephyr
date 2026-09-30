@@ -53,7 +53,9 @@ typedef int (*app_configure_t)(int id, void *user);
  *
  * @p caps is opaque to the platform: it is stored per application and exposed
  * through @ref app_platform_caps_current so the application's services can
- * enforce whatever capability scheme they define.
+ * enforce whatever capability scheme they define. A built-in application holds
+ * exactly @p caps; a loaded one holds what @ref app_platform_launch_llext
+ * derives from it.
  *
  * @p arg reaches the entry point unchanged, also when the application is
  * restarted. The application runs in user mode, so a pointer must refer to
@@ -138,12 +140,22 @@ int app_platform_launch(const struct app_def *def);
  * It gets a heap of the size its signed manifest declares, see
  * @ref app_loader_heap_size.
  *
+ * @p ceiling is the most the launcher allows the application. A module loaded
+ * with a signed manifest holds the capabilities the manifest requests that
+ * @p ceiling allows, see @ref app_loader_manifest_caps; requested ones outside
+ * @p ceiling are dropped and logged, and when a capability the manifest
+ * requires is outside @p ceiling the launch is refused. A module loaded without
+ * a manifest, whose integrity rests on a hash or signature the firmware
+ * supplied, holds @p ceiling.
+ *
  * @param name Application name.
  * @param ext  Loaded extension (see @ref app_platform_load).
  * @param entry Resolved entry symbol.
  * @param arg  Argument passed to @p entry, as for @ref app_def.arg.
- * @param caps Per-app grant mask.
+ * @param ceiling Capabilities the launcher allows the application.
  * @retval >=0 the application's group id, or negative errno on failure.
+ * @retval -EPERM The extension was not verified, or its manifest requires a
+ *         capability outside @p ceiling.
  * @retval -EEXIST An application with this name is already running.
  * @retval -E2BIG The heap size is above
  *         @kconfig{CONFIG_APP_PLATFORM_APP_HEAP_MAX_BYTES}.
@@ -151,7 +163,7 @@ int app_platform_launch(const struct app_def *def);
  * @retval -ENOTSUP A heap is declared and the platform has no heap pool.
  */
 int app_platform_launch_llext(const char *name, struct llext *ext,
-			      app_entry_t entry, void *arg, app_caps_t caps);
+			      app_entry_t entry, void *arg, app_caps_t ceiling);
 
 /** Options for @ref app_platform_launch_llext_opts. */
 struct app_launch_opts {
@@ -170,7 +182,8 @@ struct app_launch_opts {
  * @param ext  Loaded extension (see @ref app_platform_load).
  * @param entry Resolved entry symbol.
  * @param arg  Argument passed to @p entry, as for @ref app_def.arg.
- * @param caps Per-app grant mask.
+ * @param ceiling Capabilities the launcher allows the application, as for
+ *        @ref app_platform_launch_llext.
  * @param opts Launch options, or NULL for the defaults of
  *        @ref app_platform_launch_llext.
  * @retval >=0 the application's group id, or negative errno on failure.
@@ -183,7 +196,8 @@ struct app_launch_opts {
  * The other return values are those of @ref app_platform_launch_llext.
  */
 int app_platform_launch_llext_opts(const char *name, struct llext *ext, app_entry_t entry,
-				   void *arg, app_caps_t caps, const struct app_launch_opts *opts);
+				   void *arg, app_caps_t ceiling,
+				   const struct app_launch_opts *opts);
 
 /**
  * @brief Feed the calling application's liveness watchdog.
@@ -387,6 +401,7 @@ struct app_platform_status {
 	size_t      stack_used;    /**< stack high-water mark in bytes */
 	size_t      module_bytes;  /**< loadable-extension footprint (0 if built-in) */
 	size_t      heap_bytes;    /**< heap region size (0 without a heap) */
+	app_caps_t  caps;          /**< capabilities the application holds */
 	uint64_t    cpu_cycles;    /**< non-idle cycles attributed to this app */
 	uint64_t    cpu_total;     /**< non-idle cycles across the whole system */
 };
