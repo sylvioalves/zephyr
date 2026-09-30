@@ -73,6 +73,7 @@ struct app_svc_app_info {
 	uint8_t  faulted;
 	uint32_t stack_size;
 	uint32_t stack_used;
+	uint32_t reserved;
 	uint64_t cpu_cycles;
 	uint64_t cpu_total;
 };
