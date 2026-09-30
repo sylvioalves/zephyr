@@ -49,12 +49,23 @@ scoped, namespaced-scoped, arbitrated pool and brokered connection) and admin. A
 never-exposed subsystem simply has no service symbol.
 
 Every service checks the calling application's capability mask first, so even
-an open service is reachable only with its capability. The launcher sets that
-mask when it starts the application and makes the per-instance grants
-(``app_platform_grant_*``). The signed manifest carries the application's
-identity (name, version, module hash and interface version) and the
-capabilities it requests and requires. The loader records those, but the mask
-the launcher sets still decides what the application may use.
+an open service is reachable only with its capability. The launcher makes the
+per-instance grants (``app_platform_grant_*``) and bounds the mask:
+
+* The signed manifest carries the application's identity (name, version,
+  module hash and interface version) and the capabilities it requests and
+  requires, decided by the signer. A module launched with a manifest holds the
+  requested capabilities within the ceiling the launcher passes. Requested ones
+  outside the ceiling are dropped and logged; a required one outside it refuses
+  the launch with ``-EPERM``, so the device policy can narrow what an application
+  gets but never widen it past its request.
+* A module loaded without a manifest, verified against a hash or a key the
+  firmware supplies, and a built-in application hold the launcher's mask as
+  given. These paths trust the firmware that supplied the hash, the key or the
+  code, which therefore decides the capabilities alone.
+
+An autostart that is refused, for a required capability or another reason, is
+logged and recorded for the firmware to query, see :ref:`app_platform`.
 
 .. _app_platform_abi_stability:
 

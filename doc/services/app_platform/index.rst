@@ -73,6 +73,22 @@ two produce different errors, and the distinction is deliberate:
 Checking the capability first means an application that holds none cannot tell
 an ungranted resource from one that does not exist.
 
+The capabilities an application holds depend on how it is launched:
+
+* A built-in application holds :c:member:`app_def.caps`.
+* A module loaded with a signed manifest holds the capabilities the manifest
+  requests within the ceiling the launcher passes to
+  :c:func:`app_platform_launch_llext`. A requested capability outside the
+  ceiling is dropped with a log line naming its bits. When a capability the
+  manifest requires is outside the ceiling, the launch is refused with
+  ``-EPERM`` and a log line naming the missing bits.
+* A module loaded without a manifest, by :c:func:`app_loader_verify_load` or
+  :c:func:`app_loader_verify_load_signed`, holds the whole ceiling. These paths
+  trust the firmware that supplied the expected hash or the key, and carry no
+  request of their own.
+
+:c:func:`app_platform_status` reports the capabilities an application holds.
+
 The GPIO lines, counters, DACs, regulators and steppers that applications reach
 by index are the ones listed in the ``zephyr,app-platform`` devicetree node, in
 index order. A device the node does not list is never reachable by an
@@ -233,6 +249,26 @@ authenticated manifest. A valid signature therefore cannot be moved onto
 different bytes or relabelled, and the registry refuses to install a version
 older than the one already recorded.
 
+That refusal has one exception, for a firmware rollback. After the firmware
+reverts to an older interface major version, the installed version of an
+application built for the newer one no longer loads, and the older version
+built for this firmware is lower. :c:func:`app_registry_commit` therefore
+installs a lower version, and logs it, when the installed manifest has a retired
+format or names another interface major version or target, and the new manifest
+names those of this firmware. A lower version is still refused over an image
+this firmware loads, so an old signed image cannot be replayed over a working
+one. :c:func:`app_registry_install_versioned` knows nothing of the new image and
+makes no exception. When the firmware moves forward again, the newer version is
+installed as usual.
+
+:c:func:`app_registry_autostart_all` logs an error naming each application whose
+launch at boot is refused and the reason, such as a required capability outside
+the ceiling (``-EPERM``), another interface major version or target
+(``-ENOEXEC``) or a retired manifest format that needs the application to be
+installed again (``-ENOTSUP``). The result is kept in RAM, not in the registry
+file, and :c:func:`app_registry_autostart_result` returns it, so the firmware can
+report or act on a refused application.
+
 The manifest also carries the major version of the module interface the module
 was built against, from the ``major`` line of
 :zephyr_file:`subsys/app_platform/abi/app_abi.txt`, and the loader refuses a
@@ -265,7 +301,11 @@ format, all little-endian and packed. The signature covers exactly ``hdr_len``
 bytes. The signing script ``sign_module.cmake`` builds it from
 ``APP_NAME``, ``APP_VERSION``, ``APP_HEAP_SIZE``, ``APP_REQUESTED_CAPS`` and
 ``APP_REQUIRED_CAPS`` and from what the firmware build writes to
-``build/zephyr/app_platform_abi.txt``.
+``build/zephyr/app_platform_abi.txt``. The capabilities are given as a number
+or as names without the ``APP_CAP_`` prefix, such as ``LOG,TIME``.
+``APP_REQUESTED_CAPS`` must be set, since the application is granted nothing it
+does not request, and the signer refuses required capabilities that are not
+requested.
 
 .. list-table::
    :header-rows: 1
@@ -330,11 +370,12 @@ A firmware accepts any ``hdr_len`` from the length of the fields it knows up to
 256 bytes and ignores the fields past them, so a later format can append fields
 that an older firmware skips while still checking the signature over them. A
 manifest shorter than the fields the firmware knows, or presented with another
-length than its ``hdr_len``, is refused with ``-EBADMSG``. The loader records the
-capabilities of a verified module, but the launcher's capability mask still
-decides what the application may use. A manifest of the previous fixed-layout
-format, magic ``AMF3``, is refused with ``-ENOTSUP`` and a log line asking for
-the application to be installed again.
+length than its ``hdr_len``, is refused with ``-EBADMSG``, and so is one that
+requires a capability it does not request. The loader records the capabilities
+of a verified module, and the launch grants them within the launcher's ceiling,
+see `Capabilities and grants`_. A manifest of the previous fixed-layout format,
+magic ``AMF3``, is refused with ``-ENOTSUP`` and a log line asking for the
+application to be installed again.
 
 Module interface
 ================
