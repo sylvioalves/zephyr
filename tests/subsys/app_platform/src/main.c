@@ -22,6 +22,8 @@
 #include <errno.h>
 #include <string.h>
 
+#include "module_run.h"
+
 /* Embedded signed test module: bytes, manifest, signature, trusted key. */
 static const uint8_t mod_bytes[] = {
 #include "test_mod.inc"
@@ -534,14 +536,18 @@ ZTEST(lifecycle, test_restart_refused_for_loaded_app)
 						      work, len, mod_pubkey, ARRAY_SIZE(mod_pubkey),
 						      "app_main", &ext, &entry), 0);
 
+	module_watch(mf.name);
+
 	int id = app_platform_launch_llext(mf.name, ext, (app_entry_t)entry, NULL, APP_CAP_LOG);
 
 	zassert_true(id >= 0, "launch failed (%d)", id);
 	zassert_equal(app_platform_set_restart(id, true), -ENOTSUP,
 		      "a loaded application was marked for restart");
 	zassert_equal(app_platform_set_restart(id, false), 0);
+	k_msleep(50);
 	zassert_equal(app_platform_remove(id), 0);
 	zassert_true(wait_slot_free(mf.name, 2000), "removed app slot not freed");
+	zassert_false(module_faulted(), "the module faulted");
 }
 
 ZTEST(lifecycle, test_fault_is_reclaimed)
@@ -719,6 +725,7 @@ ZTEST(lifecycle, test_launch_stopped_module)
 							      ARRAY_SIZE(mod_sig), work, len,
 							      mod_pubkey, ARRAY_SIZE(mod_pubkey),
 							      "app_main", &ext, &entry), 0);
+		module_watch(mf.name);
 		id = app_platform_launch_llext_opts(mf.name, ext, (app_entry_t)entry, NULL,
 						    APP_CAP_LOG, &opts);
 		zassert_true(id >= 0, "launch failed (%d)", id);
@@ -727,9 +734,11 @@ ZTEST(lifecycle, test_launch_stopped_module)
 		zassert_true(st.module_bytes > 0U, "the module is not mapped");
 		if (round == 1) {
 			zassert_equal(app_platform_start(id), id);
+			k_msleep(50);
 		}
 		zassert_equal(app_platform_remove(id), 0);
 		zassert_true(wait_slot_free(mf.name, 2000), "round %d slot not freed", round);
+		zassert_false(module_faulted(), "round %d module faulted", round);
 	}
 }
 

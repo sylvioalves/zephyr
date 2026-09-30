@@ -7,7 +7,7 @@ project(app_platform_test)
 set(APP_NAME    "testmod")
 set(APP_VERSION 1)
 
-target_sources(app PRIVATE src/main.c src/loader_neg.c src/abi.c)
+target_sources(app PRIVATE src/main.c src/loader_neg.c src/abi.c src/module_run.c)
 target_sources_ifdef(CONFIG_USERSPACE app PRIVATE src/hostile.c)
 if(CONFIG_APP_PLATFORM_APP_THREADS GREATER 0)
   target_sources(app PRIVATE src/threads.c)

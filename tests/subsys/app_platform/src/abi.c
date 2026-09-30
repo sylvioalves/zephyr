@@ -16,6 +16,8 @@
 #include <errno.h>
 #include <string.h>
 
+#include "module_run.h"
+
 /* Argument that makes the test module check the kernel services and return. */
 #define TIME_PROBE ((void *)0x5449U)
 
@@ -40,30 +42,6 @@ static const uint8_t absent_bytes[] __aligned(8) = {
 
 static uint8_t abi_work[8192] __aligned(8);
 
-static int slot_of(const char *name)
-{
-	for (int i = 0; i < app_platform_count(); i++) {
-		struct app_platform_status st;
-
-		if (app_platform_status(i, &st) == 0 && st.name != NULL &&
-		    strcmp(st.name, name) == 0) {
-			return i;
-		}
-	}
-	return -1;
-}
-
-static bool wait_slot_free(const char *name, int ms)
-{
-	for (int i = 0; i < ms / 5; i++) {
-		if (slot_of(name) < 0) {
-			return true;
-		}
-		k_msleep(5);
-	}
-	return slot_of(name) < 0;
-}
-
 ZTEST(module_abi, test_kernel_services)
 {
 	struct app_manifest mf;
@@ -79,25 +57,11 @@ ZTEST(module_abi, test_kernel_services)
 						      sizeof(mod_pubkey), "app_main", &ext, &entry),
 		      0);
 
+	module_watch(mf.name);
 	id = app_platform_launch_llext(mf.name, ext, (app_entry_t)entry, TIME_PROBE,
 				       APP_CAP_LOG);
 	zassert_true(id >= 0, "launch rc %d", id);
-	if (!wait_slot_free(mf.name, 3000)) {
-		(void)app_platform_remove(id);
-		zassert_true(wait_slot_free(mf.name, 2000), "the module was not removed");
-		ztest_test_fail();
-	}
-}
-
-static atomic_t abi_faults;
-
-static void abi_reclaimed(int id)
-{
-	struct app_platform_status st;
-
-	if (app_platform_status(id, &st) == 0 && st.faulted) {
-		atomic_inc(&abi_faults);
-	}
+	zassert_equal(module_wait_end(id, 3000), 0, "the module did not return");
 }
 
 ZTEST(module_abi, test_64bit_division)
@@ -105,15 +69,7 @@ ZTEST(module_abi, test_64bit_division)
 	struct app_manifest mf;
 	struct llext *ext = NULL;
 	void *entry = NULL;
-	atomic_val_t faults = atomic_get(&abi_faults);
 	int id;
-
-	/* A kernel-mode module runs from RAM these targets do not execute. */
-	if (!IS_ENABLED(CONFIG_USERSPACE) &&
-	    ((IS_ENABLED(CONFIG_ARM_MPU) && IS_ENABLED(CONFIG_XIP)) ||
-	     IS_ENABLED(CONFIG_PMP_DATA_EXECUTION_PREVENTION))) {
-		ztest_test_skip();
-	}
 
 	memcpy(abi_work, mod_bytes, sizeof(mod_bytes));
 	memcpy(&mf, mod_manifest, sizeof(mf));
@@ -122,14 +78,10 @@ ZTEST(module_abi, test_64bit_division)
 						      sizeof(mod_pubkey), "app_main", &ext, &entry),
 		      0);
 
+	module_watch(mf.name);
 	id = app_platform_launch_llext(mf.name, ext, (app_entry_t)entry, DIV_PROBE, APP_CAP_LOG);
 	zassert_true(id >= 0, "launch rc %d", id);
-	if (!wait_slot_free(mf.name, 3000)) {
-		(void)app_platform_remove(id);
-		zassert_true(wait_slot_free(mf.name, 2000), "the module was not removed");
-		ztest_test_fail();
-	}
-	zassert_equal(atomic_get(&abi_faults), faults, "the module faulted");
+	zassert_equal(module_wait_end(id, 3000), 0, "the module did not return");
 }
 
 ZTEST(module_abi, test_missing_service_fails_to_link)
@@ -143,10 +95,4 @@ ZTEST(module_abi, test_missing_service_fails_to_link)
 	zassert_is_null(ext);
 }
 
-static void *module_abi_setup(void)
-{
-	zassert_equal(app_platform_on_reclaim(abi_reclaimed), 0);
-	return NULL;
-}
-
-ZTEST_SUITE(module_abi, NULL, module_abi_setup, NULL, NULL, NULL);
+ZTEST_SUITE(module_abi, NULL, NULL, NULL, NULL, NULL);

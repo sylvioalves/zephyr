@@ -19,6 +19,8 @@
 #include <string.h>
 #include <errno.h>
 
+#include "module_run.h"
+
 #define HEAP_SZ  992U
 #define POOL_SZ  CONFIG_APP_PLATFORM_APP_HEAP_POOL_SIZE
 #define HEAP_MAX CONFIG_APP_PLATFORM_APP_HEAP_MAX_BYTES
@@ -497,10 +499,11 @@ ZTEST(memheap, test_loaded_module_gets_its_signed_heap)
 	}
 #endif
 
+	module_watch(mf.name);
 	id = app_platform_launch_llext(mf.name, ext, (app_entry_t)entry, HEAP_PROBE, APP_CAP_LOG);
 	zassert_true(id >= 0, "launch rc %d", id);
 	zassert_true(heap_bytes(id) >= mf.heap_size, "heap of %zu bytes", heap_bytes(id));
-	zassert_true(wait_slot_free(mf.name, 3000), "the module's heap probe failed");
+	zassert_equal(module_wait_end(id, 3000), 0, "the module's heap probe failed");
 	k_free(buf);
 }
 

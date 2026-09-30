@@ -17,15 +17,10 @@ tests:
     extra_args:
       - app_abi_producer_CONFIG_USERSPACE=y
       - app_platform_abi_CONFIG_USERSPACE=y
-  # Without user mode the module runs from RAM that the Arm MPU of an XIP target
-  # and the RISC-V PMP make non-executable for the kernel, so this firmware runs
-  # without the Arm MPU and without PMP data execution prevention.
   app_platform.abi.renumber.from_user_mode:
     extra_args:
       - app_abi_producer_CONFIG_USERSPACE=y
       - app_platform_abi_CONFIG_USERSPACE=n
-      - arch:arm:app_platform_abi_CONFIG_ARM_MPU=n
-      - arch:riscv:app_platform_abi_CONFIG_PMP_DATA_EXECUTION_PREVENTION=n
   app_platform.abi.renumber.to_user_mode:
     extra_args:
       - app_abi_producer_CONFIG_USERSPACE=n
