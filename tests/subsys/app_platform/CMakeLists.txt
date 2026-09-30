@@ -132,6 +132,35 @@ add_custom_target(test_heap_sign DEPENDS ${heap_mf} ${heap_sig})
 add_dependencies(test_heap_sign app_platform_abi)
 add_dependencies(app test_heap_sign)
 
+# A module importing a function outside the exported interface, signed without
+# the signer's import check for the loader's. Reuses the key generated above.
+set(forbidden_bin ${PROJECT_BINARY_DIR}/llext/forbidden_mod.llext)
+set(forbidden_inc ${ZEPHYR_BINARY_DIR}/include/generated/forbidden_mod.inc)
+set(forbidden_mf  ${ZEPHYR_BINARY_DIR}/include/generated/forbidden_mod.manifest.inc)
+set(forbidden_sig ${ZEPHYR_BINARY_DIR}/include/generated/forbidden_mod.sig.inc)
+app_platform_add_module(forbidden_ext OUTPUT ${forbidden_bin}
+  SOURCES ${PROJECT_SOURCE_DIR}/module/src/forbidden_mod.c)
+generate_inc_file_for_target(app ${forbidden_bin} ${forbidden_inc})
+
+add_custom_command(
+  OUTPUT  ${forbidden_mf} ${forbidden_sig}
+  COMMAND ${CMAKE_COMMAND}
+    -DMODULE_BIN=${forbidden_bin}
+    -DKEY_DIR=${CMAKE_CURRENT_SOURCE_DIR}/keys
+    -DAPP_NAME=forbidden
+    -DAPP_VERSION=1
+    -DABI_FILE=${APP_PLATFORM_ABI_FILE}
+    -DSKIP_IMPORT_CHECK=1
+    -DOUT_MF_INC=${forbidden_mf}
+    -DOUT_SIG_INC=${forbidden_sig}
+    -DPYTHON_EXECUTABLE=${PYTHON_EXECUTABLE}
+    -P ${ZEPHYR_BASE}/subsys/app_platform/cmake/sign_module.cmake
+  DEPENDS ${forbidden_bin} ${sig} ${APP_PLATFORM_ABI_FILE}
+)
+add_custom_target(test_forbidden_sign DEPENDS ${forbidden_mf} ${forbidden_sig})
+add_dependencies(test_forbidden_sign app_platform_abi)
+add_dependencies(app test_forbidden_sign)
+
 # A signed-but-malformed module (out-of-section relocation) for the loader's
 # relocation bounds-check test. Reuses the key generated above.
 set(evil    ${ZEPHYR_BINARY_DIR}/include/generated/evil_mod.inc)

@@ -345,9 +345,19 @@ against it.
 A module must not include ``kernel.h``, a header that declares syscalls, or ``app_services.h``.
 ``app_sdk.h`` refuses to build after one of them and, with GCC or Clang, makes one included after
 it fail. ``app_platform_add_module()`` also defines ``APP_PLATFORM_MODULE``, which makes
-``app_services.h`` refuse to build. Pure C library functions, such as ``snprintf()`` and the string
-functions, stay available to modules. Built-in applications are part of the firmware and keep
+``app_services.h`` refuse to build. Built-in applications are part of the firmware and keep
 using ``app_services.h``.
+
+A module may import only the exported functions and the symbols listed for its architecture in
+:zephyr_file:`subsys/app_platform/abi/app_imports.txt`: pure C library functions, such as
+``snprintf()`` and the string functions, and the compiler run-time helpers the compiler emits
+calls to, such as the ``__aeabi_*`` division and memory helpers on Arm. The build generates the
+list from both files. The signer runs ``nm -u`` on the module and refuses to sign one that imports
+anything else, and the loader reads the symbol table of a verified module before linking it and
+refuses it with ``-EACCES`` when it imports anything else, so a module cannot reach a kernel
+function or the implementation of a service directly even though the firmware exports it for
+other extensions. The check reads symbol names, so the verifying loader is not available with
+:kconfig:option:`CONFIG_LLEXT_EXPORT_BUILTINS_BY_SLID`.
 
 Installing from the host
 ========================

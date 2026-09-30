@@ -5,8 +5,8 @@
  */
 
 /* Additional loader negatives: wrong key, truncated, padded, name mismatch,
- * foreign ABI or target, foreign ELF class, CPU or ELF flags, and the manifest
- * format.
+ * foreign ABI or target, foreign ELF class, CPU or ELF flags, forbidden imports
+ * and the manifest format.
  */
 
 #include <zephyr/ztest.h>
@@ -54,6 +54,15 @@ static const uint8_t target_manifest[] = {
 };
 static const uint8_t target_sig[] = {
 #include "test_mod.target.sig.inc"
+};
+static const uint8_t forbidden_bytes[] = {
+#include "forbidden_mod.inc"
+};
+static const uint8_t forbidden_manifest[] = {
+#include "forbidden_mod.manifest.inc"
+};
+static const uint8_t forbidden_sig[] = {
+#include "forbidden_mod.sig.inc"
 };
 
 #define MANIFEST_V3_MAGIC 0x33464d41U
@@ -220,6 +229,38 @@ ZTEST(loader_neg, test_foreign_target_rejected)
 
 	memcpy(&mf, mod_manifest, sizeof(mf));
 	zassert_equal(mf.target, APP_PLATFORM_TARGET, "the signer used another target");
+}
+
+/* A module importing a symbol outside the exported interface is refused before
+ * it is linked, from memory and from a file.
+ */
+ZTEST(loader_neg, test_forbidden_import_rejected)
+{
+	struct app_manifest mf;
+	struct llext *ext = NULL;
+	void *entry = NULL;
+	char path[64];
+	int rc;
+
+	memcpy(&mf, forbidden_manifest, sizeof(mf));
+	zassert_true(ARRAY_SIZE(forbidden_bytes) <= sizeof(work), "module too big");
+	memcpy(work, forbidden_bytes, ARRAY_SIZE(forbidden_bytes));
+	rc = app_loader_verify_load_manifest(&mf, sizeof(mf), forbidden_sig,
+					     ARRAY_SIZE(forbidden_sig), work,
+					     ARRAY_SIZE(forbidden_bytes), mod_pubkey,
+					     ARRAY_SIZE(mod_pubkey), "app_main", &ext, &entry);
+	zassert_equal(rc, -EACCES, "forbidden import must be rejected (%d)", rc);
+	zassert_is_null(ext);
+
+	zassert_equal(app_registry_store_blob("forbidden", forbidden_bytes,
+					      ARRAY_SIZE(forbidden_bytes)), 0);
+	zassert_equal(app_registry_blob_path("forbidden", path, sizeof(path)), 0);
+	rc = app_loader_verify_load_manifest_file(&mf, sizeof(mf), forbidden_sig,
+						  ARRAY_SIZE(forbidden_sig), path, mod_pubkey,
+						  ARRAY_SIZE(mod_pubkey), "app_main", &ext, &entry);
+	(void)fs_unlink(path);
+	zassert_equal(rc, -EACCES, "forbidden import must be rejected from a file (%d)", rc);
+	zassert_is_null(ext);
 }
 
 /* A module for another ELF class or CPU is refused before it is hashed. */

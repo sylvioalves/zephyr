@@ -25,6 +25,7 @@
 #include <zephyr/logging/log.h>
 #include <zephyr/sys/byteorder.h>
 #include <psa/crypto.h>
+#include <stdlib.h>
 #include <string.h>
 
 LOG_MODULE_DECLARE(app_platform, CONFIG_APP_PLATFORM_LOG_LEVEL);
@@ -313,6 +314,102 @@ static int finish_load(const char *name, struct llext *loaded, const struct app_
 	return 0;
 }
 
+/* The symbols a module may import, sorted: the functions exported to modules
+ * and the entries of app_imports.txt for this architecture.
+ */
+static const char *const allowed_imports[] = {
+#include <zephyr/app_platform/app_abi_imports.inc>
+};
+
+#define IMPORT_NAME_MAX 64
+
+static int import_cmp(const void *key, const void *elem)
+{
+	return strcmp(key, *(const char *const *)elem);
+}
+
+static int read_at(struct llext_loader *ldr, size_t len, size_t off, void *dst, size_t n)
+{
+	int rc;
+
+	if (off > len || n > len - off) {
+		return -E2BIG;
+	}
+	rc = llext_seek(ldr, off);
+	if (rc == 0) {
+		rc = llext_read(ldr, dst, n);
+	}
+	return rc;
+}
+
+/* Refuse a module of @p len bytes, read through @p ldr, that imports a symbol
+ * outside allowed_imports, before it is linked.
+ */
+static int imports_chk(const char *name, struct llext_loader *ldr, size_t len)
+{
+	elf_ehdr_t eh;
+	elf_shdr_t sh;
+	elf_shdr_t symtab = {0};
+	elf_shdr_t strtab = {0};
+	elf_sym_t sym;
+	char sym_name[IMPORT_NAME_MAX];
+	unsigned int found = 0U;
+	size_t n;
+	int rc;
+
+	rc = read_at(ldr, len, 0, &eh, sizeof(eh));
+	for (size_t i = 0; rc == 0 && i < eh.e_shnum; i++) {
+		rc = read_at(ldr, len, eh.e_shoff + i * sizeof(sh), &sh, sizeof(sh));
+		if (rc == 0 && sh.sh_type == SHT_SYMTAB) {
+			symtab = sh;
+			found++;
+		}
+	}
+	if (rc == 0 && (found != 1U || symtab.sh_entsize != sizeof(sym) ||
+			symtab.sh_link >= eh.e_shnum)) {
+		rc = -E2BIG;
+	}
+	if (rc == 0) {
+		rc = read_at(ldr, len, eh.e_shoff + (size_t)symtab.sh_link * sizeof(sh), &strtab,
+			     sizeof(strtab));
+	}
+	if (rc == 0 && strtab.sh_type != SHT_STRTAB) {
+		rc = -E2BIG;
+	}
+
+	for (size_t off = sizeof(sym); rc == 0 && off + sizeof(sym) <= symtab.sh_size;
+	     off += sizeof(sym)) {
+		rc = read_at(ldr, len, symtab.sh_offset + off, &sym, sizeof(sym));
+		if (rc != 0 || sym.st_shndx != SHN_UNDEF || sym.st_name == 0U) {
+			continue;
+		}
+		if (sym.st_name >= strtab.sh_size) {
+			rc = -E2BIG;
+			continue;
+		}
+		n = MIN(sizeof(sym_name), strtab.sh_size - sym.st_name);
+		rc = read_at(ldr, len, strtab.sh_offset + sym.st_name, sym_name, n);
+		if (rc != 0) {
+			continue;
+		}
+		if (memchr(sym_name, '\0', n) == NULL) {
+			LOG_WRN("'%s' rejected: imports a symbol modules may not use", name);
+			return -EACCES;
+		}
+		if (bsearch(sym_name, allowed_imports, ARRAY_SIZE(allowed_imports),
+			    sizeof(allowed_imports[0]), import_cmp) == NULL) {
+			LOG_WRN("'%s' rejected: imports '%s', which modules may not use", name,
+				sym_name);
+			return -EACCES;
+		}
+	}
+	if (rc != 0) {
+		LOG_WRN("'%s' rejected: not a valid relocatable module", name);
+		return -E2BIG;
+	}
+	return 0;
+}
+
 static int load_checked(const char *name, const uint8_t *buf, size_t len, bool copy,
 			const struct app_manifest *mf, const char *entry_sym, struct llext **ext,
 			void **entry)
@@ -325,7 +422,12 @@ static int load_checked(const char *name, const uint8_t *buf, size_t len, bool c
 
 	struct llext_load_param parm = LLEXT_LOAD_PARAM_DEFAULT;
 	struct llext *loaded = NULL;
-	int rc = llext_load(&bl.loader, name, &loaded, &parm);
+	int rc = imports_chk(name, &bl.loader, len);
+
+	if (rc != 0) {
+		return rc;
+	}
+	rc = llext_load(&bl.loader, name, &loaded, &parm);
 
 	if (rc > 0) {
 		/* An extension of this name is already loaded and was handed back
@@ -553,13 +655,23 @@ static int sha256_file(const char *path, uint8_t out[32], size_t *out_len,
 	return 0;
 }
 
-static int fs_load_checked(const char *name, const char *path, const struct app_manifest *mf,
-			   const char *entry_sym, struct llext **ext, void **entry)
+static int fs_load_checked(const char *name, const char *path, size_t len,
+			   const struct app_manifest *mf, const char *entry_sym, struct llext **ext,
+			   void **entry)
 {
 	struct llext_fs_loader fl = LLEXT_FS_LOADER(path);
 	struct llext_load_param parm = LLEXT_LOAD_PARAM_DEFAULT;
 	struct llext *loaded = NULL;
-	int rc = llext_load(&fl.loader, name, &loaded, &parm);
+	int rc = llext_prepare(&fl.loader);
+
+	if (rc == 0) {
+		rc = imports_chk(name, &fl.loader, len);
+		llext_finalize(&fl.loader);
+	}
+	if (rc != 0) {
+		return rc;
+	}
+	rc = llext_load(&fl.loader, name, &loaded, &parm);
 
 	if (rc > 0) {
 		/* An extension of this name is already loaded and was handed back
@@ -700,7 +812,7 @@ int app_loader_verify_load_manifest_file(const struct app_manifest *mf, size_t m
 	/* 3. Load the extension from the same file. The loader re-opens the
 	 * path, so the bytes it links are not provably the bytes just hashed.
 	 */
-	rc = fs_load_checked(mf->name, path, mf, entry_sym, ext, entry);
+	rc = fs_load_checked(mf->name, path, len, mf, entry_sym, ext, entry);
 
 	if (rc != 0) {
 		return rc;

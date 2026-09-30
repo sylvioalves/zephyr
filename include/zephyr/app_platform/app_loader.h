@@ -40,6 +40,7 @@
  * @retval -EPERM if the hash does not match.
  * @retval -ENOENT if the entry symbol is not found.
  * @retval -E2BIG if the module fails a structural bounds check.
+ * @retval -EACCES if the module imports a symbol modules may not use.
  * @retval -ENOEXEC if the module was built for another floating-point ABI or
  *         instruction set.
  * @retval -EALREADY if an extension with this name is already loaded.
@@ -78,6 +79,7 @@ int app_loader_verify_load(const char *name, const uint8_t *buf, size_t len,
  * @retval -EPERM if the signature does not verify.
  * @retval -ENOENT if the entry symbol is not found.
  * @retval -E2BIG if the module fails a structural bounds check.
+ * @retval -EACCES if the module imports a symbol modules may not use.
  * @retval -ENOEXEC if the module was built for another floating-point ABI or
  *         instruction set.
  * @retval -EALREADY if an extension with this name is already loaded.
@@ -119,6 +121,7 @@ int app_loader_verify_load_signed(const char *name, const uint8_t *buf,
  *         module was built for another floating-point ABI or instruction set.
  * @retval -ENOENT if the entry symbol is not found.
  * @retval -E2BIG if the module fails a structural bounds check.
+ * @retval -EACCES if the module imports a symbol modules may not use.
  * @retval -EALREADY if an extension with this name is already loaded.
  * @retval other negative errno from crypto or llext on failure.
  */
@@ -158,6 +161,7 @@ int app_loader_verify_load_manifest(const struct app_manifest *mf, size_t mf_len
  *         module was built for another floating-point ABI or instruction set.
  * @retval -ENOENT if the entry symbol is not found.
  * @retval -E2BIG if the module fails a structural bounds check.
+ * @retval -EACCES if the module imports a symbol modules may not use.
  * @retval -EALREADY if an extension with this name is already loaded.
  * @retval -EFBIG if the signed length is zero or above the module budget.
  * @retval -ENOMEM if the heap cannot hold the module copy.

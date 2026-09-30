@@ -51,19 +51,28 @@ set(abi_gen_dir ${ZEPHYR_BINARY_DIR}/include/generated/zephyr/app_platform)
 set(abi_decls_h ${abi_gen_dir}/app_abi.h)
 set(abi_forward_h ${abi_gen_dir}/app_abi_forward.h)
 set(abi_exports_c ${CMAKE_CURRENT_BINARY_DIR}/app_abi_exports.c)
+set(abi_imports ${CMAKE_CURRENT_SOURCE_DIR}/abi/app_imports.txt)
+set(abi_allowed_inc ${abi_gen_dir}/app_abi_imports.inc)
+set(abi_allowed_txt ${ZEPHYR_BINARY_DIR}/app_platform_imports.txt)
 file(MAKE_DIRECTORY ${abi_gen_dir})
 
 add_custom_command(
-  OUTPUT ${abi_decls_h} ${abi_forward_h} ${abi_exports_c}
+  OUTPUT ${abi_decls_h} ${abi_forward_h} ${abi_exports_c} ${abi_allowed_inc} ${abi_allowed_txt}
   COMMAND ${PYTHON_EXECUTABLE} ${abi_script}
     --table ${abi_table}
     --services ${abi_services_h}
     --decls ${abi_decls_h}
     --forward ${abi_forward_h}
     --exports ${abi_exports_c}
-  DEPENDS ${abi_script} ${abi_table} ${abi_services_h}
+    --imports ${abi_imports}
+    --arch ${ARCH}
+    --allowed-inc ${abi_allowed_inc}
+    --allowed-txt ${abi_allowed_txt}
+  DEPENDS ${abi_script} ${abi_table} ${abi_services_h} ${abi_imports}
 )
-add_custom_target(app_platform_exports DEPENDS ${abi_decls_h} ${abi_forward_h} ${abi_exports_c})
+add_custom_target(app_platform_exports
+  DEPENDS ${abi_decls_h} ${abi_forward_h} ${abi_exports_c} ${abi_allowed_inc} ${abi_allowed_txt}
+)
 add_dependencies(zephyr_generated_headers app_platform_exports)
 zephyr_library_sources_ifdef(CONFIG_LLEXT ${abi_exports_c} app_abi.c)
 add_dependencies(${ZEPHYR_CURRENT_LIBRARY} app_platform_exports)
@@ -98,15 +107,17 @@ if(CONFIG_APP_PLATFORM_LOADER)
       -DABI_TABLE=${abi_table}
       -DTARGET=0x${target}
       -DTARGET_DESC=${target_desc}
+      -DNM=${CMAKE_NM}
+      -DIMPORTS=${abi_allowed_txt}
       -DOUT_H=${abi_h}
       -DOUT_ID=${APP_PLATFORM_ABI_FILE}
       -P ${CMAKE_CURRENT_SOURCE_DIR}/cmake/abi_id.cmake
-    DEPENDS ${syscall_list} ${abi_headers} ${abi_table}
+    DEPENDS ${syscall_list} ${abi_headers} ${abi_table} ${abi_allowed_txt}
       ${CMAKE_CURRENT_SOURCE_DIR}/cmake/abi_id.cmake
     VERBATIM
   )
   add_custom_target(app_platform_abi DEPENDS ${abi_h} ${APP_PLATFORM_ABI_FILE})
-  add_dependencies(app_platform_abi ${SYSCALL_LIST_H_TARGET})
+  add_dependencies(app_platform_abi ${SYSCALL_LIST_H_TARGET} app_platform_exports)
   add_dependencies(${ZEPHYR_CURRENT_LIBRARY} app_platform_abi)
 endif()
 

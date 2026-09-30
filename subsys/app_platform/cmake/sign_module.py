@@ -13,12 +13,14 @@ include/zephyr/app_platform/app_manifest.h: a header of magic, length and
 format, then the fields, packed and little-endian.
 
 The firmware facts come from the file the firmware build writes
-(app_platform_abi.txt), one key=value per line.
+(app_platform_abi.txt), one key=value per line. A module that imports a symbol
+outside the list of importable symbols it names is not signed.
 """
 
 import argparse
 import hashlib
 import struct
+import subprocess
 import sys
 from pathlib import Path
 
@@ -74,6 +76,15 @@ def build_manifest(module, args, facts):
     return mf[:length]
 
 
+def forbidden_imports(module_path, facts):
+    out = subprocess.run(
+        [facts["nm"], "-u", module_path], capture_output=True, text=True, check=True
+    ).stdout
+    imported = {line.split()[-1] for line in out.splitlines() if line.strip()}
+    allowed = set(Path(facts["imports"]).read_text(encoding="utf-8").split())
+    return sorted(imported - allowed)
+
+
 def load_key(key_path):
     if not key_path.exists():
         key_path.parent.mkdir(parents=True, exist_ok=True)
@@ -113,6 +124,11 @@ def main():
         type=int,
         help="signed length, cutting the manifest short or appending unknown fields",
     )
+    parser.add_argument(
+        "--skip-import-check",
+        action="store_true",
+        help="sign a module importing symbols the loader refuses, for tests",
+    )
     parser.add_argument("--out-mf-inc", required=True, help="manifest as C byte literals")
     parser.add_argument("--out-sig-inc", required=True, help="signature as C byte literals")
     parser.add_argument("--out-pub-inc", help="public key as C byte literals")
@@ -125,9 +141,19 @@ def main():
     if args.required_caps & ~args.requested_caps:
         sys.exit("required capabilities must be a subset of the requested ones")
 
+    facts = read_abi_file(args.abi_file)
+    if not args.skip_import_check:
+        forbidden = forbidden_imports(args.module, facts)
+        if forbidden:
+            sys.exit(
+                f"{args.module} imports symbols a module may not use: {', '.join(forbidden)}\n"
+                "A module may import only the functions in subsys/app_platform/abi/app_abi.txt "
+                "and subsys/app_platform/abi/app_imports.txt."
+            )
+
     module = Path(args.module).read_bytes()
     key = load_key(Path(args.key))
-    mf = build_manifest(module, args, read_abi_file(args.abi_file))
+    mf = build_manifest(module, args, facts)
     sig = sign(key, mf)
 
     emit(args.out_mf_inc, mf)

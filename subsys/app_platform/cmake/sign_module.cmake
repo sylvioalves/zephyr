@@ -9,6 +9,9 @@
 # generated once at KEY_DIR and reused so the embedded public key stays stable
 # across builds. The private key never leaves the build host.
 #
+# A module that imports a symbol outside the list named in ABI_FILE is not
+# signed; SKIP_IMPORT_CHECK signs it anyway, for tests of the loader check.
+#
 # The manifest carries the interface major version and the other facts the
 # firmware build wrote to ABI_FILE, the per-application heap size APP_HEAP_SIZE
 # and the capabilities APP_REQUESTED_CAPS and APP_REQUIRED_CAPS (0 when unset).
@@ -20,7 +23,7 @@
 # Inputs: MODULE_BIN, KEY_DIR, APP_NAME, APP_VERSION, ABI_FILE, OUT_MF_INC,
 #         OUT_SIG_INC, PYTHON_EXECUTABLE. Optional: OUT_PUB_INC, OUT_MANIFEST,
 #         APP_HEAP_SIZE, APP_REQUESTED_CAPS, APP_REQUIRED_CAPS,
-#         ABI_MAJOR_OVERRIDE, TARGET_OVERRIDE, MANIFEST_LEN.
+#         ABI_MAJOR_OVERRIDE, TARGET_OVERRIDE, MANIFEST_LEN, SKIP_IMPORT_CHECK.
 
 set(args
   --module ${MODULE_BIN}
@@ -48,6 +51,9 @@ foreach(opt
     list(APPEND args ${flag} ${${var}})
   endif()
 endforeach()
+if(SKIP_IMPORT_CHECK)
+  list(APPEND args --skip-import-check)
+endif()
 
 execute_process(
   COMMAND ${PYTHON_EXECUTABLE} ${CMAKE_CURRENT_LIST_DIR}/sign_module.py ${args}

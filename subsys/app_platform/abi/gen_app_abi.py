@@ -14,7 +14,10 @@ signature, and writes:
   which includes no kernel header,
 - a header of inline functions giving a module the familiar service names,
 - a C file defining the service forwarders and exporting every function whose
-  condition is enabled in the firmware.
+  condition is enabled in the firmware,
+- the sorted list of symbols a module may import, every exported function and
+  the entries of the import table (app_imports.txt) for the architecture, as C
+  string literals for the loader and as a text file for the signer.
 """
 
 import argparse
@@ -23,6 +26,7 @@ import sys
 from dataclasses import dataclass
 
 GROUP = "APP_ABI"
+IMPORT_NAME_MAX = 64
 
 
 @dataclass
@@ -117,6 +121,21 @@ def parse_table(path):
     if major is None or major < 1:
         sys.exit(f"{path}: needs a 'major <n>' line, starting at 1")
     return major, entries
+
+
+def parse_imports(path, arch):
+    names = []
+    with open(path, encoding="utf-8") as f:
+        for n, raw in enumerate(f, 1):
+            line = raw.split("#", 1)[0].strip()
+            if line == "":
+                continue
+            parts = line.split()
+            if len(parts) != 2:
+                sys.exit(f"{path}:{n}: malformed entry")
+            if parts[1] == "-" or arch in parts[1].split(","):
+                names.append(parts[0])
+    return names
 
 
 def parse_services(path):
@@ -240,6 +259,15 @@ def write_exports(path, entries):
     write(path, "\n".join(out))
 
 
+def write_imports(inc_path, txt_path, entries, imports):
+    names = sorted(set([e.symbol for e in entries] + imports))
+    for name in names:
+        if len(name) >= IMPORT_NAME_MAX:
+            sys.exit(f"{name}: an importable symbol name must be shorter than {IMPORT_NAME_MAX}")
+    write(inc_path, HEADER + "".join(f'"{name}",\n' for name in names))
+    write(txt_path, "".join(f"{name}\n" for name in names))
+
+
 def write(path, text):
     with open(path, "w", encoding="utf-8") as f:
         f.write(text)
@@ -252,6 +280,10 @@ def main():
     parser.add_argument("--decls", required=True, help="output declaration header")
     parser.add_argument("--forward", required=True, help="output module forwarding header")
     parser.add_argument("--exports", required=True, help="output firmware C file")
+    parser.add_argument("--imports", required=True, help="import table")
+    parser.add_argument("--arch", required=True, help="architecture the firmware is built for")
+    parser.add_argument("--allowed-inc", required=True, help="output loader import list")
+    parser.add_argument("--allowed-txt", required=True, help="output signer import list")
     args = parser.parse_args()
 
     major, entries = parse_table(args.table)
@@ -259,6 +291,8 @@ def main():
     write_decls(args.decls, major, entries)
     write_forward(args.forward, entries)
     write_exports(args.exports, entries)
+    imports = parse_imports(args.imports, args.arch)
+    write_imports(args.allowed_inc, args.allowed_txt, entries, imports)
 
 
 if __name__ == "__main__":

@@ -176,6 +176,7 @@ config APP_PLATFORM_WDT_TIMEOUT_MS
 config APP_PLATFORM_LOADER
 	bool "Verified llext application loader"
 	depends on LLEXT
+	depends on !LLEXT_EXPORT_BUILTINS_BY_SLID
 	depends on PSA_CRYPTO
 	imply LLEXT_CONTIGUOUS_REGIONS
 	help
@@ -183,6 +184,11 @@ config APP_PLATFORM_LOADER
 	  tampered or corrupted module is rejected and never linked. Enable a
 	  PSA crypto provider (for example CONFIG_PSA_CRYPTO and
 	  CONFIG_PSA_WANT_ALG_SHA_256) for the SHA-256 implementation.
+
+	  A module that imports a symbol outside the functions exported to
+	  modules and the few listed in subsys/app_platform/abi/app_imports.txt
+	  is refused. The check reads symbol names, so it is not available
+	  when built-in symbols are linked by SLID.
 
 config APP_PLATFORM_LOADER_FILE_IN_RAM
 	bool "Verify a module from a file as one private copy in RAM"
