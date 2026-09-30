@@ -70,7 +70,9 @@ typedef int (*app_configure_t)(int id, void *user);
  * the group id of an application that is set up but not running, as after
  * @ref app_platform_stop, so the caller can add memory partitions to
  * @ref app_platform_domain and grant resources before any application code
- * runs. @ref app_platform_start then starts it.
+ * runs. @ref app_platform_start then starts it. Until the firmware starts it,
+ * an application holding @ref APP_CAP_CONTROL cannot, see
+ * @ref app_svc_app_start.
  *
  * @p configure, when not NULL, is called with the group id and
  * @p configure_user every time the application is about to start: at a launch
@@ -82,7 +84,7 @@ typedef int (*app_configure_t)(int id, void *user);
  * limited to setting grants and adding memory partitions to
  * @ref app_platform_domain. When it fails, a launch returns its error and
  * leaves no application behind, and a start or a relaunch leaves the
- * application stopped.
+ * application stopped, to be started by the firmware only.
  */
 struct app_def {
 	const char     *name;    /**< unique application name */

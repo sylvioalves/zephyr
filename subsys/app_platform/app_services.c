@@ -1020,7 +1020,7 @@ int z_impl_app_svc_app_start(int id)
 	/* app_platform_start() reports success as the group id it started, so
 	 * normalise it: the service contract is 0 on success.
 	 */
-	int rc = app_platform_start(id);
+	int rc = app_platform_start_control(id);
 
 	return rc < 0 ? rc : 0;
 }
@@ -1043,7 +1043,7 @@ int z_impl_app_svc_app_restart(int id)
 	if (rc != 0 && rc != -EINVAL) {
 		return rc;
 	}
-	rc = app_platform_start(id);
+	rc = app_platform_start_control(id);
 	return rc < 0 ? rc : 0;
 }
 

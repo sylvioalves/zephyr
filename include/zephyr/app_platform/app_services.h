@@ -975,7 +975,8 @@ __syscall int app_svc_app_stop(int id);
  *
  * Re-creates the group's user-mode thread in its existing memory domain, with
  * the capabilities it was loaded with. A controlling application therefore
- * cannot widen another group's grants, only run or halt it.
+ * cannot widen another group's grants, only run or halt it. A group launched
+ * stopped, or whose configure hook failed, is started by the firmware only.
  *
  * @param id Group id.
  * @retval 0 on success.
@@ -984,6 +985,7 @@ __syscall int app_svc_app_stop(int id);
  * @retval -EALREADY The group is already running.
  * @retval -ENOTSUP The group cannot be started again.
  * @retval -EBUSY A previous stop of this group is still being cleaned up.
+ * @retval -EAGAIN The group waits for the firmware to start it.
  */
 __syscall int app_svc_app_start(int id);
 
@@ -992,14 +994,17 @@ __syscall int app_svc_app_start(int id);
  *
  * One call so a supervising application does not have to sequence a stop and a
  * start itself, and so the platform can refuse the pair together. An
- * application that is already stopped is simply started. A caller may not
- * restart itself.
+ * application that is already stopped is simply started, unless it waits for
+ * the firmware to start it as described for @ref app_svc_app_start. A caller
+ * may not restart itself.
  *
  * @param id Application group id, not the caller's own.
  * @retval 0 on success.
  * @retval -EPERM without @ref APP_CAP_CONTROL.
  * @retval -EINVAL on a bad id or the caller's own id.
  * @retval -ENOTSUP The group cannot be started again.
+ * @retval -EBUSY A previous stop of this group is still being cleaned up.
+ * @retval -EAGAIN The group waits for the firmware to start it.
  */
 __syscall int app_svc_app_restart(int id);
 

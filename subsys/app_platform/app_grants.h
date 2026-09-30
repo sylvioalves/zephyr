@@ -71,6 +71,12 @@ int app_service_unlock(struct svc_lock *lock);
  */
 int app_service_lock_reclaim(struct svc_lock *lock, k_timeout_t timeout);
 
+/* Start a group for an application holding APP_CAP_CONTROL: as
+ * app_platform_start(), but -EAGAIN while the group waits for the firmware to
+ * start it, after a stopped launch or a failed configure hook.
+ */
+int app_platform_start_control(int id);
+
 /* Points inside services where app_platform_test_point() is called. */
 #define APP_TEST_POINT_PSRAM_MAP 0
 

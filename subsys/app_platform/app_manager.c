@@ -93,6 +93,7 @@ struct running_app {
 	bool                stop_requested; /* asked to exit by app_platform_request_stop */
 	bool                stopping;  /* stop requested, deferred while a thread holds a lock */
 	bool                domain_ready; /* memory domain initialized once per slot */
+	bool                held;      /* only the firmware may start it */
 	uint8_t             gen;       /* instance of the slot, bumped at each start */
 	app_entry_t         entry;
 	void               *arg;       /* passed to entry */
@@ -847,6 +848,7 @@ static int prepare_start(struct running_app *a)
 	if (a->configure != NULL) {
 		rc = a->configure(a - apps, a->configure_user);
 	}
+	a->held = rc != 0;
 	if (rc != 0) {
 		LOG_WRN("app '%s' not started: configure failed (%d)", a->name, rc);
 		return rc < 0 ? rc : -ECANCELED;
@@ -873,7 +875,7 @@ static int restart_thread(struct running_app *a)
 	return start_app(a);
 }
 
-int app_platform_start(int id)
+static int start_group(int id, bool control)
 {
 	if (id < 0 || id >= MAX_APPS || !apps[id].active) {
 		return -EINVAL;
@@ -884,7 +886,20 @@ int app_platform_start(int id)
 	if (apps[id].entry == NULL) {
 		return -ENOTSUP;
 	}
+	if (control && apps[id].held) {
+		return -EAGAIN;
+	}
 	return restart_thread(&apps[id]);
+}
+
+int app_platform_start(int id)
+{
+	return start_group(id, false);
+}
+
+int app_platform_start_control(int id)
+{
+	return start_group(id, true);
 }
 
 int app_platform_restart(int id)
@@ -1223,6 +1238,7 @@ static int launch(const struct app_def *def, struct llext *ext, int prev)
 		a->module_bytes = 0;
 		a->heap_size = heap_size;
 		a->cpu_mask = def->cpu_mask;
+		a->held = def->stopped;
 		a->configure = def->configure;
 		a->configure_user = def->configure_user;
 #ifdef CONFIG_LLEXT
