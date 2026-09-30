@@ -78,6 +78,9 @@ struct reg_file {
 
 static struct reg_file reg;
 
+/* Result of the last autostart launch of each record, in RAM only. */
+static int autostart_err[APP_REG_MAX];
+
 /* Write the registry to a temporary file and rename it over the live one, so
  * an interrupted save leaves the previous registry intact rather than a
  * truncated file.
@@ -114,6 +117,7 @@ int app_registry_load(void)
 {
 	int rc = fs_mount(&mnt);
 
+	memset(autostart_err, 0, sizeof(autostart_err));
 	if (rc != 0 && rc != -EBUSY) {
 		LOG_ERR("mount failed %d", rc);
 		return rc;
@@ -189,6 +193,7 @@ int app_registry_install_versioned(const char *name, bool autostart,
 	reg.apps[idx].install_seq = reg.next_seq++;
 	reg.apps[idx].version = version;
 	reg.apps[idx].bound = 0U;
+	autostart_err[idx] = 0;
 	LOG_INF("installed '%s' (seq %u, v%u, autostart=%d)", name,
 		reg.apps[idx].install_seq, version, reg.apps[idx].autostart);
 	return reg_save();
@@ -213,6 +218,24 @@ int app_registry_get(int idx, struct app_record *out)
 	return 0;
 }
 
+static const char *refusal_reason(int err)
+{
+	switch (err) {
+	case -EPERM:
+		return "signature invalid or required capabilities not allowed";
+	case -ENOEXEC:
+		return "built for another interface major version or target";
+	case -ENOTSUP:
+		return "manifest format retired, install the application again";
+	case -EACCES:
+		return "older than the installed version or imports a forbidden symbol";
+	case -EBADMSG:
+		return "manifest malformed or not the installed image";
+	default:
+		return "launch failed";
+	}
+}
+
 int app_registry_autostart_all(app_registry_launch_t launch, void *user)
 {
 	int started = 0;
@@ -228,13 +251,26 @@ int app_registry_autostart_all(app_registry_launch_t launch, void *user)
 		}
 		int rc = launch(r, user);
 
+		autostart_err[i] = (rc < 0) ? rc : 0;
 		if (rc < 0) {
-			LOG_WRN("autostart of '%s' failed (%d)", r->name, rc);
+			LOG_ERR("autostart of '%s' refused: %s (%d)", r->name, refusal_reason(rc),
+				rc);
 			continue;
 		}
 		started++;
 	}
 	return started;
+}
+
+int app_registry_autostart_result(const char *name, int *err)
+{
+	int idx = find(name);
+
+	if (idx < 0 || err == NULL) {
+		return -ENOENT;
+	}
+	*err = autostart_err[idx];
+	return 0;
 }
 
 int app_registry_uninstall(const char *name)
@@ -246,8 +282,10 @@ int app_registry_uninstall(const char *name)
 	}
 	for (uint32_t i = idx; i + 1 < reg.count; i++) {
 		reg.apps[i] = reg.apps[i + 1];
+		autostart_err[i] = autostart_err[i + 1];
 	}
 	reg.count--;
+	autostart_err[reg.count] = 0;
 
 	/* Drop the persisted binary and manifest too, if present. */
 	char path[MOUNT_POINT_MAX];
@@ -503,6 +541,7 @@ int app_registry_commit(const char *name, bool autostart, const struct app_manif
 	reg.apps[idx].install_seq = reg.next_seq++;
 	reg.apps[idx].version = mf->version;
 	reg.apps[idx].bound = 1U;
+	autostart_err[idx] = 0;
 	memcpy(reg.apps[idx].module_sha256, mf->module_sha256,
 	       sizeof(reg.apps[idx].module_sha256));
 	LOG_INF("committed '%s' v%u (seq %u)", name, mf->version, reg.apps[idx].install_seq);

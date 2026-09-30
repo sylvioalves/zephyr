@@ -122,8 +122,10 @@ typedef int (*app_registry_launch_t)(const struct app_record *rec, void *user);
  * @brief Launch every installed application flagged for autostart.
  *
  * Walks the registry in install order and invokes @p launch for each enabled
- * record whose autostart flag is set. A record that fails to launch is skipped
- * so one bad application does not stop the rest from starting.
+ * record whose autostart flag is set. A record that fails to launch is logged
+ * as an error with its name and reason, its result is recorded for
+ * @ref app_registry_autostart_result, and it is skipped so one bad application
+ * does not stop the rest from starting.
  *
  * @param launch Callback that loads and launches one record.
  * @param user   Opaque pointer handed to @p launch.
@@ -131,6 +133,25 @@ typedef int (*app_registry_launch_t)(const struct app_record *rec, void *user);
  * @retval -EINVAL if @p launch is NULL.
  */
 int app_registry_autostart_all(app_registry_launch_t launch, void *user);
+
+/**
+ * @brief Result of the last autostart launch of an installed application.
+ *
+ * The result is kept in RAM only, so the on-flash registry format is unchanged.
+ * It is cleared at boot by @ref app_registry_load and when the application is
+ * installed or committed again.
+ *
+ * @param name Application name.
+ * @param[out] err Receives 0 when the last autostart launched the application or
+ *             none was attempted, or the negative errno its launch returned, for
+ *             example -EPERM when a required capability is not allowed, -ENOEXEC
+ *             when it was built for another interface major version or target and
+ *             -ENOTSUP when its manifest format is retired.
+ *
+ * @retval 0 Success.
+ * @retval -ENOENT No application with this name is installed, or @p err is NULL.
+ */
+int app_registry_autostart_result(const char *name, int *err);
 
 /**
  * @brief Remove an installed application and persist the registry.
