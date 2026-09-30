@@ -83,11 +83,12 @@ config APP_PLATFORM_CPU_AFFINITY
 	select SCHED_CPU_MASK
 	help
 	  Run an application only on the CPUs the firmware assigns it, with
-	  app_def.cpu_mask for a built-in application or
-	  app_platform_launch_llext_pinned() for a loaded one. The entry
-	  thread and every worker thread keep the assignment, also across a
-	  stop and start or a restart after a fault. Without it an application
-	  runs on any CPU and launching one with a CPU mask fails.
+	  app_def.cpu_mask for a built-in application or with
+	  app_launch_opts.cpu_mask and app_platform_launch_llext_opts() for a
+	  loaded one. The entry thread and every worker thread keep the
+	  assignment, also across a stop and start or a restart after a fault.
+	  Without it an application runs on any CPU and launching one with a
+	  CPU mask fails.
 
 config APP_PLATFORM_APP_HEAP_POOL_SIZE
 	int "Internal RAM for per-application heaps (bytes)"

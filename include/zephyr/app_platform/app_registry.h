@@ -108,7 +108,9 @@ int app_registry_get(int idx, struct app_record *out);
  *
  * Called once per enabled autostart record. The callback owns the load and
  * launch policy - which key to verify against, which capabilities to grant -
- * because that is application, not platform, policy.
+ * because that is application, not platform, policy. The CPU mask, and the
+ * configure hook or stopped launch that gives the application its grants, are
+ * set by the callback too, through @ref app_launch_opts.
  *
  * @param rec  The installed-application record to launch.
  * @param user Opaque pointer passed through from the caller.
