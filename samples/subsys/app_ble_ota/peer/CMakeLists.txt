@@ -33,12 +33,12 @@ if(NOT EXISTS ${OTA_MODULE})
   message(FATAL_ERROR "OTA_MODULE does not exist: ${OTA_MODULE}")
 endif()
 
-# The manifest carries the ABI identifier of the device firmware, which the
+# The manifest carries the interface version of the device firmware, which the
 # device build writes to <device build>/zephyr. OTA_ABI overrides it.
 if(NOT DEFINED OTA_ABI)
   get_filename_component(dev_build ${OTA_MODULE} DIRECTORY)
   get_filename_component(dev_build ${dev_build} DIRECTORY)
-  set(OTA_ABI ${dev_build}/zephyr/app_platform_abi_id.txt)
+  set(OTA_ABI ${dev_build}/zephyr/app_platform_abi.txt)
 endif()
 if(NOT EXISTS ${OTA_ABI})
   message(FATAL_ERROR "OTA_ABI does not exist: ${OTA_ABI}")

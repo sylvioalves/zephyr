@@ -100,6 +100,7 @@ int app_loader_verify_load_signed(const char *name, const uint8_t *buf,
  * any parsing. The loaded extension takes its name from the manifest.
  *
  * @param mf        Manifest body (the bytes the signature covers).
+ * @param mf_len    Length of @p mf, which must equal its @c hdr_len.
  * @param sig       ECDSA P-256 signature over @p mf (raw r||s, 64 bytes).
  * @param sig_len   Length of @p sig.
  * @param buf       Module bytes.
@@ -111,14 +112,17 @@ int app_loader_verify_load_signed(const char *name, const uint8_t *buf,
  * @param[out] entry Receives the resolved entry pointer on success.
  *
  * @retval 0 on success.
- * @retval -EPERM if the signature, manifest, or module binding does not check.
- * @retval -ENOEXEC if the manifest names a different firmware ABI.
+ * @retval -EPERM if the signature or module binding does not check.
+ * @retval -EBADMSG if the manifest is malformed or its length is not accepted.
+ * @retval -ENOTSUP if the manifest has the previous format; reinstall the application.
+ * @retval -ENOEXEC if the manifest names another interface major version, or the
+ *         module was built for another floating-point ABI or instruction set.
  * @retval -ENOENT if the entry symbol is not found.
  * @retval -E2BIG if the module fails a structural bounds check.
  * @retval -EALREADY if an extension with this name is already loaded.
  * @retval other negative errno from crypto or llext on failure.
  */
-int app_loader_verify_load_manifest(const struct app_manifest *mf,
+int app_loader_verify_load_manifest(const struct app_manifest *mf, size_t mf_len,
 				    const uint8_t *sig, size_t sig_len,
 				    const uint8_t *buf, size_t len,
 				    const uint8_t *pubkey, size_t pubkey_len,
@@ -136,6 +140,7 @@ int app_loader_verify_load_manifest(const struct app_manifest *mf,
  * manifest binds and authenticates the name, version and module hash.
  *
  * @param mf        Manifest body (the bytes the signature covers).
+ * @param mf_len    Length of @p mf, which must equal its @c hdr_len.
  * @param sig       ECDSA P-256 signature over @p mf (raw r||s, 64 bytes).
  * @param sig_len   Length of @p sig.
  * @param path      Absolute filesystem path of the module.
@@ -146,8 +151,11 @@ int app_loader_verify_load_manifest(const struct app_manifest *mf,
  * @param[out] entry Receives the resolved entry pointer on success.
  *
  * @retval 0 on success.
- * @retval -EPERM if the signature, manifest, or module binding does not check.
- * @retval -ENOEXEC if the manifest names a different firmware ABI.
+ * @retval -EPERM if the signature or module binding does not check.
+ * @retval -EBADMSG if the manifest is malformed or its length is not accepted.
+ * @retval -ENOTSUP if the manifest has the previous format; reinstall the application.
+ * @retval -ENOEXEC if the manifest names another interface major version, or the
+ *         module was built for another floating-point ABI or instruction set.
  * @retval -ENOENT if the entry symbol is not found.
  * @retval -E2BIG if the module fails a structural bounds check.
  * @retval -EALREADY if an extension with this name is already loaded.
@@ -155,7 +163,7 @@ int app_loader_verify_load_manifest(const struct app_manifest *mf,
  * @retval -ENOMEM if the heap cannot hold the module copy.
  * @retval other negative errno from filesystem, crypto or llext on failure.
  */
-int app_loader_verify_load_manifest_file(const struct app_manifest *mf,
+int app_loader_verify_load_manifest_file(const struct app_manifest *mf, size_t mf_len,
 					 const uint8_t *sig, size_t sig_len,
 					 const char *path, const uint8_t *pubkey,
 					 size_t pubkey_len, const char *entry_sym,

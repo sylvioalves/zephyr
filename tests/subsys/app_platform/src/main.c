@@ -60,7 +60,7 @@ static int load_with(const struct app_manifest *mf, const uint8_t *sig,
 {
 	void *entry = NULL;
 
-	return app_loader_verify_load_manifest(mf, sig, sig_len, buf, len,
+	return app_loader_verify_load_manifest(mf, sizeof(*mf), sig, sig_len, buf, len,
 					       mod_pubkey, ARRAY_SIZE(mod_pubkey),
 					       "app_main", ext, &entry);
 }
@@ -125,14 +125,16 @@ ZTEST(registry, test_blob_roundtrip)
 ZTEST(registry, test_manifest_roundtrip)
 {
 	struct app_manifest mf = manifest_copy();
-	struct app_manifest got;
+	union app_manifest_buf got;
+	size_t got_len = 0;
 	uint8_t sig[APP_MANIFEST_SIG_LEN];
 
-	zassert_equal(app_registry_store_manifest("mfapp", &mf, mod_sig,
+	zassert_equal(app_registry_store_manifest("mfapp", &mf, sizeof(mf), mod_sig,
 						  ARRAY_SIZE(mod_sig)), 0);
-	zassert_equal(app_registry_load_manifest("mfapp", &got, sig,
+	zassert_equal(app_registry_load_manifest("mfapp", &got, &got_len, sig,
 						 sizeof(sig)), 0);
-	zassert_mem_equal(&got, &mf, sizeof(mf), "manifest mismatch");
+	zassert_equal(got_len, sizeof(mf), "manifest length mismatch");
+	zassert_mem_equal(&got.mf, &mf, sizeof(mf), "manifest mismatch");
 	zassert_mem_equal(sig, mod_sig, APP_MANIFEST_SIG_LEN, "sig mismatch");
 
 	(void)app_registry_install("mfapp", false);
@@ -154,7 +156,7 @@ static struct app_manifest stage(const char *name, uint32_t version, uint8_t fil
 	mf.module_len = sizeof(blob);
 	memset(mf.module_sha256, fill, sizeof(mf.module_sha256));
 
-	zassert_equal(app_registry_store_staged_manifest(name, &mf, mod_sig,
+	zassert_equal(app_registry_store_staged_manifest(name, &mf, sizeof(mf), mod_sig,
 							 ARRAY_SIZE(mod_sig)), 0);
 	zassert_equal(app_registry_staged_blob_path(name, path, sizeof(path)), 0);
 	fs_file_t_init(&f);
@@ -190,7 +192,8 @@ static bool staged_present(const char *name)
 ZTEST(registry, test_commit_installs_staged_image)
 {
 	struct app_manifest mf = stage("stapp", 3, 0xA3);
-	struct app_manifest got;
+	union app_manifest_buf got;
+	size_t got_len = 0;
 	struct app_record rec;
 	uint8_t sig[APP_MANIFEST_SIG_LEN];
 	uint8_t out[64];
@@ -201,8 +204,8 @@ ZTEST(registry, test_commit_installs_staged_image)
 	zassert_equal(app_registry_load_blob("stapp", out, sizeof(out), &out_len), 0);
 	zassert_equal(out_len, 32U);
 	zassert_equal(out[0], 0xA3, "installed module is not the staged one");
-	zassert_equal(app_registry_load_manifest("stapp", &got, sig, sizeof(sig)), 0);
-	zassert_equal(got.version, 3U);
+	zassert_equal(app_registry_load_manifest("stapp", &got, &got_len, sig, sizeof(sig)), 0);
+	zassert_equal(got.mf.version, 3U);
 	zassert_true(get_record("stapp", &rec));
 	zassert_equal(rec.version, 3U);
 	zassert_equal(rec.bound, 1U, "record not bound to the module hash");
@@ -213,7 +216,8 @@ ZTEST(registry, test_commit_installs_staged_image)
 ZTEST(registry, test_commit_downgrade_keeps_installed_image)
 {
 	struct app_manifest mf = stage("dnapp", 5, 0x55);
-	struct app_manifest got;
+	union app_manifest_buf got;
+	size_t got_len = 0;
 	struct app_record rec;
 	uint8_t sig[APP_MANIFEST_SIG_LEN];
 	uint8_t out[64];
@@ -227,8 +231,8 @@ ZTEST(registry, test_commit_downgrade_keeps_installed_image)
 	zassert_false(staged_present("dnapp"), "refused image not discarded");
 	zassert_equal(app_registry_load_blob("dnapp", out, sizeof(out), &out_len), 0);
 	zassert_equal(out[0], 0x55, "refused downgrade replaced the installed module");
-	zassert_equal(app_registry_load_manifest("dnapp", &got, sig, sizeof(sig)), 0);
-	zassert_equal(got.version, 5U, "refused downgrade replaced the manifest");
+	zassert_equal(app_registry_load_manifest("dnapp", &got, &got_len, sig, sizeof(sig)), 0);
+	zassert_equal(got.mf.version, 5U, "refused downgrade replaced the manifest");
 	zassert_true(get_record("dnapp", &rec));
 	zassert_equal(rec.version, 5U);
 
@@ -329,8 +333,8 @@ static int load_file_with(const uint8_t *bytes, size_t len, struct llext **ext)
 
 	zassert_equal(app_registry_store_blob("fileapp", bytes, len), 0);
 	zassert_equal(app_registry_blob_path("fileapp", path, sizeof(path)), 0);
-	rc = app_loader_verify_load_manifest_file(&mf, mod_sig, ARRAY_SIZE(mod_sig), path,
-						  mod_pubkey, ARRAY_SIZE(mod_pubkey),
+	rc = app_loader_verify_load_manifest_file(&mf, sizeof(mf), mod_sig, ARRAY_SIZE(mod_sig),
+						  path, mod_pubkey, ARRAY_SIZE(mod_pubkey),
 						  "app_main", ext, &entry);
 	(void)fs_unlink(path);
 	return rc;
@@ -526,8 +530,8 @@ ZTEST(lifecycle, test_restart_refused_for_loaded_app)
 	struct llext *ext = NULL;
 	void *entry = NULL;
 
-	zassert_equal(app_loader_verify_load_manifest(&mf, mod_sig, ARRAY_SIZE(mod_sig), work,
-						      len, mod_pubkey, ARRAY_SIZE(mod_pubkey),
+	zassert_equal(app_loader_verify_load_manifest(&mf, sizeof(mf), mod_sig, ARRAY_SIZE(mod_sig),
+						      work, len, mod_pubkey, ARRAY_SIZE(mod_pubkey),
 						      "app_main", &ext, &entry), 0);
 
 	int id = app_platform_launch_llext(mf.name, ext, (app_entry_t)entry, NULL, APP_CAP_LOG);
@@ -711,10 +715,10 @@ ZTEST(lifecycle, test_launch_stopped_module)
 		void *entry = NULL;
 		int id;
 
-		zassert_equal(app_loader_verify_load_manifest(&mf, mod_sig, ARRAY_SIZE(mod_sig),
-							      work, len, mod_pubkey,
-							      ARRAY_SIZE(mod_pubkey), "app_main",
-							      &ext, &entry), 0);
+		zassert_equal(app_loader_verify_load_manifest(&mf, sizeof(mf), mod_sig,
+							      ARRAY_SIZE(mod_sig), work, len,
+							      mod_pubkey, ARRAY_SIZE(mod_pubkey),
+							      "app_main", &ext, &entry), 0);
 		id = app_platform_launch_llext_opts(mf.name, ext, (app_entry_t)entry, NULL,
 						    APP_CAP_LOG, &opts);
 		zassert_true(id >= 0, "launch failed (%d)", id);

@@ -13,6 +13,10 @@ authenticated manifest carries. The sample also demonstrates the checks that
 must fail, tampering with the stored bytes so the loader rejects them, and
 offering an older version so the registry refuses the downgrade.
 
+A manifest stored by a firmware that used the previous manifest format is
+refused after an update; erase the storage partition so the sample installs the
+application again.
+
 Requirements
 ************
 

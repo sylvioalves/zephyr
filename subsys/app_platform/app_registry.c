@@ -322,8 +322,8 @@ int app_registry_load_blob(const char *name, uint8_t *buf, size_t cap,
 /* The signed manifest and its signature are stored as one file:
  * the manifest body followed by the 64-byte signature.
  */
-static int store_manifest_at(const char *name, const char *ext,
-			     const struct app_manifest *mf, const uint8_t *sig, size_t sig_len)
+static int store_manifest_at(const char *name, const char *ext, const struct app_manifest *mf,
+			     size_t mf_len, const uint8_t *sig, size_t sig_len)
 {
 	char path[MOUNT_POINT_MAX];
 	int rc = app_path(path, sizeof(path), name, ext);
@@ -331,7 +331,7 @@ static int store_manifest_at(const char *name, const char *ext,
 	if (rc != 0) {
 		return rc;
 	}
-	if (sig_len != APP_MANIFEST_SIG_LEN) {
+	if (sig_len != APP_MANIFEST_SIG_LEN || mf_len == 0U || mf_len > APP_MANIFEST_MAX_LEN) {
 		return -EINVAL;
 	}
 
@@ -343,9 +343,9 @@ static int store_manifest_at(const char *name, const char *ext,
 		return rc;
 	}
 
-	ssize_t n = fs_write(&f, mf, sizeof(*mf));
+	ssize_t n = fs_write(&f, mf, mf_len);
 
-	if (n == (ssize_t)sizeof(*mf)) {
+	if (n == (ssize_t)mf_len) {
 		n = fs_write(&f, sig, sig_len);
 		n = (n == (ssize_t)sig_len) ? 0 : -EIO;
 	} else {
@@ -355,24 +355,24 @@ static int store_manifest_at(const char *name, const char *ext,
 	if (n != 0) {
 		return -EIO;
 	}
-	LOG_INF("stored manifest for '%s' (v%u)", name, mf->version);
+	LOG_INF("stored manifest for '%s'", name);
 	return 0;
 }
 
-int app_registry_store_manifest(const char *name, const struct app_manifest *mf,
+int app_registry_store_manifest(const char *name, const struct app_manifest *mf, size_t mf_len,
 				const uint8_t *sig, size_t sig_len)
 {
-	return store_manifest_at(name, ".manifest", mf, sig, sig_len);
+	return store_manifest_at(name, ".manifest", mf, mf_len, sig, sig_len);
 }
 
 int app_registry_store_staged_manifest(const char *name, const struct app_manifest *mf,
-				       const uint8_t *sig, size_t sig_len)
+				       size_t mf_len, const uint8_t *sig, size_t sig_len)
 {
-	return store_manifest_at(name, ".manifest" STAGED_SUFFIX, mf, sig, sig_len);
+	return store_manifest_at(name, ".manifest" STAGED_SUFFIX, mf, mf_len, sig, sig_len);
 }
 
-static int load_manifest_at(const char *name, const char *ext, struct app_manifest *mf,
-			    uint8_t *sig, size_t sig_cap)
+static int load_manifest_at(const char *name, const char *ext, union app_manifest_buf *mf,
+			    size_t *mf_len, uint8_t *sig, size_t sig_cap)
 {
 	char path[MOUNT_POINT_MAX];
 	int rc = app_path(path, sizeof(path), name, ext);
@@ -392,28 +392,44 @@ static int load_manifest_at(const char *name, const char *ext, struct app_manife
 		return rc;
 	}
 
-	ssize_t n = fs_read(&f, mf, sizeof(*mf));
+	off_t size = -EIO;
+	size_t len = 0U;
 
-	if (n == (ssize_t)sizeof(*mf)) {
-		n = fs_read(&f, sig, APP_MANIFEST_SIG_LEN);
-		n = (n == APP_MANIFEST_SIG_LEN) ? 0 : -EIO;
+	if (fs_seek(&f, 0, FS_SEEK_END) == 0) {
+		size = fs_tell(&f);
+	}
+	if (size <= (off_t)APP_MANIFEST_SIG_LEN) {
+		rc = -EIO;
+	} else if (size > (off_t)(APP_MANIFEST_MAX_LEN + APP_MANIFEST_SIG_LEN)) {
+		rc = -EFBIG;
 	} else {
-		n = -EIO;
+		len = (size_t)size - APP_MANIFEST_SIG_LEN;
+		memset(mf, 0, sizeof(*mf));
+		rc = fs_seek(&f, 0, FS_SEEK_SET);
+	}
+	if (rc == 0) {
+		if (fs_read(&f, mf->raw, len) != (ssize_t)len ||
+		    fs_read(&f, sig, APP_MANIFEST_SIG_LEN) != APP_MANIFEST_SIG_LEN) {
+			rc = -EIO;
+		}
 	}
 	fs_close(&f);
-	return (n == 0) ? 0 : -EIO;
+	if (rc == 0) {
+		*mf_len = len;
+	}
+	return rc;
 }
 
-int app_registry_load_manifest(const char *name, struct app_manifest *mf,
+int app_registry_load_manifest(const char *name, union app_manifest_buf *mf, size_t *mf_len,
 			       uint8_t *sig, size_t sig_cap)
 {
-	return load_manifest_at(name, ".manifest", mf, sig, sig_cap);
+	return load_manifest_at(name, ".manifest", mf, mf_len, sig, sig_cap);
 }
 
-int app_registry_load_staged_manifest(const char *name, struct app_manifest *mf,
-				      uint8_t *sig, size_t sig_cap)
+int app_registry_load_staged_manifest(const char *name, union app_manifest_buf *mf,
+				      size_t *mf_len, uint8_t *sig, size_t sig_cap)
 {
-	return load_manifest_at(name, ".manifest" STAGED_SUFFIX, mf, sig, sig_cap);
+	return load_manifest_at(name, ".manifest" STAGED_SUFFIX, mf, mf_len, sig, sig_cap);
 }
 
 void app_registry_discard(const char *name)

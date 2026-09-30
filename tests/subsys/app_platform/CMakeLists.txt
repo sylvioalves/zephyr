@@ -54,8 +54,8 @@ add_custom_target(test_sign DEPENDS ${mf} ${sig} ${pub})
 add_dependencies(test_sign app_platform_abi)
 add_dependencies(app test_sign)
 
-# The same module signed for a foreign ABI, for the loader's ABI check. Reuses
-# the key generated above.
+# The same module signed for another interface major version, for the loader's
+# ABI check. Reuses the key generated above.
 set(badabi_mf  ${ZEPHYR_BINARY_DIR}/include/generated/test_mod.badabi.manifest.inc)
 set(badabi_sig ${ZEPHYR_BINARY_DIR}/include/generated/test_mod.badabi.sig.inc)
 
@@ -66,15 +66,46 @@ add_custom_command(
     -DKEY_DIR=${CMAKE_CURRENT_SOURCE_DIR}/keys
     -DAPP_NAME=${APP_NAME}
     -DAPP_VERSION=${APP_VERSION}
-    -DABI_OVERRIDE=00000000000000000000000000000000
+    -DABI_FILE=${APP_PLATFORM_ABI_FILE}
+    -DABI_MAJOR_OVERRIDE=0xffff
     -DOUT_MF_INC=${badabi_mf}
     -DOUT_SIG_INC=${badabi_sig}
     -DPYTHON_EXECUTABLE=${PYTHON_EXECUTABLE}
     -P ${ZEPHYR_BASE}/subsys/app_platform/cmake/sign_module.cmake
-  DEPENDS ${bin} ${sig}
+  DEPENDS ${bin} ${sig} ${APP_PLATFORM_ABI_FILE}
 )
 add_custom_target(test_badabi DEPENDS ${badabi_mf} ${badabi_sig})
+add_dependencies(test_badabi app_platform_abi)
 add_dependencies(app test_badabi)
+
+# The same module under a manifest carrying fields past the ones the firmware
+# knows, and under one cut short of them. Reuses the key generated above.
+foreach(variant long:200 short:100)
+  string(REPLACE ":" ";" variant ${variant})
+  list(GET variant 0 tag)
+  list(GET variant 1 len)
+  set(v_mf  ${ZEPHYR_BINARY_DIR}/include/generated/test_mod.${tag}.manifest.inc)
+  set(v_sig ${ZEPHYR_BINARY_DIR}/include/generated/test_mod.${tag}.sig.inc)
+
+  add_custom_command(
+    OUTPUT  ${v_mf} ${v_sig}
+    COMMAND ${CMAKE_COMMAND}
+      -DMODULE_BIN=${bin}
+      -DKEY_DIR=${CMAKE_CURRENT_SOURCE_DIR}/keys
+      -DAPP_NAME=${APP_NAME}
+      -DAPP_VERSION=${APP_VERSION}
+      -DABI_FILE=${APP_PLATFORM_ABI_FILE}
+      -DMANIFEST_LEN=${len}
+      -DOUT_MF_INC=${v_mf}
+      -DOUT_SIG_INC=${v_sig}
+      -DPYTHON_EXECUTABLE=${PYTHON_EXECUTABLE}
+      -P ${ZEPHYR_BASE}/subsys/app_platform/cmake/sign_module.cmake
+    DEPENDS ${bin} ${sig} ${APP_PLATFORM_ABI_FILE}
+  )
+  add_custom_target(test_${tag}_sign DEPENDS ${v_mf} ${v_sig})
+  add_dependencies(test_${tag}_sign app_platform_abi)
+  add_dependencies(app test_${tag}_sign)
+endforeach()
 
 # The same module signed with a heap, for the per-application heap suite.
 # Reuses the key generated above.
@@ -118,6 +149,7 @@ add_custom_command(
     -DOUT_MF_INC=${evil_mf}
     -DOUT_SIG_INC=${evil_sig}
     -DPYTHON_EXECUTABLE=${PYTHON_EXECUTABLE}
+    -DZEPHYR_BASE=${ZEPHYR_BASE}
     -P ${CMAKE_CURRENT_SOURCE_DIR}/cmake/make_evil.cmake
   DEPENDS ${bin} ${sig} ${APP_PLATFORM_ABI_FILE}
 )

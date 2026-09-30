@@ -43,8 +43,8 @@ supervision, the restart budget, reclaim and the capability and grant checks all
 work as before, but only as a contract: nothing stops an application from
 writing any memory or calling kernel functions directly, and a fault the
 hardware does not report goes unnoticed. Run only trusted applications this way.
-A module built for one mode is refused by a firmware of the other, because the
-firmware ABI identifier covers the mode.
+A module does not depend on the mode: it reaches the services only through the
+functions the firmware exports, see `Module interface`_.
 
 Capabilities and grants
 =======================
@@ -221,12 +221,91 @@ authenticated manifest. A valid signature therefore cannot be moved onto
 different bytes or relabelled, and the registry refuses to install a version
 older than the one already recorded.
 
-The manifest also names the ABI the module was built for. The build derives an
-ABI identifier from the syscall numbering and the application interface
-headers, the signer writes it into the manifest, and the loader rejects a
-module whose identifier differs from the running firmware's with ``-ENOEXEC``.
-A module built for another firmware configuration therefore fails to load
-instead of invoking the wrong system calls.
+The manifest also carries the major version of the module interface the module
+was built against, from the ``major`` line of
+:zephyr_file:`subsys/app_platform/abi/app_abi.txt`, and the loader refuses a
+module of another major version with ``-ENOEXEC``. The loader refuses with
+``-ENOEXEC`` as well a module whose ELF flags do not match the firmware: on
+RISC-V the floating-point ABI and the compressed and embedded base ISA bits, on
+Arm the EABI version and a float ABI bit when the object sets one.
+
+Manifest format
+---------------
+
+The signed manifest is a header of three fields followed by the fields of the
+format, all little-endian and packed. The signature covers exactly ``hdr_len``
+bytes. The signing script ``sign_module.cmake`` builds it from
+``APP_NAME``, ``APP_VERSION``, ``APP_HEAP_SIZE``, ``APP_REQUESTED_CAPS`` and
+``APP_REQUIRED_CAPS`` and from what the firmware build writes to
+``build/zephyr/app_platform_abi.txt``.
+
+.. list-table::
+   :header-rows: 1
+
+   * - Offset
+     - Field
+     - Meaning
+   * - 0
+     - ``uint32 magic``
+     - ``AMF4``, ``0x34464d41``
+   * - 4
+     - ``uint16 hdr_len``
+     - length of the signed manifest, at least 160 and at most 256
+   * - 6
+     - ``uint16 format``
+     - format of the manifest, 4 or later
+   * - 8
+     - ``uint32 version``
+     - application version, never lower than the installed one
+   * - 12
+     - ``uint32 module_len``
+     - module length in bytes
+   * - 16
+     - ``char name[32]``
+     - application name, NUL-terminated
+   * - 48
+     - ``uint8 module_sha256[32]``
+     - SHA-256 of the module
+   * - 80
+     - ``uint8 abi_id[16]``
+     - build identifier of the interface headers, recorded but not checked
+   * - 96
+     - ``uint32 target``
+     - target the module was built for
+   * - 100
+     - ``uint16 abi_major``
+     - interface major version, must equal the firmware's
+   * - 102
+     - ``uint16 reserved0``
+     - zero
+   * - 104
+     - ``uint32 heap_size``
+     - per-application heap in bytes, 0 for none
+   * - 108
+     - ``uint32 key_id``
+     - signing key, 0 for the default key
+   * - 112
+     - ``uint64 requested_caps``
+     - capabilities the application asks for
+   * - 120
+     - ``uint64 required_caps``
+     - capabilities it cannot run without, a subset of the requested ones
+   * - 128
+     - ``uint32 flags``
+     - zero, no flag is defined
+   * - 132
+     - ``uint8 reserved[28]``
+     - zero
+
+A firmware accepts any ``hdr_len`` from the length of the fields it knows up to
+256 bytes and ignores the fields past them, so a later format can append fields
+that an older firmware skips while still checking the signature over them. A
+manifest shorter than the fields the firmware knows, or presented with another
+length than its ``hdr_len``, is refused with ``-EBADMSG``. The loader records the
+capabilities of a verified module, but the launcher's capability mask still
+decides what the application may use. A manifest of the previous fixed-layout
+format, magic ``AMF3``, is refused with ``-ENOTSUP`` and a log line asking for
+the application to be installed again.
 
 Module interface
 ================

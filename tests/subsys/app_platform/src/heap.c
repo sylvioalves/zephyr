@@ -474,8 +474,8 @@ ZTEST(memheap, test_loaded_module_gets_its_signed_heap)
 	memcpy(&mf, mod_manifest, sizeof(mf));
 	zassert_true(mf.heap_size > 0U, "the test module declares no heap");
 
-	zassert_equal(app_loader_verify_load_manifest(&mf, mod_sig, sizeof(mod_sig), buf,
-						      sizeof(mod_bytes), mod_pubkey,
+	zassert_equal(app_loader_verify_load_manifest(&mf, sizeof(mf), mod_sig, sizeof(mod_sig),
+						      buf, sizeof(mod_bytes), mod_pubkey,
 						      sizeof(mod_pubkey), "app_main", &ext, &entry),
 		      0);
 	zassert_equal(app_loader_heap_size(ext), mf.heap_size);

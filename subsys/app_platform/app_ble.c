@@ -737,7 +737,7 @@ int z_impl_app_svc_ble_hr_read(uint32_t timeout_ms, uint8_t *out_bpm)
  * signature and the module hash exactly as it would for an HTTP download, so a
  * peer that lies about either is rejected by the same check.
  */
-#define OTA_HDR_LEN  (sizeof(struct app_manifest) + APP_MANIFEST_SIG_LEN)
+#define OTA_HDR_MAX  (APP_MANIFEST_MAX_LEN + APP_MANIFEST_SIG_LEN)
 #define OTA_CHUNK_MAX 244U
 
 static struct bt_conn *ota_conn;
@@ -753,6 +753,8 @@ static uint16_t ota_data_handle;
 static char ota_want[BLE_NAME_MAX];
 static bool ota_connect_wanted;
 static uint8_t ota_chunk[OTA_CHUNK_MAX];
+static uint8_t ota_hdr[OTA_HDR_MAX];
+static union app_manifest_buf ota_mf;
 static uint16_t ota_chunk_len;
 static int ota_step_rc;
 
@@ -1009,38 +1011,55 @@ static int ble_do_ota_fetch(const char *name, uint32_t timeout_ms)
 		goto out;
 	}
 
-	/* Header first: the manifest and its signature, at offset zero. */
-	rc = ota_read_at(0, timeout_ms);
-	if (rc != 0) {
-		goto out;
-	}
-	if (ota_chunk_len < OTA_HDR_LEN) {
-		rc = -EBADMSG;
-		goto out;
+	/* Header first: the manifest and its signature, at offset zero. The
+	 * manifest states its own length in its first bytes.
+	 */
+	const struct app_manifest *mf = &ota_mf.mf;
+	size_t mf_len = 0U;
+	size_t have = 0U;
+	size_t need = offsetof(struct app_manifest, format);
+
+	while (have < need) {
+		rc = ota_read_at(have, timeout_ms);
+		if (rc != 0) {
+			goto out;
+		}
+		if (ota_chunk_len == 0U) {
+			rc = -EBADMSG;
+			goto out;
+		}
+
+		size_t n = MIN((size_t)ota_chunk_len, sizeof(ota_hdr) - have);
+
+		memcpy(&ota_hdr[have], ota_chunk, n);
+		have += n;
+		if (mf_len == 0U && have >= need) {
+			mf_len = sys_get_le16(&ota_hdr[offsetof(struct app_manifest, hdr_len)]);
+			if (sys_get_le32(ota_hdr) != APP_MANIFEST_MAGIC ||
+			    mf_len < sizeof(struct app_manifest) || mf_len > APP_MANIFEST_MAX_LEN) {
+				rc = -EBADMSG;
+				goto out;
+			}
+			need = mf_len + APP_MANIFEST_SIG_LEN;
+		}
 	}
 
-	struct app_manifest mf;
-	uint8_t sig[APP_MANIFEST_SIG_LEN];
+	memset(&ota_mf, 0, sizeof(ota_mf));
+	memcpy(ota_mf.raw, ota_hdr, mf_len);
 
-	memcpy(&mf, ota_chunk, sizeof(mf));
-	memcpy(sig, &ota_chunk[sizeof(mf)], sizeof(sig));
-
-	if (mf.magic != APP_MANIFEST_MAGIC) {
-		rc = -EBADMSG;
-		goto out;
-	}
-	if (mf.module_len == 0U ||
-	    mf.module_len > CONFIG_APP_PLATFORM_LOADER_MAX_MODULE_BYTES) {
+	if (mf->module_len == 0U ||
+	    mf->module_len > CONFIG_APP_PLATFORM_LOADER_MAX_MODULE_BYTES) {
 		rc = -EFBIG;
 		goto out;
 	}
 	/* The peer names the application; the manifest is what decides it. */
-	if (strncmp(mf.name, name, APP_MANIFEST_NAME_MAX) != 0) {
+	if (strncmp(mf->name, name, APP_MANIFEST_NAME_MAX) != 0) {
 		rc = -EPERM;
 		goto out;
 	}
 
-	rc = app_registry_store_staged_manifest(name, &mf, sig, sizeof(sig));
+	rc = app_registry_store_staged_manifest(name, mf, mf_len, &ota_hdr[mf_len],
+						APP_MANIFEST_SIG_LEN);
 	if (rc != 0) {
 		goto out;
 	}
@@ -1063,8 +1082,8 @@ static int ble_do_ota_fetch(const char *name, uint32_t timeout_ms)
 
 	uint32_t got = 0;
 
-	while (got < mf.module_len) {
-		rc = ota_read_at(OTA_HDR_LEN + got, timeout_ms);
+	while (got < mf->module_len) {
+		rc = ota_read_at(need + got, timeout_ms);
 		if (rc != 0) {
 			break;
 		}
@@ -1074,7 +1093,7 @@ static int ble_do_ota_fetch(const char *name, uint32_t timeout_ms)
 			break;
 		}
 		uint32_t want = MIN((uint32_t)ota_chunk_len,
-				    mf.module_len - got);
+				    mf->module_len - got);
 		ssize_t n = fs_write(&f, ota_chunk, want);
 
 		if (n < 0 || (uint32_t)n != want) {
@@ -1085,7 +1104,7 @@ static int ble_do_ota_fetch(const char *name, uint32_t timeout_ms)
 	}
 	fs_close(&f);
 
-	if (rc == 0 && got != mf.module_len) {
+	if (rc == 0 && got != mf->module_len) {
 		rc = -EBADMSG;
 	}
 	if (rc == 0) {

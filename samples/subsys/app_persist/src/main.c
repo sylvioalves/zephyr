@@ -60,10 +60,10 @@ static bool find_record(const char *name, struct app_record *out)
 	return false;
 }
 
-static int load_from_flash(const struct app_manifest *mf, const uint8_t *sig,
+static int load_from_flash(const struct app_manifest *mf, size_t mf_len, const uint8_t *sig,
 			   const char *path, struct llext **ext, void **entry)
 {
-	return app_loader_verify_load_manifest_file(mf, sig, APP_MANIFEST_SIG_LEN,
+	return app_loader_verify_load_manifest_file(mf, mf_len, sig, APP_MANIFEST_SIG_LEN,
 						    path, persist_pubkey,
 						    ARRAY_SIZE(persist_pubkey),
 						    "app_main", ext, entry);
@@ -73,7 +73,7 @@ static int load_from_flash(const struct app_manifest *mf, const uint8_t *sig,
  * on-flash module file and confirm the streamed load is refused because the
  * module no longer matches the signed manifest hash, then restore the byte.
  */
-static void tamper_self_test(const struct app_manifest *mf, const uint8_t *sig,
+static void tamper_self_test(const struct app_manifest *mf, size_t mf_len, const uint8_t *sig,
 			     const char *path)
 {
 	struct llext *ext = NULL;
@@ -95,7 +95,7 @@ static void tamper_self_test(const struct app_manifest *mf, const uint8_t *sig,
 	fs_write(&f, &flipped, 1);
 	fs_close(&f);
 
-	int rc = load_from_flash(mf, sig, path, &ext, &entry);
+	int rc = load_from_flash(mf, mf_len, sig, path, &ext, &entry);
 
 	fs_file_t_init(&f);
 	if (fs_open(&f, path, FS_O_RDWR) == 0) {
@@ -136,6 +136,7 @@ int main(void)
 
 		if (rc == 0) {
 			rc = app_registry_store_manifest(APP_NAME, seed,
+							 ARRAY_SIZE(persist_manifest),
 							 persist_sig,
 							 ARRAY_SIZE(persist_sig));
 		}
@@ -155,10 +156,12 @@ int main(void)
 	}
 
 	/* Load the manifest+signature from flash and authenticate them. */
-	struct app_manifest mf;
+	union app_manifest_buf mb;
+	const struct app_manifest *mf = &mb.mf;
+	size_t mf_len = 0;
 	uint8_t sig[APP_MANIFEST_SIG_LEN];
 
-	if (app_registry_load_manifest(APP_NAME, &mf, sig, sizeof(sig)) != 0) {
+	if (app_registry_load_manifest(APP_NAME, &mb, &mf_len, sig, sizeof(sig)) != 0) {
 		printk("could not read '%s' manifest from flash\n", APP_NAME);
 		return 0;
 	}
@@ -180,33 +183,33 @@ int main(void)
 		printk("could not build '%s' binary path\n", APP_NAME);
 		return 0;
 	}
-	printk("streaming '%s' v%u from %s (%u bytes)\n", mf.name, mf.version,
-	       path, mf.module_len);
+	printk("streaming '%s' v%u from %s (%u bytes)\n", mf->name, mf->version,
+	       path, mf->module_len);
 
-	tamper_self_test(&mf, sig, path);
+	tamper_self_test(mf, mf_len, sig, path);
 
 	struct llext *ext = NULL;
 	void *entry = NULL;
 
-	if (load_from_flash(&mf, sig, path, &ext, &entry) != 0) {
+	if (load_from_flash(mf, mf_len, sig, path, &ext, &entry) != 0) {
 		printk("manifest verify/load of flash binary failed\n");
 		return 0;
 	}
-	if (!find_record(APP_NAME, &rec) || app_registry_check(&rec, &mf) != 0) {
+	if (!find_record(APP_NAME, &rec) || app_registry_check(&rec, mf) != 0) {
 		printk("'%s' on flash does not match its installed record\n", APP_NAME);
 		app_loader_forget(ext);
 		llext_unload(&ext);
 		return 0;
 	}
 
-	app_platform_launch_llext(mf.name, ext, (app_entry_t)entry, NULL, APP_CAPS);
+	app_platform_launch_llext(mf->name, ext, (app_entry_t)entry, NULL, APP_CAPS);
 	printk("running authenticated '%s' v%u from persisted binary\n",
-	       mf.name, mf.version);
+	       mf->name, mf->version);
 
 	for (;;) {
 		k_msleep(5000);
 		printk("*** '%s' still running; reboot and it returns from "
-		       "flash ***\n", mf.name);
+		       "flash ***\n", mf->name);
 	}
 	return 0;
 }

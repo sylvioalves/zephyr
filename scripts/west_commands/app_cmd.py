@@ -25,10 +25,16 @@ try:
 except ImportError as e:
     MISSING_REQUIREMENT = e.name
 
-# struct app_manifest (include/zephyr/app_platform/app_manifest.h), then the
-# ECDSA P-256 signature.
-MANIFEST_FMT = '<III32s32s16sI'
-MANIFEST_MAGIC = 0x33464D41
+# struct app_manifest (include/zephyr/app_platform/app_manifest.h): a header of
+# magic, signed length and format, then the fields, followed by the ECDSA P-256
+# signature. Bytes past the fields known here are signed but not interpreted.
+MANIFEST_HDR_FMT = '<IHH'
+MANIFEST_FIELDS_FMT = '<II32s32s16sIHHIIQQI'
+MANIFEST_MAGIC = 0x34464D41
+MANIFEST_MAGIC_V3 = 0x33464D41
+MANIFEST_FORMAT = 4
+MANIFEST_MIN_LEN = 160
+MANIFEST_MAX_LEN = 256
 MANIFEST_SIG_LEN = 64
 
 SMP_OP_WRITE = 2
@@ -48,6 +54,48 @@ REQUEST_TIMEOUT = 5.0
 INSTALL_TIMEOUT = 60.0
 
 ANSI_ESCAPE = re.compile(r'\x1b\[[0-9;]*[A-Za-z]')
+
+
+def parse_manifest(blob):
+    '''Return the fields of a manifest file, the manifest followed by its
+    signature, or None when it is not one this tool understands.'''
+    if len(blob) < struct.calcsize(MANIFEST_HDR_FMT):
+        return None
+    magic, hdr_len, fmt = struct.unpack_from(MANIFEST_HDR_FMT, blob)
+    if (
+        magic != MANIFEST_MAGIC
+        or fmt < MANIFEST_FORMAT
+        or not MANIFEST_MIN_LEN <= hdr_len <= MANIFEST_MAX_LEN
+        or len(blob) != hdr_len + MANIFEST_SIG_LEN
+    ):
+        return None
+    (
+        version,
+        module_len,
+        name,
+        _,
+        _,
+        target,
+        abi_major,
+        _,
+        heap_size,
+        key_id,
+        requested_caps,
+        required_caps,
+        flags,
+    ) = struct.unpack_from(MANIFEST_FIELDS_FMT, blob, struct.calcsize(MANIFEST_HDR_FMT))
+    return {
+        'name': name.split(b'\0', 1)[0].decode('ascii', errors='replace'),
+        'version': version,
+        'module_len': module_len,
+        'target': target,
+        'abi_major': abi_major,
+        'heap_size': heap_size,
+        'key_id': key_id,
+        'requested_caps': requested_caps,
+        'required_caps': required_caps,
+        'flags': flags,
+    }
 
 
 class SmpError(Exception):
@@ -240,19 +288,18 @@ class App(WestCommand):
 
     def parse_manifest(self, mf_path, llext_path):
         blob = mf_path.read_bytes()
-        if len(blob) != struct.calcsize(MANIFEST_FMT) + MANIFEST_SIG_LEN:
+        manifest = parse_manifest(blob)
+        if manifest is None:
+            if blob[:4] == struct.pack('<I', MANIFEST_MAGIC_V3):
+                self.wrn(f'{mf_path}: manifest of the previous format; rebuild it, skipped')
             return None
-        magic, version, module_len, name, _, _, heap_size = struct.unpack_from(MANIFEST_FMT, blob)
-        if magic != MANIFEST_MAGIC:
-            return None
-        name = name.split(b'\0', 1)[0].decode('ascii', errors='replace')
-        if module_len != llext_path.stat().st_size:
+        if manifest['module_len'] != llext_path.stat().st_size:
             self.wrn(
                 f'{llext_path}: {llext_path.stat().st_size} bytes, '
-                f'manifest says {module_len}; skipped'
+                f'manifest says {manifest["module_len"]}; skipped'
             )
             return None
-        return {'name': name, 'version': version, 'heap_size': heap_size}
+        return manifest
 
     def install(self, args):
         directory = Path(find_build_dir(args.build_dir))

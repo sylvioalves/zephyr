@@ -5,7 +5,7 @@
  */
 
 /* Additional loader negatives: wrong key, truncated, padded, name mismatch,
- * foreign ABI, foreign ELF class, CPU or ELF flags.
+ * foreign ABI, foreign ELF class, CPU or ELF flags, and the manifest format.
  */
 
 #include <zephyr/ztest.h>
@@ -35,15 +35,30 @@ static const uint8_t badabi_manifest[] = {
 static const uint8_t badabi_sig[] = {
 #include "test_mod.badabi.sig.inc"
 };
+static const uint8_t long_manifest[] = {
+#include "test_mod.long.manifest.inc"
+};
+static const uint8_t long_sig[] = {
+#include "test_mod.long.sig.inc"
+};
+static const uint8_t short_manifest[] = {
+#include "test_mod.short.manifest.inc"
+};
+static const uint8_t short_sig[] = {
+#include "test_mod.short.sig.inc"
+};
 
-static uint8_t work[8192 + 256];
+#define MANIFEST_V3_MAGIC 0x33464d41U
+#define MANIFEST_V3_LEN   124U
+
+static uint8_t work[8192 + 256] __aligned(8);
 
 static int load_key(const struct app_manifest *mf, const uint8_t *key,
 		    size_t key_len, uint8_t *buf, size_t len, struct llext **ext)
 {
 	void *entry = NULL;
 
-	return app_loader_verify_load_manifest(mf, mod_sig, ARRAY_SIZE(mod_sig), buf,
+	return app_loader_verify_load_manifest(mf, sizeof(*mf), mod_sig, ARRAY_SIZE(mod_sig), buf,
 					       len, key, key_len, "app_main", ext,
 					       &entry);
 }
@@ -146,7 +161,8 @@ ZTEST(loader_neg, test_foreign_abi_rejected)
 
 	memcpy(&mf, badabi_manifest, sizeof(mf));
 	memcpy(work, mod_bytes, ARRAY_SIZE(mod_bytes));
-	int rc = app_loader_verify_load_manifest(&mf, badabi_sig, ARRAY_SIZE(badabi_sig), work,
+	int rc = app_loader_verify_load_manifest(&mf, sizeof(mf), badabi_sig,
+						 ARRAY_SIZE(badabi_sig), work,
 						 ARRAY_SIZE(mod_bytes), mod_pubkey,
 						 ARRAY_SIZE(mod_pubkey), "app_main", &ext, &entry);
 
@@ -164,9 +180,10 @@ ZTEST(loader_neg, test_file_foreign_abi_rejected)
 	memcpy(&mf, badabi_manifest, sizeof(mf));
 	zassert_equal(app_registry_store_blob("abiapp", mod_bytes, ARRAY_SIZE(mod_bytes)), 0);
 	zassert_equal(app_registry_blob_path("abiapp", path, sizeof(path)), 0);
-	int rc = app_loader_verify_load_manifest_file(&mf, badabi_sig, ARRAY_SIZE(badabi_sig), path,
-						      mod_pubkey, ARRAY_SIZE(mod_pubkey),
-						      "app_main", &ext, &entry);
+	int rc = app_loader_verify_load_manifest_file(&mf, sizeof(mf), badabi_sig,
+						      ARRAY_SIZE(badabi_sig), path, mod_pubkey,
+						      ARRAY_SIZE(mod_pubkey), "app_main", &ext,
+						      &entry);
 
 	(void)fs_unlink(path);
 	zassert_equal(rc, -ENOEXEC, "foreign ABI must be rejected (%d)", rc);
@@ -223,3 +240,112 @@ ZTEST(loader_neg, test_foreign_elf_flags_rejected)
 }
 
 ZTEST_SUITE(loader_neg, NULL, NULL, NULL, NULL, NULL);
+
+static int load_mf(const union app_manifest_buf *mb, size_t mf_len, const uint8_t *sig,
+		   struct llext **ext)
+{
+	void *entry = NULL;
+
+	memcpy(work, mod_bytes, ARRAY_SIZE(mod_bytes));
+	return app_loader_verify_load_manifest(&mb->mf, mf_len, sig, APP_MANIFEST_SIG_LEN, work,
+					       ARRAY_SIZE(mod_bytes), mod_pubkey,
+					       ARRAY_SIZE(mod_pubkey), "app_main", ext, &entry);
+}
+
+static int load_mf_file(const char *name, const union app_manifest_buf *mb, size_t mf_len,
+			const uint8_t *sig, struct llext **ext)
+{
+	union app_manifest_buf got;
+	uint8_t got_sig[APP_MANIFEST_SIG_LEN];
+	size_t got_len = 0;
+	void *entry = NULL;
+	char path[64];
+	int rc;
+
+	zassert_equal(app_registry_store_manifest(name, &mb->mf, mf_len, sig,
+						  APP_MANIFEST_SIG_LEN), 0);
+	zassert_equal(app_registry_store_blob(name, mod_bytes, ARRAY_SIZE(mod_bytes)), 0);
+	zassert_equal(app_registry_load_manifest(name, &got, &got_len, got_sig, sizeof(got_sig)),
+		      0);
+	zassert_equal(got_len, mf_len, "stored manifest length changed");
+	zassert_mem_equal(got.raw, mb->raw, mf_len, "stored manifest changed");
+	zassert_equal(app_registry_blob_path(name, path, sizeof(path)), 0);
+	rc = app_loader_verify_load_manifest_file(&got.mf, got_len, got_sig, sizeof(got_sig), path,
+						  mod_pubkey, ARRAY_SIZE(mod_pubkey), "app_main",
+						  ext, &entry);
+	(void)app_registry_install(name, false);
+	zassert_equal(app_registry_uninstall(name), 0);
+	return rc;
+}
+
+/* A manifest carrying fields past the ones this firmware knows loads, and the
+ * signature covers those fields.
+ */
+ZTEST(manifest_format, test_longer_manifest_loads)
+{
+	union app_manifest_buf mb;
+	struct llext *ext = NULL;
+
+	BUILD_ASSERT(sizeof(long_manifest) > sizeof(struct app_manifest));
+	BUILD_ASSERT(sizeof(long_manifest) <= APP_MANIFEST_MAX_LEN);
+
+	memcpy(mb.raw, long_manifest, sizeof(long_manifest));
+	zassert_equal(mb.mf.hdr_len, sizeof(long_manifest));
+	zassert_equal(load_mf(&mb, sizeof(long_manifest), long_sig, &ext), 0);
+	zassert_true(app_loader_is_verified(ext));
+	app_loader_forget(ext);
+	llext_unload(&ext);
+
+	zassert_equal(load_mf_file("longapp", &mb, sizeof(long_manifest), long_sig, &ext), 0);
+	zassert_true(app_loader_is_verified(ext));
+	app_loader_forget(ext);
+	llext_unload(&ext);
+
+	mb.raw[sizeof(long_manifest) - 1] ^= 0xffU;
+	zassert_equal(load_mf(&mb, sizeof(long_manifest), long_sig, &ext), -EPERM,
+		      "an unknown field is not covered by the signature");
+	zassert_is_null(ext);
+}
+
+/* A manifest of the previous format, as an older firmware installed it, asks
+ * for the application to be installed again.
+ */
+ZTEST(manifest_format, test_format_3_refused)
+{
+	union app_manifest_buf mb;
+	struct llext *ext = NULL;
+
+	memset(&mb, 0, sizeof(mb));
+	memcpy(mb.raw, mod_manifest, MANIFEST_V3_LEN);
+	sys_put_le32(MANIFEST_V3_MAGIC, mb.raw);
+
+	zassert_equal(load_mf(&mb, MANIFEST_V3_LEN, mod_sig, &ext), -ENOTSUP);
+	zassert_is_null(ext);
+	zassert_equal(load_mf_file("oldapp", &mb, MANIFEST_V3_LEN, mod_sig, &ext), -ENOTSUP);
+	zassert_is_null(ext);
+}
+
+/* A manifest shorter than the fields this firmware knows is refused even when
+ * it is signed, as is one presented with another length than it states.
+ */
+ZTEST(manifest_format, test_short_manifest_refused)
+{
+	union app_manifest_buf mb;
+	struct llext *ext = NULL;
+
+	BUILD_ASSERT(sizeof(short_manifest) < sizeof(struct app_manifest));
+
+	memset(&mb, 0, sizeof(mb));
+	memcpy(mb.raw, short_manifest, sizeof(short_manifest));
+	zassert_equal(mb.mf.hdr_len, sizeof(short_manifest));
+	zassert_equal(load_mf(&mb, sizeof(short_manifest), short_sig, &ext), -EBADMSG);
+	zassert_is_null(ext);
+
+	memcpy(mb.raw, mod_manifest, sizeof(mod_manifest));
+	zassert_equal(load_mf(&mb, sizeof(mod_manifest) - 1U, mod_sig, &ext), -EBADMSG);
+	zassert_equal(load_mf(&mb, sizeof(mod_manifest) + 1U, mod_sig, &ext), -EBADMSG);
+	zassert_equal(load_mf(&mb, APP_MANIFEST_MAX_LEN + 1U, mod_sig, &ext), -EBADMSG);
+	zassert_is_null(ext);
+}
+
+ZTEST_SUITE(manifest_format, NULL, NULL, NULL, NULL, NULL);

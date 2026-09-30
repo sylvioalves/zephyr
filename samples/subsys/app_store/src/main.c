@@ -44,7 +44,7 @@ static const uint8_t module_pubkey[] = {
 
 #define APP_CAPS (APP_CAP_LOG | APP_CAP_TIME)
 
-static int install_and_run(const struct app_manifest *mf, const uint8_t *sig,
+static int install_and_run(const struct app_manifest *mf, size_t mf_len, const uint8_t *sig,
 			   uint8_t *buf, size_t len)
 {
 	struct llext *ext = NULL;
@@ -53,7 +53,7 @@ static int install_and_run(const struct app_manifest *mf, const uint8_t *sig,
 	printk("app-store: installing '%s' v%u (%zu bytes)\n", mf->name,
 	       mf->version, len);
 
-	int rc = app_loader_verify_load_manifest(mf, sig, APP_MANIFEST_SIG_LEN,
+	int rc = app_loader_verify_load_manifest(mf, mf_len, sig, APP_MANIFEST_SIG_LEN,
 						 buf, len, module_pubkey,
 						 ARRAY_SIZE(module_pubkey),
 						 "app_main", &ext, &entry);
@@ -90,7 +90,7 @@ int main(void)
 
 	/* 1. A genuine module: the manifest verifies, it installs and runs. */
 	printk("\n=== case 1: genuine signed module ===\n");
-	install_and_run(mf, module_sig, module_buf, len);
+	install_and_run(mf, ARRAY_SIZE(module_manifest), module_sig, module_buf, len);
 
 	k_msleep(3000);
 
@@ -101,7 +101,7 @@ int main(void)
 	uint8_t saved = module_buf[len / 2];
 
 	module_buf[len / 2] ^= 0xff;
-	install_and_run(mf, module_sig, module_buf, len);
+	install_and_run(mf, ARRAY_SIZE(module_manifest), module_sig, module_buf, len);
 	module_buf[len / 2] = saved;
 
 	/* 3. Bypass attempt: load the module raw, skipping the verifier, and try

@@ -5,49 +5,51 @@
 # separated C byte literals, the manifest body (OUT_MF_INC), the signature
 # (OUT_SIG_INC) and, when OUT_PUB_INC is set, the trusted public key in SEC1
 # uncompressed form. When OUT_MANIFEST is set, the manifest followed by its
-# signature is also written there as the binary a server hosts. The manifest
-# carries the ABI identifier read from ABI_FILE, or ABI_OVERRIDE (32 hex
-# digits) when set, and the per-application heap size APP_HEAP_SIZE (bytes,
-# 0 when unset). A keypair is generated once at KEY_DIR and reused so the
-# embedded public key stays stable across builds. The private key never leaves
-# the build host.
+# signature is also written there as the binary a server hosts. A keypair is
+# generated once at KEY_DIR and reused so the embedded public key stays stable
+# across builds. The private key never leaves the build host.
 #
-# The manifest layout MUST match struct app_manifest (app_manifest.h):
-#   uint32 magic ('A','M','F','3' LE) | uint32 version | uint32 module_len |
-#   char name[32] | uint8 module_sha256[32] | uint8 abi_id[16] |
-#   uint32 heap_size -- packed, little-endian.
+# The manifest carries the interface major version and the other facts the
+# firmware build wrote to ABI_FILE, the per-application heap size APP_HEAP_SIZE
+# and the capabilities APP_REQUESTED_CAPS and APP_REQUIRED_CAPS (0 when unset).
+# The layout is built by sign_module.py and matches struct app_manifest
+# (app_manifest.h). ABI_MAJOR_OVERRIDE and MANIFEST_LEN produce a manifest
+# this firmware refuses or one with fields it does not know, for tests.
 #
 # Inputs: MODULE_BIN, KEY_DIR, APP_NAME, APP_VERSION, ABI_FILE, OUT_MF_INC,
 #         OUT_SIG_INC, PYTHON_EXECUTABLE. Optional: OUT_PUB_INC, OUT_MANIFEST,
-#         ABI_OVERRIDE, APP_HEAP_SIZE.
+#         APP_HEAP_SIZE, APP_REQUESTED_CAPS, APP_REQUIRED_CAPS,
+#         ABI_MAJOR_OVERRIDE, MANIFEST_LEN.
 
-if(NOT DEFINED APP_HEAP_SIZE OR "${APP_HEAP_SIZE}" STREQUAL "")
-  set(APP_HEAP_SIZE 0)
-endif()
+set(args
+  --module ${MODULE_BIN}
+  --key ${KEY_DIR}/app_signing_key.pem
+  --abi-file ${ABI_FILE}
+  --name ${APP_NAME}
+  --version ${APP_VERSION}
+  --out-mf-inc ${OUT_MF_INC}
+  --out-sig-inc ${OUT_SIG_INC}
+)
 
-if(DEFINED ABI_OVERRIDE)
-  set(abi "${ABI_OVERRIDE}")
-else()
-  file(STRINGS "${ABI_FILE}" abi LIMIT_COUNT 1)
-endif()
-
-set(priv "${KEY_DIR}/app_signing_key.pem")
-
-if(NOT EXISTS "${priv}")
-  file(MAKE_DIRECTORY "${KEY_DIR}")
-  execute_process(
-    COMMAND ${PYTHON_EXECUTABLE} -c
-      "from cryptography.hazmat.primitives.asymmetric import ec\nfrom cryptography.hazmat.primitives import serialization as s\nk=ec.generate_private_key(ec.SECP256R1())\nopen(r'${priv}','wb').write(k.private_bytes(s.Encoding.PEM,s.PrivateFormat.PKCS8,s.NoEncryption()))"
-    RESULT_VARIABLE rc)
-  if(NOT rc EQUAL 0)
-    message(FATAL_ERROR "failed to generate signing key")
+foreach(opt
+    OUT_PUB_INC:--out-pub-inc
+    OUT_MANIFEST:--out-manifest
+    APP_HEAP_SIZE:--heap-size
+    APP_REQUESTED_CAPS:--requested-caps
+    APP_REQUIRED_CAPS:--required-caps
+    ABI_MAJOR_OVERRIDE:--abi-major
+    MANIFEST_LEN:--manifest-len)
+  string(REPLACE ":" ";" opt ${opt})
+  list(GET opt 0 var)
+  list(GET opt 1 flag)
+  if(DEFINED ${var} AND NOT "${${var}}" STREQUAL "")
+    list(APPEND args ${flag} ${${var}})
   endif()
-endif()
+endforeach()
 
 execute_process(
-  COMMAND ${PYTHON_EXECUTABLE} -c
-"import struct\nfrom cryptography.hazmat.primitives import hashes, serialization as s\nfrom cryptography.hazmat.primitives.asymmetric import ec, utils\npriv=s.load_pem_private_key(open(r'${priv}','rb').read(),None)\ndata=open(r'${MODULE_BIN}','rb').read()\nh=hashes.Hash(hashes.SHA256());h.update(data);mod=h.finalize()\nname=b'${APP_NAME}'\nassert len(name)<32,'name too long'\nname=name+b'\\x00'*(32-len(name))\nabi=bytes.fromhex('${abi}')\nassert len(abi)==16,'bad abi id'\nmf=struct.pack('<III',0x33464d41,${APP_VERSION},len(data))+name+mod+abi+struct.pack('<I',${APP_HEAP_SIZE})\nmh=hashes.Hash(hashes.SHA256());mh.update(mf);dig=mh.finalize()\nder=priv.sign(dig,ec.ECDSA(utils.Prehashed(hashes.SHA256())))\nr,ss=utils.decode_dss_signature(der)\nraw=r.to_bytes(32,'big')+ss.to_bytes(32,'big')\npub=priv.public_key().public_bytes(s.Encoding.X962,s.PublicFormat.UncompressedPoint)\ndef emit(b):\n    return ','.join('0x%02x'%x for x in b)\nopen(r'${OUT_MF_INC}','w').write(emit(mf)+'\\n')\nopen(r'${OUT_SIG_INC}','w').write(emit(raw)+'\\n')\nif r'${OUT_PUB_INC}':\n    open(r'${OUT_PUB_INC}','w').write(emit(pub)+'\\n')\nif r'${OUT_MANIFEST}':\n    open(r'${OUT_MANIFEST}','wb').write(mf+raw)"
+  COMMAND ${PYTHON_EXECUTABLE} ${CMAKE_CURRENT_LIST_DIR}/sign_module.py ${args}
   RESULT_VARIABLE rc)
 if(NOT rc EQUAL 0)
-  message(FATAL_ERROR "failed to sign manifest")
+  message(FATAL_ERROR "failed to sign ${MODULE_BIN}")
 endif()

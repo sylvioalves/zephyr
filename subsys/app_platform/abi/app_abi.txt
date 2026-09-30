@@ -12,6 +12,13 @@
 #
 # A released entry never changes. A new signature or behavior takes a new entry with the next
 # version, and the old one stays as a "fw" entry for the modules built against it.
+#
+# The "major" line is the major version of the whole interface. The signed manifest of a module
+# records it and a firmware loads only modules of its own major version. It is raised only for a
+# change that breaks every existing module, such as removing an entry or changing a type in
+# app_svc_types.h that an entry passes.
+
+major 1
 
 log               1 svc APP_PLATFORM_SERVICES  void (const char *msg)
 heartbeat         1 svc APP_PLATFORM_SERVICES  void (void)

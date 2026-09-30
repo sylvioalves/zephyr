@@ -217,11 +217,13 @@ static int http_get_to_file(const struct shell *sh, const char *host,
 static int autostart_one(const struct app_record *rec, void *user)
 {
 	ARG_UNUSED(user);
-	struct app_manifest mf;
+	union app_manifest_buf mb;
+	const struct app_manifest *mf = &mb.mf;
+	size_t mf_len = 0;
 	uint8_t sig[APP_MANIFEST_SIG_LEN];
 	char lpath[64];
 
-	if (app_registry_load_manifest(rec->name, &mf, sig, sizeof(sig)) != 0) {
+	if (app_registry_load_manifest(rec->name, &mb, &mf_len, sig, sizeof(sig)) != 0) {
 		return -ENOENT;
 	}
 	if (app_registry_blob_path(rec->name, lpath, sizeof(lpath)) != 0) {
@@ -230,7 +232,7 @@ static int autostart_one(const struct app_record *rec, void *user)
 
 	struct llext *ext = NULL;
 	void *entry = NULL;
-	int rc = app_loader_verify_load_manifest_file(&mf, sig,
+	int rc = app_loader_verify_load_manifest_file(mf, mf_len, sig,
 						      APP_MANIFEST_SIG_LEN, lpath,
 						      trusted_pubkey,
 						      ARRAY_SIZE(trusted_pubkey),
@@ -239,9 +241,9 @@ static int autostart_one(const struct app_record *rec, void *user)
 	if (rc != 0) {
 		return rc;
 	}
-	rc = app_registry_check(rec, &mf);
+	rc = app_registry_check(rec, mf);
 	if (rc == 0) {
-		rc = app_platform_launch_llext_opts(mf.name, ext, (app_entry_t)entry, NULL,
+		rc = app_platform_launch_llext_opts(mf->name, ext, (app_entry_t)entry, NULL,
 						    APP_CAPS, &launch_opts);
 	}
 	if (rc < 0) {
@@ -249,7 +251,7 @@ static int autostart_one(const struct app_record *rec, void *user)
 		llext_unload(&ext);
 		return rc;
 	}
-	printk("autostarted '%s' v%u (isolated app %d)\n", mf.name, mf.version, rc);
+	printk("autostarted '%s' v%u (isolated app %d)\n", mf->name, mf->version, rc);
 	return rc;
 }
 
@@ -280,24 +282,26 @@ static int cmd_fetch(const struct shell *sh, size_t argc, char **argv)
 	}
 	shell_print(sh, "downloaded; verifying signature ...");
 
-	struct app_manifest mf;
+	union app_manifest_buf mb;
+	const struct app_manifest *mf = &mb.mf;
+	size_t mf_len = 0;
 	uint8_t sig[APP_MANIFEST_SIG_LEN];
 
-	if (app_registry_load_staged_manifest(name, &mf, sig, sizeof(sig)) != 0) {
+	if (app_registry_load_staged_manifest(name, &mb, &mf_len, sig, sizeof(sig)) != 0) {
 		shell_error(sh, "manifest unreadable");
 		app_registry_discard(name);
 		return -EIO;
 	}
-	if (strncmp(mf.name, name, APP_MANIFEST_NAME_MAX) != 0) {
+	if (strncmp(mf->name, name, APP_MANIFEST_NAME_MAX) != 0) {
 		shell_error(sh, "manifest names '%s', not '%s' - refused",
-			    mf.name, name);
+			    mf->name, name);
 		app_registry_discard(name);
 		return -EPERM;
 	}
 
 	struct llext *ext = NULL;
 	void *entry = NULL;
-	int rc = app_loader_verify_load_manifest_file(&mf, sig,
+	int rc = app_loader_verify_load_manifest_file(mf, mf_len, sig,
 						      APP_MANIFEST_SIG_LEN, lpath,
 						      trusted_pubkey,
 						      ARRAY_SIZE(trusted_pubkey),
@@ -308,7 +312,7 @@ static int cmd_fetch(const struct shell *sh, size_t argc, char **argv)
 		app_registry_discard(name);
 		return rc;
 	}
-	rc = app_registry_commit(name, true, &mf);
+	rc = app_registry_commit(name, true, mf);
 	if (rc != 0) {
 		shell_error(sh, "install refused (%d)", rc);
 		app_loader_forget(ext);
@@ -316,7 +320,7 @@ static int cmd_fetch(const struct shell *sh, size_t argc, char **argv)
 		return rc;
 	}
 
-	rc = app_platform_launch_llext_opts(mf.name, ext, (app_entry_t)entry, NULL, APP_CAPS,
+	rc = app_platform_launch_llext_opts(mf->name, ext, (app_entry_t)entry, NULL, APP_CAPS,
 					    &launch_opts);
 	if (rc < 0) {
 		shell_error(sh, "launch refused (%d)", rc);
@@ -325,7 +329,7 @@ static int cmd_fetch(const struct shell *sh, size_t argc, char **argv)
 		return rc;
 	}
 	shell_print(sh, "fetched, verified and launched '%s' v%u (isolated app %d)",
-		    mf.name, mf.version, rc);
+		    mf->name, mf->version, rc);
 	return 0;
 }
 
@@ -336,17 +340,19 @@ static int cmd_list(const struct shell *sh, size_t argc, char **argv)
 
 	for (int i = 0; i < app_registry_count(); i++) {
 		struct app_record r;
-		struct app_manifest mf;
+		union app_manifest_buf mb;
+		size_t mf_len = 0;
 		uint8_t sig[APP_MANIFEST_SIG_LEN];
+		uint32_t version = 0U;
 
 		if (app_registry_get(i, &r) != 0) {
 			continue;
 		}
-		if (app_registry_load_manifest(r.name, &mf, sig, sizeof(sig)) != 0) {
-			mf.version = 0U;
+		if (app_registry_load_manifest(r.name, &mb, &mf_len, sig, sizeof(sig)) == 0) {
+			version = mb.mf.version;
 		}
 		shell_print(sh, "%s: record v%u, manifest on flash v%u, bound=%u, autostart=%u",
-			    r.name, r.version, mf.version, r.bound, r.autostart);
+			    r.name, r.version, version, r.bound, r.autostart);
 	}
 	return 0;
 }

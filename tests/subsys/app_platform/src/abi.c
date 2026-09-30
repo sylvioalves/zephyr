@@ -71,8 +71,8 @@ ZTEST(module_abi, test_kernel_services)
 	zassert_true(sizeof(mod_bytes) <= sizeof(abi_work), "module too big");
 	memcpy(abi_work, mod_bytes, sizeof(mod_bytes));
 	memcpy(&mf, mod_manifest, sizeof(mf));
-	zassert_equal(app_loader_verify_load_manifest(&mf, mod_sig, sizeof(mod_sig), abi_work,
-						      sizeof(mod_bytes), mod_pubkey,
+	zassert_equal(app_loader_verify_load_manifest(&mf, sizeof(mf), mod_sig, sizeof(mod_sig),
+						      abi_work, sizeof(mod_bytes), mod_pubkey,
 						      sizeof(mod_pubkey), "app_main", &ext, &entry),
 		      0);
 

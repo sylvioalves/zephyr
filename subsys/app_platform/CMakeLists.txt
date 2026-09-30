@@ -68,13 +68,13 @@ add_dependencies(zephyr_generated_headers app_platform_exports)
 zephyr_library_sources_ifdef(CONFIG_LLEXT ${abi_exports_c} app_abi.c)
 add_dependencies(${ZEPHYR_CURRENT_LIBRARY} app_platform_exports)
 
-# The ABI identifier the loader requires in a signed manifest. Signing rules
-# take APP_PLATFORM_ABI_FILE and depend on the app_platform_abi target.
+# What the signer puts in a manifest for this firmware. Signing rules take
+# APP_PLATFORM_ABI_FILE and depend on the app_platform_abi target.
 if(CONFIG_APP_PLATFORM_LOADER)
   set(abi_h ${ZEPHYR_BINARY_DIR}/include/generated/zephyr/app_platform_abi.h)
   set(abi_dir ${ZEPHYR_BASE}/include/zephyr/app_platform)
   set(syscall_list ${ZEPHYR_BINARY_DIR}/include/generated/zephyr/syscall_list.h)
-  set(APP_PLATFORM_ABI_FILE ${ZEPHYR_BINARY_DIR}/app_platform_abi_id.txt CACHE INTERNAL "")
+  set(APP_PLATFORM_ABI_FILE ${ZEPHYR_BINARY_DIR}/app_platform_abi.txt CACHE INTERNAL "")
   file(GLOB abi_headers ${abi_dir}/*.h)
 
   add_custom_command(
@@ -83,10 +83,12 @@ if(CONFIG_APP_PLATFORM_LOADER)
       -DSYSCALL_LIST=${syscall_list}
       -DHEADER_DIR=${abi_dir}
       -DISOLATION=$<IF:$<BOOL:${CONFIG_USERSPACE}>,userspace,none>
+      -DABI_TABLE=${abi_table}
       -DOUT_H=${abi_h}
       -DOUT_ID=${APP_PLATFORM_ABI_FILE}
       -P ${CMAKE_CURRENT_SOURCE_DIR}/cmake/abi_id.cmake
-    DEPENDS ${syscall_list} ${abi_headers} ${CMAKE_CURRENT_SOURCE_DIR}/cmake/abi_id.cmake
+    DEPENDS ${syscall_list} ${abi_headers} ${abi_table}
+      ${CMAKE_CURRENT_SOURCE_DIR}/cmake/abi_id.cmake
   )
   add_custom_target(app_platform_abi DEPENDS ${abi_h} ${APP_PLATFORM_ABI_FILE})
   add_dependencies(app_platform_abi ${SYSCALL_LIST_H_TARGET})

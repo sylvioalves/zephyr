@@ -43,17 +43,19 @@ static const uint8_t trusted_pubkey[] = {
 static int cmd_install(const struct shell *sh, size_t argc, char **argv)
 {
 	const char *name = argv[1];
-	struct app_manifest mf;
+	union app_manifest_buf mb;
+	const struct app_manifest *mf = &mb.mf;
+	size_t mf_len = 0;
 	uint8_t sig[APP_MANIFEST_SIG_LEN];
 
-	if (app_registry_load_staged_manifest(name, &mf, sig, sizeof(sig)) != 0) {
+	if (app_registry_load_staged_manifest(name, &mb, &mf_len, sig, sizeof(sig)) != 0) {
 		shell_error(sh, "no uploaded manifest for '%s' "
 			    "(upload /lfs/%s.manifest.new first)", name, name);
 		return -ENOENT;
 	}
-	if (strncmp(mf.name, name, APP_MANIFEST_NAME_MAX) != 0) {
+	if (strncmp(mf->name, name, APP_MANIFEST_NAME_MAX) != 0) {
 		shell_error(sh, "manifest names '%s', not '%s' - refused",
-			    mf.name, name);
+			    mf->name, name);
 		app_registry_discard(name);
 		return -EPERM;
 	}
@@ -67,7 +69,7 @@ static int cmd_install(const struct shell *sh, size_t argc, char **argv)
 
 	struct llext *ext = NULL;
 	void *entry = NULL;
-	int rc = app_loader_verify_load_manifest_file(&mf, sig,
+	int rc = app_loader_verify_load_manifest_file(mf, mf_len, sig,
 						      APP_MANIFEST_SIG_LEN, path,
 						      trusted_pubkey,
 						      ARRAY_SIZE(trusted_pubkey),
@@ -79,7 +81,7 @@ static int cmd_install(const struct shell *sh, size_t argc, char **argv)
 		return rc;
 	}
 
-	rc = app_registry_commit(name, true, &mf);
+	rc = app_registry_commit(name, true, mf);
 	if (rc != 0) {
 		shell_error(sh, "install refused (%d)", rc);
 		app_loader_forget(ext);
@@ -87,14 +89,14 @@ static int cmd_install(const struct shell *sh, size_t argc, char **argv)
 		return rc;
 	}
 
-	rc = app_platform_launch_llext(mf.name, ext, (app_entry_t)entry, NULL,
+	rc = app_platform_launch_llext(mf->name, ext, (app_entry_t)entry, NULL,
 				       APP_CAPS);
 	if (rc < 0) {
 		shell_error(sh, "launch refused (%d)", rc);
 		return rc;
 	}
 	shell_print(sh, "installed and launched '%s' v%u (isolated app %d)",
-		    mf.name, mf.version, rc);
+		    mf->name, mf->version, rc);
 	return 0;
 }
 

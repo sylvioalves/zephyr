@@ -81,15 +81,20 @@ struct mod {
 	const uint8_t *bytes;
 	size_t len;
 	const uint8_t *mf;
+	size_t mf_len;
 	const uint8_t *sig;
 	const uint8_t *sha;
 };
 
 static const struct mod mods[] = {
-	{"meas0", meas0_bytes, sizeof(meas0_bytes), meas0_mf, meas0_sig, meas0_sha},
-	{"meas4", meas4_bytes, sizeof(meas4_bytes), meas4_mf, meas4_sig, meas4_sha},
-	{"meas16", meas16_bytes, sizeof(meas16_bytes), meas16_mf, meas16_sig, meas16_sha},
-	{"meas64", meas64_bytes, sizeof(meas64_bytes), meas64_mf, meas64_sig, meas64_sha},
+	{"meas0", meas0_bytes, sizeof(meas0_bytes), meas0_mf, sizeof(meas0_mf), meas0_sig,
+	 meas0_sha},
+	{"meas4", meas4_bytes, sizeof(meas4_bytes), meas4_mf, sizeof(meas4_mf), meas4_sig,
+	 meas4_sha},
+	{"meas16", meas16_bytes, sizeof(meas16_bytes), meas16_mf, sizeof(meas16_mf), meas16_sig,
+	 meas16_sha},
+	{"meas64", meas64_bytes, sizeof(meas64_bytes), meas64_mf, sizeof(meas64_mf), meas64_sig,
+	 meas64_sha},
 };
 
 
@@ -138,19 +143,19 @@ static bool wait_slot_free(int id, int ms)
 
 static void phase_load(const struct mod *m)
 {
-	struct app_manifest mf;
+	union app_manifest_buf mb;
 	struct llext *ext = NULL;
 	void *entry = NULL;
 	size_t sys0, ext0, sys1, ext1, sys2, ext2;
 
-	memcpy(&mf, m->mf, sizeof(mf));
+	memcpy(mb.raw, m->mf, MIN(m->mf_len, sizeof(mb)));
 	printk("== %s: module %zu B (manifest %zu B + sig %d B)\n", m->name,
-	       m->len, sizeof(mf), APP_MANIFEST_SIG_LEN);
+	       m->len, m->mf_len, APP_MANIFEST_SIG_LEN);
 	heap_stats(NULL, &sys0, &ext0);
 	memset(app_meas_stamp, 0, sizeof(app_meas_stamp));
 
 	uint32_t t0 = cyc();
-	int rc = app_loader_verify_load_manifest(&mf, m->sig, APP_MANIFEST_SIG_LEN,
+	int rc = app_loader_verify_load_manifest(&mb.mf, m->mf_len, m->sig, APP_MANIFEST_SIG_LEN,
 						 m->bytes, m->len, pubkey,
 						 sizeof(pubkey), "app_main",
 						 &ext, &entry);

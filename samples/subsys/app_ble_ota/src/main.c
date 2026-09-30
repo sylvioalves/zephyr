@@ -53,11 +53,13 @@ static const uint8_t fetcher_hash[32] = {
 /* Verify what the transport staged, then install and launch it. */
 static int install_fetched(const char *name)
 {
-	struct app_manifest mf;
+	union app_manifest_buf mb;
+	const struct app_manifest *mf = &mb.mf;
+	size_t mf_len = 0;
 	uint8_t sig[APP_MANIFEST_SIG_LEN];
 	char path[64];
 
-	if (app_registry_load_staged_manifest(name, &mf, sig, sizeof(sig)) != 0) {
+	if (app_registry_load_staged_manifest(name, &mb, &mf_len, sig, sizeof(sig)) != 0) {
 		printk("no manifest staged for '%s'\n", name);
 		app_registry_discard(name);
 		return -ENOENT;
@@ -69,7 +71,7 @@ static int install_fetched(const char *name)
 	struct llext *ext = NULL;
 	void *entry = NULL;
 	int64_t t0 = k_uptime_get();
-	int rc = app_loader_verify_load_manifest_file(&mf, sig,
+	int rc = app_loader_verify_load_manifest_file(mf, mf_len, sig,
 						      APP_MANIFEST_SIG_LEN, path,
 						      trusted_pubkey,
 						      ARRAY_SIZE(trusted_pubkey),
@@ -80,10 +82,10 @@ static int install_fetched(const char *name)
 		app_registry_discard(name);
 		return rc;
 	}
-	printk("verified '%s' v%u in %lld ms\n", mf.name, mf.version,
+	printk("verified '%s' v%u in %lld ms\n", mf->name, mf->version,
 	       k_uptime_get() - t0);
 
-	rc = app_registry_commit(name, true, &mf);
+	rc = app_registry_commit(name, true, mf);
 	if (rc != 0) {
 		printk("install refused (%d)\n", rc);
 		app_loader_forget(ext);
@@ -91,14 +93,14 @@ static int install_fetched(const char *name)
 		return rc;
 	}
 
-	rc = app_platform_launch_llext(mf.name, ext, (app_entry_t)entry, NULL,
+	rc = app_platform_launch_llext(mf->name, ext, (app_entry_t)entry, NULL,
 				       FETCHED_CAPS);
 	if (rc < 0) {
 		printk("launch refused (%d)\n", rc);
 		return rc;
 	}
-	printk("updated over BLE: '%s' v%u running as app %d\n", mf.name,
-	       mf.version, rc);
+	printk("updated over BLE: '%s' v%u running as app %d\n", mf->name,
+	       mf->version, rc);
 	return 0;
 }
 

@@ -52,7 +52,9 @@ Every service checks the calling application's capability mask first, so even
 an open service is reachable only with its capability. The launcher sets that
 mask when it starts the application and makes the per-instance grants
 (``app_platform_grant_*``). The signed manifest carries the application's
-identity only (name, version, module hash and ABI), not its capabilities.
+identity (name, version, module hash and interface version) and the
+capabilities it requests and requires. The loader records those, but the mask
+the launcher sets still decides what the application may use.
 
 Classifying a subsystem
 ***********************

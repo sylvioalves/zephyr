@@ -14,7 +14,7 @@
 
 #include <zephyr/app_platform/app_loader.h>
 #include <zephyr/app_platform/app_manifest.h>
-#include <zephyr/app_platform_abi.h>
+#include <zephyr/app_platform/app_abi.h>
 
 #include <zephyr/kernel.h>
 #include <zephyr/llext/llext.h>
@@ -85,7 +85,8 @@ LOG_MODULE_DECLARE(app_platform, CONFIG_APP_PLATFORM_LOG_LEVEL);
 	(IS_ENABLED(__ARM_PCS_VFP) ? EF_ARM_ABI_FLOAT_SOFT : EF_ARM_ABI_FLOAT_HARD)
 #endif
 
-static const uint8_t abi_id[APP_MANIFEST_ABI_ID_LEN] = APP_PLATFORM_ABI_ID;
+/* Magic of the previous fixed-layout manifest format. */
+#define MANIFEST_MAGIC_V3 0x33464d41U
 
 #if defined(CONFIG_MBEDTLS_PSA_CRYPTO_LEGACY_RNG) && defined(CONFIG_MBEDTLS_HEAP_SIZE)
 BUILD_ASSERT(CONFIG_MBEDTLS_HEAP_SIZE >= 4096,
@@ -184,30 +185,36 @@ static int elf_bounds_ok(const char *name, const uint8_t *buf, size_t len)
 	return elf_bounds_chk(name, buf, len, len);
 }
 
-/* Set of extensions this loader verified, with the heap size their signed
- * manifest declares. The launch path checks membership so an unverified
- * extension cannot be run even if a caller hands one in. Sized to the number of
- * concurrent applications the platform supports.
+/* Set of extensions this loader verified, with the heap size and capabilities
+ * their signed manifest declares. The launch path checks membership so an
+ * unverified extension cannot be run even if a caller hands one in. Sized to the
+ * number of concurrent applications the platform supports.
  */
 #define VERIFIED_MAX CONFIG_APP_PLATFORM_MAX_APPS
 
 struct verified_ext {
 	const struct llext *ext;
 	size_t heap_size;
+	uint64_t requested_caps;
+	uint64_t required_caps;
 };
 
 static struct verified_ext verified[VERIFIED_MAX];
 static K_MUTEX_DEFINE(verified_lock);
 
-static void verified_add(const struct llext *ext, size_t heap_size)
+static void verified_add(const struct llext *ext, const struct app_manifest *mf)
 {
 	bool placed = false;
 
 	k_mutex_lock(&verified_lock, K_FOREVER);
 	for (int i = 0; i < VERIFIED_MAX; i++) {
 		if (verified[i].ext == NULL) {
-			verified[i].ext = ext;
-			verified[i].heap_size = heap_size;
+			verified[i] = (struct verified_ext){.ext = ext};
+			if (mf != NULL) {
+				verified[i].heap_size = mf->heap_size;
+				verified[i].requested_caps = mf->requested_caps;
+				verified[i].required_caps = mf->required_caps;
+			}
 			placed = true;
 			break;
 		}
@@ -270,10 +277,10 @@ void app_loader_forget(const struct llext *ext)
 /* Resolve the entry symbol and enforce the per-application memory budget on a
  * freshly loaded extension. A module whose footprint exceeds the budget is
  * unloaded and rejected, so one module cannot exhaust the shared loadable-
- * extension heap. On success the extension is recorded as verified, with the
- * heap size its manifest declares.
+ * extension heap. On success the extension is recorded as verified, with what
+ * its manifest @p mf declares, or nothing when it has none.
  */
-static int finish_load(const char *name, struct llext *loaded, size_t heap_size,
+static int finish_load(const char *name, struct llext *loaded, const struct app_manifest *mf,
 		       const char *entry_sym, struct llext **ext, void **entry)
 {
 	/* The lookup hands back a const pointer into the extension's export
@@ -298,7 +305,7 @@ static int finish_load(const char *name, struct llext *loaded, size_t heap_size,
 	}
 
 	/* Reached only after the caller's signature/hash check passed. */
-	verified_add(loaded, heap_size);
+	verified_add(loaded, mf);
 
 	*ext = loaded;
 	*entry = fn;
@@ -306,7 +313,8 @@ static int finish_load(const char *name, struct llext *loaded, size_t heap_size,
 }
 
 static int load_checked(const char *name, const uint8_t *buf, size_t len, bool copy,
-			size_t heap_size, const char *entry_sym, struct llext **ext, void **entry)
+			const struct app_manifest *mf, const char *entry_sym, struct llext **ext,
+			void **entry)
 {
 	struct llext_buf_loader bl = LLEXT_BUF_LOADER(buf, len);
 
@@ -331,7 +339,7 @@ static int load_checked(const char *name, const uint8_t *buf, size_t len, bool c
 		return rc;
 	}
 
-	return finish_load(name, loaded, heap_size, entry_sym, ext, entry);
+	return finish_load(name, loaded, mf, entry_sym, ext, entry);
 }
 
 int app_loader_verify_load(const char *name, const uint8_t *buf, size_t len,
@@ -357,7 +365,7 @@ int app_loader_verify_load(const char *name, const uint8_t *buf, size_t len,
 	}
 	LOG_INF("verify OK for '%s' (sha-256 matches)", name);
 
-	return load_checked(name, buf, len, false, 0U, entry_sym, ext, entry);
+	return load_checked(name, buf, len, false, NULL, entry_sym, ext, entry);
 }
 
 int app_loader_verify_load_signed(const char *name, const uint8_t *buf,
@@ -388,17 +396,50 @@ int app_loader_verify_load_signed(const char *name, const uint8_t *buf,
 	}
 	LOG_INF("verify OK for '%s' (ecdsa-p256 signature authentic)", name);
 
-	return load_checked(name, buf, len, false, 0U, entry_sym, ext, entry);
+	return load_checked(name, buf, len, false, NULL, entry_sym, ext, entry);
 }
 
-int app_loader_verify_load_manifest(const struct app_manifest *mf,
+/* Check the layout of a manifest of @p mf_len bytes, authenticate it, and check
+ * that this firmware runs what it describes. Authenticating the manifest
+ * authenticates the name and version it carries.
+ */
+static int manifest_verify(const struct app_manifest *mf, size_t mf_len, const uint8_t *sig,
+			   size_t sig_len, const uint8_t *pubkey, size_t pubkey_len)
+{
+	uint8_t digest[32];
+
+	if (mf_len >= sizeof(mf->magic) && mf->magic == MANIFEST_MAGIC_V3) {
+		LOG_WRN("manifest format 3 is no longer accepted, reinstall the application");
+		return -ENOTSUP;
+	}
+	if (mf_len < sizeof(*mf) || mf_len > APP_MANIFEST_MAX_LEN ||
+	    mf->magic != APP_MANIFEST_MAGIC || mf->hdr_len != mf_len ||
+	    mf->format < APP_MANIFEST_FORMAT || mf->name[APP_MANIFEST_NAME_MAX - 1] != '\0') {
+		LOG_WRN("malformed manifest, rejected");
+		return -EBADMSG;
+	}
+	if (sha256((const uint8_t *)mf, mf_len, digest) != 0) {
+		return -EIO;
+	}
+	if (ecdsa_verify(pubkey, pubkey_len, digest, sig, sig_len) != 0) {
+		LOG_WRN("manifest signature invalid, rejected");
+		return -EPERM;
+	}
+	if (mf->abi_major != APP_ABI_MAJOR) {
+		LOG_WRN("'%s' built for interface %u, this firmware exports %u, rejected",
+			mf->name, mf->abi_major, APP_ABI_MAJOR);
+		return -ENOEXEC;
+	}
+	return 0;
+}
+
+int app_loader_verify_load_manifest(const struct app_manifest *mf, size_t mf_len,
 				    const uint8_t *sig, size_t sig_len,
 				    const uint8_t *buf, size_t len,
 				    const uint8_t *pubkey, size_t pubkey_len,
 				    const char *entry_sym, struct llext **ext,
 				    void **entry)
 {
-	uint8_t mf_digest[32];
 	uint8_t mod_digest[32];
 	int rc;
 
@@ -406,30 +447,15 @@ int app_loader_verify_load_manifest(const struct app_manifest *mf,
 		return -EIO;
 	}
 
-	/* 1. The signature must cover this manifest. Authenticating the
-	 * manifest authenticates the name and version it carries.
+	/* 1. The signature must cover this manifest, and this firmware must
+	 * run what it describes.
 	 */
-	if (sha256((const uint8_t *)mf, sizeof(*mf), mf_digest) != 0) {
-		return -EIO;
-	}
-	if (ecdsa_verify(pubkey, pubkey_len, mf_digest, sig, sig_len) != 0) {
-		LOG_WRN("manifest signature invalid, rejected");
-		return -EPERM;
+	rc = manifest_verify(mf, mf_len, sig, sig_len, pubkey, pubkey_len);
+	if (rc != 0) {
+		return rc;
 	}
 
-	/* 2. The manifest must be well-formed and name a sane module. */
-	if (mf->magic != APP_MANIFEST_MAGIC) {
-		LOG_WRN("bad manifest magic, rejected");
-		return -EPERM;
-	}
-	if (mf->name[APP_MANIFEST_NAME_MAX - 1] != '\0') {
-		LOG_WRN("manifest name not terminated, rejected");
-		return -EPERM;
-	}
-	if (memcmp(mf->abi_id, abi_id, sizeof(abi_id)) != 0) {
-		LOG_WRN("'%s' built for another firmware ABI, rejected", mf->name);
-		return -ENOEXEC;
-	}
+	/* 2. The manifest must name a sane module. */
 	if (mf->module_len != len) {
 		LOG_WRN("'%s' module length %u != signed %u, rejected",
 			mf->name, (unsigned int)len, mf->module_len);
@@ -452,7 +478,7 @@ int app_loader_verify_load_manifest(const struct app_manifest *mf,
 	LOG_INF("verify OK for '%s' v%u (manifest authentic, module bound)",
 		mf->name, mf->version);
 
-	return load_checked(mf->name, buf, len, false, mf->heap_size, entry_sym, ext, entry);
+	return load_checked(mf->name, buf, len, false, mf, entry_sym, ext, entry);
 }
 
 /* Streaming SHA-256 over a file: hashes the whole file in small chunks without
@@ -521,7 +547,7 @@ static int sha256_file(const char *path, uint8_t out[32], size_t *out_len,
 	return 0;
 }
 
-static int fs_load_checked(const char *name, const char *path, size_t heap_size,
+static int fs_load_checked(const char *name, const char *path, const struct app_manifest *mf,
 			   const char *entry_sym, struct llext **ext, void **entry)
 {
 	struct llext_fs_loader fl = LLEXT_FS_LOADER(path);
@@ -542,7 +568,7 @@ static int fs_load_checked(const char *name, const char *path, size_t heap_size,
 		return rc;
 	}
 
-	return finish_load(name, loaded, heap_size, entry_sym, ext, entry);
+	return finish_load(name, loaded, mf, entry_sym, ext, entry);
 }
 
 /* Read exactly @p len bytes from @p path; a longer or shorter file fails. */
@@ -609,21 +635,19 @@ static int verify_load_copy(const struct app_manifest *mf, const char *path,
 	if (rc == 0) {
 		LOG_INF("verify OK for '%s' v%u (manifest authentic, module bound)",
 			mf->name, mf->version);
-		rc = load_checked(mf->name, buf, mf->module_len, true, mf->heap_size, entry_sym,
-				  ext, entry);
+		rc = load_checked(mf->name, buf, mf->module_len, true, mf, entry_sym, ext, entry);
 	}
 
 	k_free(buf);
 	return rc;
 }
 
-int app_loader_verify_load_manifest_file(const struct app_manifest *mf,
+int app_loader_verify_load_manifest_file(const struct app_manifest *mf, size_t mf_len,
 					 const uint8_t *sig, size_t sig_len,
 					 const char *path, const uint8_t *pubkey,
 					 size_t pubkey_len, const char *entry_sym,
 					 struct llext **ext, void **entry)
 {
-	uint8_t mf_digest[32];
 	uint8_t mod_digest[32];
 	uint8_t head[ELF_HDR_MIN];
 	size_t len = 0;
@@ -634,21 +658,9 @@ int app_loader_verify_load_manifest_file(const struct app_manifest *mf,
 	}
 
 	/* 1. Authenticate the manifest (and thus the name and version). */
-	if (sha256((const uint8_t *)mf, sizeof(*mf), mf_digest) != 0) {
-		return -EIO;
-	}
-	if (ecdsa_verify(pubkey, pubkey_len, mf_digest, sig, sig_len) != 0) {
-		LOG_WRN("manifest signature invalid, rejected");
-		return -EPERM;
-	}
-	if (mf->magic != APP_MANIFEST_MAGIC ||
-	    mf->name[APP_MANIFEST_NAME_MAX - 1] != '\0') {
-		LOG_WRN("malformed manifest, rejected");
-		return -EPERM;
-	}
-	if (memcmp(mf->abi_id, abi_id, sizeof(abi_id)) != 0) {
-		LOG_WRN("'%s' built for another firmware ABI, rejected", mf->name);
-		return -ENOEXEC;
+	rc = manifest_verify(mf, mf_len, sig, sig_len, pubkey, pubkey_len);
+	if (rc != 0) {
+		return rc;
 	}
 
 	if (IS_ENABLED(CONFIG_APP_PLATFORM_LOADER_FILE_IN_RAM)) {
@@ -682,7 +694,7 @@ int app_loader_verify_load_manifest_file(const struct app_manifest *mf,
 	/* 3. Load the extension from the same file. The loader re-opens the
 	 * path, so the bytes it links are not provably the bytes just hashed.
 	 */
-	rc = fs_load_checked(mf->name, path, mf->heap_size, entry_sym, ext, entry);
+	rc = fs_load_checked(mf->name, path, mf, entry_sym, ext, entry);
 
 	if (rc != 0) {
 		return rc;

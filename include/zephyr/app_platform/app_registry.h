@@ -193,23 +193,30 @@ int app_registry_blob_path(const char *name, char *out, size_t cap);
  *
  * @param name    Application name (the storage key).
  * @param mf      Signed manifest body.
+ * @param mf_len  Length of @p mf, at most @ref APP_MANIFEST_MAX_LEN.
  * @param sig     Signature over @p mf.
  * @param sig_len Length of @p sig (must be @ref APP_MANIFEST_SIG_LEN).
  * @return 0 on success, negative errno on failure.
  */
-int app_registry_store_manifest(const char *name, const struct app_manifest *mf,
+int app_registry_store_manifest(const char *name, const struct app_manifest *mf, size_t mf_len,
 				const uint8_t *sig, size_t sig_len);
 
 /**
  * @brief Read back an application's persisted manifest and signature.
  *
+ * The stored manifest is returned as it was written, whatever its length, and
+ * the part of @p mf past it is zeroed. The loader decides whether it is
+ * accepted.
+ *
  * @param name    Application name.
  * @param[out] mf Receives the manifest body.
+ * @param[out] mf_len Receives the length of the manifest body.
  * @param[out] sig Receives the signature (@ref APP_MANIFEST_SIG_LEN bytes).
  * @param sig_cap Size of @p sig (must be at least @ref APP_MANIFEST_SIG_LEN).
- * @return 0 on success, negative errno on failure (e.g. -ENOENT if not stored).
+ * @return 0 on success, negative errno on failure (e.g. -ENOENT if not stored,
+ *         -EFBIG if the manifest is longer than @ref APP_MANIFEST_MAX_LEN).
  */
-int app_registry_load_manifest(const char *name, struct app_manifest *mf,
+int app_registry_load_manifest(const char *name, union app_manifest_buf *mf, size_t *mf_len,
 			       uint8_t *sig, size_t sig_cap);
 
 /**
@@ -248,34 +255,38 @@ int app_registry_staged_manifest_path(const char *name, char *out, size_t cap);
  *
  * @param name    Application name (the storage key).
  * @param mf      Signed manifest body.
+ * @param mf_len  Length of @p mf, at most @ref APP_MANIFEST_MAX_LEN.
  * @param sig     Signature over @p mf.
  * @param sig_len Length of @p sig (must be @ref APP_MANIFEST_SIG_LEN).
  *
  * @retval 0 Success.
- * @retval -EINVAL @p sig_len is not @ref APP_MANIFEST_SIG_LEN.
+ * @retval -EINVAL @p sig_len is not @ref APP_MANIFEST_SIG_LEN or @p mf_len is
+ *         zero or above @ref APP_MANIFEST_MAX_LEN.
  * @retval -ENAMETOOLONG The path does not fit.
  * @retval -EIO The manifest was written only in part.
  * @retval -errno The file could not be created.
  */
 int app_registry_store_staged_manifest(const char *name, const struct app_manifest *mf,
-				       const uint8_t *sig, size_t sig_len);
+				       size_t mf_len, const uint8_t *sig, size_t sig_len);
 
 /**
  * @brief Read back a staged manifest and signature.
  *
  * @param name    Application name.
- * @param[out] mf Receives the manifest body.
+ * @param[out] mf Receives the manifest body, zeroed past its length.
+ * @param[out] mf_len Receives the length of the manifest body.
  * @param[out] sig Receives the signature (@ref APP_MANIFEST_SIG_LEN bytes).
  * @param sig_cap Size of @p sig.
  *
  * @retval 0 Success.
  * @retval -EINVAL @p sig_cap is smaller than @ref APP_MANIFEST_SIG_LEN.
  * @retval -ENAMETOOLONG The path does not fit.
- * @retval -EIO The file is shorter than a manifest and signature.
+ * @retval -EIO The file holds no manifest before the signature.
+ * @retval -EFBIG The manifest is longer than @ref APP_MANIFEST_MAX_LEN.
  * @retval -errno The file could not be opened.
  */
-int app_registry_load_staged_manifest(const char *name, struct app_manifest *mf,
-				      uint8_t *sig, size_t sig_cap);
+int app_registry_load_staged_manifest(const char *name, union app_manifest_buf *mf,
+				      size_t *mf_len, uint8_t *sig, size_t sig_cap);
 
 /**
  * @brief Install a verified staged image in place of the current one.

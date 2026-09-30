@@ -11,9 +11,10 @@
  * It advertises under the application's name and exposes two characteristics.
  * The device writes a 4-byte little-endian offset to the control point, then
  * reads the data characteristic to get the bytes at that offset. Served image
- * is the manifest, its signature, then the module:
+ * is the manifest, its signature, then the module. The manifest states its own
+ * length in its header:
  *
- *   [ manifest (92 B) ][ signature (64 B) ][ module ... ]
+ *   [ manifest (hdr_len B) ][ signature (64 B) ][ module ... ]
  *
  * This peer signs nothing at runtime: the manifest and signature were produced
  * on the build host and are compiled in, so the private key never reaches

@@ -49,14 +49,15 @@ Host the app
 ************
 
 The build writes the reference app to ``build/serve``: ``weather.llext`` and
-``weather.manifest``, the 92-byte manifest followed by its 64-byte signature.
-Serve that directory on port 8000 from a machine on the same network::
+``weather.manifest``, the signed manifest (160 bytes in the current format)
+followed by its 64-byte signature. Serve that directory on port 8000 from a
+machine on the same network::
 
    python3 -m http.server 8000 --directory build/serve
 
-A module signed outside this build must carry the device firmware's ABI
-identifier, written to ``build/zephyr/app_platform_abi_id.txt``. The device
-refuses a manifest with any other identifier.
+A module signed outside this build must carry what the device firmware build
+writes to ``build/zephyr/app_platform_abi.txt``, such as the interface major
+version. The device refuses a manifest for another major version.
 
 On the device shell::
 
