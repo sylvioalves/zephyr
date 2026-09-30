@@ -652,7 +652,7 @@ static void reaper(void *p1, void *p2, void *p3)
 		struct running_app *a = &apps[req.id];
 		k_timepoint_t end = sys_timepoint_calc(K_MSEC(CONFIG_APP_PLATFORM_STOP_WAIT_MS));
 		k_spinlock_key_t key;
-		uint8_t holds = 0U;
+		uint8_t broken = 0U;
 
 		/* A stopped thread inside a service ends itself when it releases its
 		 * last service lock, so no lock is left owned by a dead thread.
@@ -673,18 +673,23 @@ static void reaper(void *p1, void *p2, void *p3)
 		for (int j = 0; j < APP_THREADS; j++) {
 			struct app_thread *t = &a->threads[j];
 
+			/* A hold is recorded before the lock is taken. */
 			for (uint8_t i = 0U; i < t->svc_holds; i++) {
-				atomic_set(&t->svc_held[i]->broken, 1);
+				struct svc_lock *lock = t->svc_held[i];
+
+				if (lock->mutex.owner == &t->thread) {
+					atomic_set(&lock->broken, 1);
+					broken++;
+				}
 			}
-			holds += t->svc_holds;
 			t->svc_holds = 0U;
 			t->live = false;
 		}
 		a->stopping = false;
 		k_spin_unlock(&hold_lock, key);
-		if (holds != 0U) {
+		if (broken != 0U) {
 			LOG_ERR("app '%s' stopped holding %u service lock(s), service disabled",
-				a->name, holds);
+				a->name, broken);
 		}
 
 #ifdef CONFIG_LLEXT
