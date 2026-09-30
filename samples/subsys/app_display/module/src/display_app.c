@@ -10,17 +10,13 @@
  * frame rate is shown in a box in the top right corner.
  */
 
-#include <zephyr/app_platform/app_services.h>
-#include <zephyr/llext/symbol.h>
-#include <zephyr/kernel.h>
+#include <zephyr/app_platform/app_sdk.h>
 #include <errno.h>
 #include <stdio.h>
 
 #include "app_display_color.h"
 
 #define FRAME_MS    40
-/* A tick count needs no conversion from milliseconds at run time. */
-#define FRAME_TICKS MAX(FRAME_MS * CONFIG_SYS_CLOCK_TICKS_PER_SEC / 1000, 1)
 #define BAND_H      24
 #define MAX_ROW_PX  1024
 #define LOG_EVERY   100
@@ -166,7 +162,7 @@ void app_main(void *arg)
 			app_svc_log("display: no refresh events, pacing by sleep");
 		}
 		if (!vsync) {
-			k_sleep(K_TICKS(FRAME_TICKS));
+			app_sleep_ms(FRAME_MS);
 		}
 
 		if (fps != shown_fps) {

@@ -15,7 +15,7 @@ set(bin ${PROJECT_BINARY_DIR}/llext/display_app.llext)
 set(inc ${ZEPHYR_BINARY_DIR}/include/generated/display_app.inc)
 set(sha ${ZEPHYR_BINARY_DIR}/include/generated/display_app.sha256.inc)
 
-add_llext_target(display_app_ext OUTPUT ${bin} SOURCES ${ext_src})
+app_platform_add_module(display_app_ext OUTPUT ${bin} SOURCES ${ext_src})
 llext_include_directories(display_app_ext
   ${ZEPHYR_BINARY_DIR}/include/generated
   ${PROJECT_SOURCE_DIR}/common
