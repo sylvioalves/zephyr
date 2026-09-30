@@ -24,7 +24,7 @@ set(mf  ${ZEPHYR_BINARY_DIR}/include/generated/test_mod.manifest.inc)
 set(sig ${ZEPHYR_BINARY_DIR}/include/generated/test_mod.sig.inc)
 set(pub ${ZEPHYR_BINARY_DIR}/include/generated/test_mod.pubkey.inc)
 
-add_llext_target(test_ext OUTPUT ${bin} SOURCES ${ext_src})
+app_platform_add_module(test_ext OUTPUT ${bin} SOURCES ${ext_src})
 llext_include_directories(test_ext ${ZEPHYR_BINARY_DIR}/include/generated)
 generate_inc_file_for_target(app ${bin} ${inc})
 
