@@ -246,6 +246,57 @@ ZTEST(registry, test_commit_downgrade_keeps_installed_image)
 	zassert_equal(app_registry_uninstall("dnapp"), 0);
 }
 
+/* Stage a manifest describing an image this firmware cannot load. */
+static struct app_manifest stage_foreign(const char *name, uint32_t version, uint8_t fill,
+					 bool other_major)
+{
+	struct app_manifest mf = stage(name, version, fill);
+
+	if (other_major) {
+		mf.abi_major++;
+	} else {
+		mf.target ^= 1U;
+	}
+	zassert_equal(app_registry_store_staged_manifest(name, &mf, sizeof(mf), mod_sig,
+							 ARRAY_SIZE(mod_sig)), 0);
+	return mf;
+}
+
+ZTEST(registry, test_commit_downgrade_over_image_that_cannot_load)
+{
+	struct app_manifest mf = stage_foreign("rbapp", 6, 0x66, true);
+	struct app_record rec;
+	uint8_t out[64];
+	size_t out_len = 0;
+
+	zassert_equal(app_registry_commit("rbapp", false, &mf), 0);
+
+	mf = stage("rbapp", 4, 0x44);
+	zassert_equal(app_registry_commit("rbapp", false, &mf), 0,
+		      "an image for this firmware was refused over one of another major");
+	zassert_true(get_record("rbapp", &rec));
+	zassert_equal(rec.version, 4U);
+	zassert_equal(app_registry_load_blob("rbapp", out, sizeof(out), &out_len), 0);
+	zassert_equal(out[0], 0x44);
+
+	mf = stage("rbapp", 3, 0x33);
+	zassert_equal(app_registry_commit("rbapp", false, &mf), -EACCES,
+		      "a downgrade over a loadable image was accepted");
+
+	mf = stage_foreign("rbapp", 8, 0x88, false);
+	zassert_equal(app_registry_commit("rbapp", false, &mf), 0);
+	mf = stage_foreign("rbapp", 7, 0x77, false);
+	zassert_equal(app_registry_commit("rbapp", false, &mf), -EACCES,
+		      "a downgrade to an image this firmware cannot load was accepted");
+	mf = stage("rbapp", 5, 0x55);
+	zassert_equal(app_registry_commit("rbapp", false, &mf), 0,
+		      "an image for this firmware was refused over one of another target");
+	zassert_true(get_record("rbapp", &rec));
+	zassert_equal(rec.version, 5U);
+
+	zassert_equal(app_registry_uninstall("rbapp"), 0);
+}
+
 ZTEST(registry, test_check_refuses_other_images)
 {
 	struct app_manifest mf = stage("ckapp", 7, 0x77);
