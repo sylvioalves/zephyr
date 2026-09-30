@@ -13,6 +13,7 @@
 #include <zephyr/app_platform/app_loader.h>
 #include <zephyr/app_platform/app_manifest.h>
 #include <zephyr/app_platform/app_platform.h>
+#include <zephyr/app_platform/app_registry.h>
 #include <zephyr/llext/llext.h>
 #include <zephyr/kernel.h>
 #include <errno.h>
@@ -136,6 +137,44 @@ ZTEST(module_caps, test_module_without_manifest_holds_ceiling)
 	zassert_equal(app_loader_manifest_caps(ext, &requested, &required), -ENOENT);
 	zassert_equal(held_caps("hashed", ext, entry, APP_CAP_LOG | APP_CAP_GPIO, &caps), 0);
 	zassert_equal(caps, APP_CAP_LOG | APP_CAP_GPIO, "held %#llx", (unsigned long long)caps);
+}
+
+static int autostart_with_small_ceiling(const struct app_record *rec, void *user)
+{
+	struct app_manifest mf;
+	void *entry = NULL;
+	struct llext *ext;
+	int rc;
+
+	ARG_UNUSED(user);
+	if (strcmp(rec->name, "testmod") != 0) {
+		return -ENOENT;
+	}
+	ext = load_caps_module(&mf, &entry);
+	rc = app_platform_launch_llext(mf.name, ext, (app_entry_t)entry, NULL, APP_CAP_LOG);
+	if (rc < 0) {
+		unload(ext);
+	}
+	return rc;
+}
+
+ZTEST(module_caps, test_refused_autostart_is_recorded)
+{
+	int err = 1;
+
+	zassert_equal(app_registry_load(), 0);
+	zassert_equal(app_registry_install("testmod", true), 0);
+	zassert_equal(app_registry_autostart_result("testmod", &err), 0);
+	zassert_equal(err, 0);
+	zassert_true(app_registry_autostart_all(autostart_with_small_ceiling, NULL) >= 0);
+	zassert_equal(app_registry_autostart_result("testmod", &err), 0);
+	zassert_equal(err, -EPERM, "recorded %d", err);
+
+	zassert_equal(app_registry_install("testmod", true), 0);
+	zassert_equal(app_registry_autostart_result("testmod", &err), 0);
+	zassert_equal(err, 0, "a reinstall kept the refusal");
+	zassert_equal(app_registry_uninstall("testmod"), 0);
+	zassert_equal(app_registry_autostart_result("testmod", &err), -ENOENT);
 }
 
 ZTEST_SUITE(module_caps, NULL, NULL, NULL, NULL, NULL);
