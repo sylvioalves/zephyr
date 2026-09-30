@@ -98,7 +98,10 @@ static const struct mod mods[] = {
 };
 
 
-#define APP_CAPS (APP_CAP_LOG | APP_CAP_TIME)
+/* The most a loaded application may hold: a signed module holds what its manifest
+ * requests within it, a module checked by hash all of it.
+ */
+#define APP_CAPS_CEILING (APP_CAP_LOG | APP_CAP_TIME)
 
 static inline uint32_t cyc(void)
 {
@@ -177,7 +180,7 @@ static void phase_load(const struct mod *m)
 
 	t0 = cyc();
 	int id = app_platform_launch_llext(m->name, ext, (app_entry_t)entry, NULL,
-					   APP_CAPS);
+					   APP_CAPS_CEILING);
 	t1 = cyc();
 
 	if (id < 0) {
@@ -333,7 +336,8 @@ static void phase_heapcmp(const struct mod *m)
 		printk("  %s: load FAILED %d\n", m->name, rc);
 		return;
 	}
-	int id = app_platform_launch_llext(m->name, ext, (app_entry_t)entry, NULL, APP_CAPS);
+	int id = app_platform_launch_llext(m->name, ext, (app_entry_t)entry, NULL,
+					   APP_CAPS_CEILING);
 	uint32_t t2 = cyc();
 
 	k_msleep(20);

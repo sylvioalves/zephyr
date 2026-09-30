@@ -41,9 +41,9 @@ static const uint8_t fetcher_hash[32] = {
 };
 
 /*
- * The fetcher needs BLE and nothing else; the application that arrives gets
- * only what it needs, and notably not BLE: what was updated over the air
- * cannot itself reach the peer.
+ * The fetcher needs BLE and nothing else. FETCHED_CAPS is the most the
+ * application that arrives may hold, whatever its manifest requests, and
+ * notably not BLE: what was updated over the air cannot itself reach the peer.
  */
 #define FETCHER_CAPS (APP_CAP_LOG | APP_CAP_TIME | APP_CAP_BLE)
 #define FETCHED_CAPS (APP_CAP_LOG | APP_CAP_TIME | APP_CAP_RANDOM)

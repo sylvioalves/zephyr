@@ -48,7 +48,8 @@ static const uint8_t persist_pubkey[] = {
 #include "persist.pubkey.inc"
 };
 
-#define APP_CAPS (APP_CAP_LOG | APP_CAP_TIME)
+/* The most a loaded application may hold; its manifest requests its own. */
+#define APP_CAPS_CEILING (APP_CAP_LOG | APP_CAP_TIME | APP_CAP_RANDOM)
 
 static bool find_record(const char *name, struct app_record *out)
 {
@@ -202,7 +203,8 @@ int main(void)
 		return 0;
 	}
 
-	app_platform_launch_llext(mf->name, ext, (app_entry_t)entry, NULL, APP_CAPS);
+	app_platform_launch_llext(mf->name, ext, (app_entry_t)entry, NULL,
+				  APP_CAPS_CEILING);
 	printk("running authenticated '%s' v%u from persisted binary\n",
 	       mf->name, mf->version);
 

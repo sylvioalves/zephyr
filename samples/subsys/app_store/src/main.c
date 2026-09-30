@@ -42,7 +42,8 @@ static const uint8_t module_pubkey[] = {
 #include "blink_app.pubkey.inc"
 };
 
-#define APP_CAPS (APP_CAP_LOG | APP_CAP_TIME)
+/* The most a loaded application may hold; its manifest requests its own. */
+#define APP_CAPS_CEILING (APP_CAP_LOG | APP_CAP_TIME)
 
 static int install_and_run(const struct app_manifest *mf, size_t mf_len, const uint8_t *sig,
 			   uint8_t *buf, size_t len)
@@ -65,7 +66,7 @@ static int install_and_run(const struct app_manifest *mf, size_t mf_len, const u
 	}
 
 	rc = app_platform_launch_llext(mf->name, ext, (app_entry_t)entry, NULL,
-				       APP_CAPS);
+				       APP_CAPS_CEILING);
 	if (rc < 0) {
 		printk("app-store: launch refused (rc=%d)\n", rc);
 		return rc;
@@ -116,7 +117,7 @@ int main(void)
 	if (llext_load(&bl.loader, "rogue", &raw, &parm) == 0) {
 		const void *entry = llext_find_sym(&raw->exp_tab, "app_main");
 		int rc = app_platform_launch_llext("rogue", raw,
-						   (app_entry_t)entry, NULL, APP_CAPS);
+						   (app_entry_t)entry, NULL, APP_CAPS_CEILING);
 
 		if (rc == -EPERM) {
 			printk("app-store: unverified module refused at launch OK\n");

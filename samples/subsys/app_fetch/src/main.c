@@ -39,12 +39,13 @@ static const uint8_t trusted_pubkey[] = {
 #include "fetch_app.pubkey.inc"
 };
 
-#define APP_CAPS     (APP_CAP_LOG | APP_CAP_TIME)
+/* The most a loaded application may hold; its manifest requests its own. */
+#define APP_CAPS_CEILING (APP_CAP_LOG | APP_CAP_TIME | APP_CAP_RANDOM)
 #define MOUNT_POINT  CONFIG_APP_PLATFORM_REGISTRY_MOUNT_POINT
 #define SERVER_PORT  8000
 
 /* Runs before every start of a fetched application: the place for its grants.
- * APP_CAPS covers no resource that needs one.
+ * APP_CAPS_CEILING covers no resource that needs one.
  */
 static int configure_app(int id, void *user)
 {
@@ -244,7 +245,7 @@ static int autostart_one(const struct app_record *rec, void *user)
 	rc = app_registry_check(rec, mf);
 	if (rc == 0) {
 		rc = app_platform_launch_llext_opts(mf->name, ext, (app_entry_t)entry, NULL,
-						    APP_CAPS, &launch_opts);
+						    APP_CAPS_CEILING, &launch_opts);
 	}
 	if (rc < 0) {
 		app_loader_forget(ext);
@@ -320,8 +321,8 @@ static int cmd_fetch(const struct shell *sh, size_t argc, char **argv)
 		return rc;
 	}
 
-	rc = app_platform_launch_llext_opts(mf->name, ext, (app_entry_t)entry, NULL, APP_CAPS,
-					    &launch_opts);
+	rc = app_platform_launch_llext_opts(mf->name, ext, (app_entry_t)entry, NULL,
+					    APP_CAPS_CEILING, &launch_opts);
 	if (rc < 0) {
 		shell_error(sh, "launch refused (%d)", rc);
 		app_loader_forget(ext);
