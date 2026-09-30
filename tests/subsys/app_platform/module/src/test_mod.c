@@ -46,6 +46,20 @@ static int put_u32(char *out, int i, uint32_t v)
 /* Argument that makes the module exercise its heap and return. */
 #define HEAP_PROBE ((void *)0x4850U)
 
+/* Argument that makes the module check the kernel services and return. */
+#define TIME_PROBE ((void *)0x5449U)
+
+static bool time_probe(void)
+{
+	int64_t start = app_uptime_get();
+
+	app_yield();
+	if (app_sleep_us(2000) != 0 || app_sleep_ms(20) != 0) {
+		return false;
+	}
+	return app_uptime_get() - start >= 20;
+}
+
 static bool heap_probe(void)
 {
 	uint8_t *p = app_malloc(64);
@@ -80,6 +94,12 @@ void app_main(void *arg)
 {
 	if (arg == HEAP_PROBE) {
 		while (!heap_probe()) {
+			app_sleep_ms(1000);
+		}
+		return;
+	}
+	if (arg == TIME_PROBE) {
+		while (!time_probe()) {
 			app_sleep_ms(1000);
 		}
 		return;

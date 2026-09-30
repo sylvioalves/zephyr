@@ -7,7 +7,7 @@ project(app_platform_test)
 set(APP_NAME    "testmod")
 set(APP_VERSION 1)
 
-target_sources(app PRIVATE src/main.c src/loader_neg.c)
+target_sources(app PRIVATE src/main.c src/loader_neg.c src/abi.c)
 target_sources_ifdef(CONFIG_USERSPACE app PRIVATE src/hostile.c)
 if(CONFIG_APP_PLATFORM_APP_THREADS GREATER 0)
   target_sources(app PRIVATE src/threads.c)
@@ -27,6 +27,13 @@ set(pub ${ZEPHYR_BINARY_DIR}/include/generated/test_mod.pubkey.inc)
 app_platform_add_module(test_ext OUTPUT ${bin} SOURCES ${ext_src})
 llext_include_directories(test_ext ${ZEPHYR_BINARY_DIR}/include/generated)
 generate_inc_file_for_target(app ${bin} ${inc})
+
+# A module calling a service the firmware is built without.
+set(absent_bin ${PROJECT_BINARY_DIR}/llext/absent_mod.llext)
+set(absent_inc ${ZEPHYR_BINARY_DIR}/include/generated/absent_mod.inc)
+app_platform_add_module(absent_ext OUTPUT ${absent_bin}
+  SOURCES ${PROJECT_SOURCE_DIR}/module/src/absent_mod.c)
+generate_inc_file_for_target(app ${absent_bin} ${absent_inc})
 
 add_custom_command(
   OUTPUT  ${mf} ${sig} ${pub}
