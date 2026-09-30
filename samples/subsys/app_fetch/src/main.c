@@ -383,6 +383,15 @@ int main(void)
 
 	printk("autostart: %d of %d installed apps launched\n", n,
 	       app_registry_count());
+	for (int i = 0; i < app_registry_count(); i++) {
+		struct app_record r;
+		int err;
+
+		if (app_registry_get(i, &r) == 0 &&
+		    app_registry_autostart_result(r.name, &err) == 0 && err != 0) {
+			printk("autostart: '%s' refused (%d)\n", r.name, err);
+		}
+	}
 
 	/* Let the Wi-Fi interface finish coming up, then issue a single
 	 * connection request and wait for an address. The connect is
