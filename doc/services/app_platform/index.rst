@@ -201,9 +201,10 @@ module.
 
 The application allocates with :c:func:`app_malloc`, :c:func:`app_calloc`,
 :c:func:`app_realloc`, :c:func:`app_aligned_alloc` and :c:func:`app_free` from
-:zephyr_file:`include/zephyr/app_platform/app_heap.h`. They run the allocator in the calling
-thread, so the heap metadata is only ever walked by the application that owns it, and a corrupted
-heap faults that application alone. The threads of one application share the heap through a lock
+:zephyr_file:`include/zephyr/app_platform/app_heap.h`, or a loadable module through the same
+names in ``app_sdk.h``, see `Module interface`_. They run the allocator in the calling thread, so
+the heap metadata is only ever walked by the application that owns it, and a corrupted heap faults
+that application alone. The threads of one application share the heap through a lock
 word in the region. :c:func:`app_svc_heap_info` returns the region's address and size.
 
 A stopped application keeps its region, which is zeroed and initialized again when it starts. A
@@ -226,6 +227,35 @@ headers, the signer writes it into the manifest, and the loader rejects a
 module whose identifier differs from the running firmware's with ``-ENOEXEC``.
 A module built for another firmware configuration therefore fails to load
 instead of invoking the wrong system calls.
+
+Module interface
+================
+
+A loadable module is built with ``app_platform_add_module()``, which takes the arguments of
+``add_llext_target()``, and includes only :zephyr_file:`include/zephyr/app_platform/app_sdk.h`. The
+header gives the module the services under their ``app_svc_*`` names, the kernel services
+``app_sleep_ms()``, ``app_sleep_us()``, ``app_uptime_get()`` and ``app_yield()``, which take
+explicit units rather than ticks, the heap allocator, the shared service types and the
+``app_main()`` entry point. Each of these is an inline call of a function the firmware exports
+under a versioned name, ``app_abi_<name>_v<version>``, which runs the service in the firmware with
+all of its checks. A module therefore holds no syscall number, kernel structure or kernel
+configuration value of the firmware it was built against.
+
+The exported functions are listed once, in :zephyr_file:`subsys/app_platform/abi/app_abi.txt`.
+The build generates the firmware functions, their declarations and the module names from it, and
+checks every service entry against the declaration in ``app_services.h``. Only the functions of
+the services built into the firmware are exported, in the ``APP_ABI`` symbol group enabled by
+:kconfig:option:`CONFIG_LLEXT_EXPORT_SYMBOL_GROUP_APP_ABI`, so a module that calls a missing
+service fails to load on the unresolved symbol. A released entry never changes: a new signature or
+behavior takes a new entry with the next version, and the old entry stays for the modules built
+against it.
+
+A module must not include ``kernel.h``, a header that declares syscalls, or ``app_services.h``.
+``app_sdk.h`` refuses to build after one of them and, with GCC or Clang, makes one included after
+it fail. ``app_platform_add_module()`` also defines ``APP_PLATFORM_MODULE``, which makes
+``app_services.h`` refuse to build. Pure C library functions, such as ``snprintf()`` and the string
+functions, stay available to modules. Built-in applications are part of the firmware and keep
+using ``app_services.h``.
 
 Installing from the host
 ========================
