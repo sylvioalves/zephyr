@@ -23,6 +23,8 @@ project(app_ble_ota_peer)
 # bytes it serves.
 set(APP_NAME    "weather")
 set(APP_VERSION 1)
+set(APP_REQUESTED_CAPS LOG,TIME,RANDOM)
+set(APP_REQUIRED_CAPS  LOG)
 
 if(NOT DEFINED OTA_MODULE)
   message(FATAL_ERROR
@@ -60,6 +62,8 @@ add_custom_command(
     -DKEY_DIR=${CMAKE_CURRENT_SOURCE_DIR}/../keys
     -DAPP_NAME=${APP_NAME}
     -DAPP_VERSION=${APP_VERSION}
+    -DAPP_REQUESTED_CAPS=${APP_REQUESTED_CAPS}
+    -DAPP_REQUIRED_CAPS=${APP_REQUIRED_CAPS}
     -DABI_FILE=${OTA_ABI}
     -DOUT_MF_INC=${o_mf}
     -DOUT_SIG_INC=${o_sig}

@@ -25,6 +25,7 @@ add_custom_command(
     -DKEY_DIR=${ZEPHYR_BASE}/tests/subsys/app_platform/keys
     -DAPP_NAME=renumber
     -DAPP_VERSION=1
+    -DAPP_REQUESTED_CAPS=LOG,TIME
     -DABI_FILE=${APP_PLATFORM_ABI_FILE}
     -DOUT_MF_INC=${mf}
     -DOUT_SIG_INC=${sig}

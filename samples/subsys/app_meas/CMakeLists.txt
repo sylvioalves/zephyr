@@ -26,6 +26,8 @@ function(add_sized_module name pad)
       -DKEY_DIR=${CMAKE_CURRENT_SOURCE_DIR}/keys
       -DAPP_NAME=${name}
       -DAPP_VERSION=1
+      -DAPP_REQUESTED_CAPS=LOG
+      -DAPP_REQUIRED_CAPS=LOG
       -DABI_FILE=${APP_PLATFORM_ABI_FILE}
       -DOUT_MF_INC=${mf}
       -DOUT_SIG_INC=${sig}

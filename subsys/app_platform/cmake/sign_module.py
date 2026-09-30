@@ -19,6 +19,7 @@ outside the list of importable symbols it names is not signed.
 
 import argparse
 import hashlib
+import re
 import struct
 import subprocess
 import sys
@@ -35,6 +36,28 @@ HEADER = struct.Struct("<IHH")
 FIELDS = struct.Struct("<II32s32s16sIHHIIQQI28s")
 MANIFEST_LEN = HEADER.size + FIELDS.size
 MAX_LEN = 256
+CAPS_H = Path(__file__).resolve().parents[3] / "include/zephyr/app_platform/app_caps.h"
+
+
+def parse_caps(value):
+    """Capabilities as a number or as comma-separated names from app_caps.h."""
+    value = value.strip()
+    if not value or value[0].isdigit():
+        return int(value or "0", 0)
+    bits = {
+        m.group(1): int(m.group(2))
+        for m in re.finditer(
+            r"#define\s+APP_CAP_(\w+)\s+APP_CAP_BIT\((\d+)\)",
+            CAPS_H.read_text(encoding="utf-8"),
+        )
+    }
+    caps = 0
+    for name in value.split(","):
+        name = name.strip().upper().removeprefix("APP_CAP_")
+        if name not in bits:
+            raise argparse.ArgumentTypeError(f"unknown capability '{name}'")
+        caps |= 1 << bits[name]
+    return caps
 
 
 def read_abi_file(path):
@@ -113,8 +136,18 @@ def main():
     parser.add_argument("--name", required=True, help="application name")
     parser.add_argument("--version", type=int, required=True, help="application version")
     parser.add_argument("--heap-size", type=lambda v: int(v, 0), default=0)
-    parser.add_argument("--requested-caps", type=lambda v: int(v, 0), default=0)
-    parser.add_argument("--required-caps", type=lambda v: int(v, 0), default=0)
+    parser.add_argument(
+        "--requested-caps",
+        type=parse_caps,
+        required=True,
+        help="capabilities the application asks for, a number or names such as LOG,TIME",
+    )
+    parser.add_argument(
+        "--required-caps",
+        type=parse_caps,
+        default=0,
+        help="capabilities it cannot run without, a subset of the requested ones",
+    )
     parser.add_argument("--key-id", type=lambda v: int(v, 0), default=0)
     parser.add_argument("--abi-major", help="interface major version, overrides the firmware's")
     parser.add_argument("--target", help="target fingerprint, overrides the firmware's")

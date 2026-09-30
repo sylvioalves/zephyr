@@ -6,6 +6,7 @@ project(app_platform_test)
 
 set(APP_NAME    "testmod")
 set(APP_VERSION 1)
+set(APP_REQUESTED_CAPS LOG)
 
 target_sources(app PRIVATE src/main.c src/loader_neg.c src/abi.c src/module_run.c)
 target_sources_ifdef(CONFIG_USERSPACE app PRIVATE src/hostile.c)
@@ -42,6 +43,7 @@ add_custom_command(
     -DKEY_DIR=${CMAKE_CURRENT_SOURCE_DIR}/keys
     -DAPP_NAME=${APP_NAME}
     -DAPP_VERSION=${APP_VERSION}
+    -DAPP_REQUESTED_CAPS=${APP_REQUESTED_CAPS}
     -DABI_FILE=${APP_PLATFORM_ABI_FILE}
     -DOUT_MF_INC=${mf}
     -DOUT_SIG_INC=${sig}
@@ -66,6 +68,7 @@ add_custom_command(
     -DKEY_DIR=${CMAKE_CURRENT_SOURCE_DIR}/keys
     -DAPP_NAME=${APP_NAME}
     -DAPP_VERSION=${APP_VERSION}
+    -DAPP_REQUESTED_CAPS=${APP_REQUESTED_CAPS}
     -DABI_FILE=${APP_PLATFORM_ABI_FILE}
     -DABI_MAJOR_OVERRIDE=0xffff
     -DOUT_MF_INC=${badabi_mf}
@@ -95,6 +98,7 @@ foreach(variant long:MANIFEST_LEN=200 short:MANIFEST_LEN=100 target:TARGET_OVERR
       -DKEY_DIR=${CMAKE_CURRENT_SOURCE_DIR}/keys
       -DAPP_NAME=${APP_NAME}
       -DAPP_VERSION=${APP_VERSION}
+      -DAPP_REQUESTED_CAPS=${APP_REQUESTED_CAPS}
       -DABI_FILE=${APP_PLATFORM_ABI_FILE}
       -D${input}
       -DOUT_MF_INC=${v_mf}
@@ -120,6 +124,7 @@ add_custom_command(
     -DKEY_DIR=${CMAKE_CURRENT_SOURCE_DIR}/keys
     -DAPP_NAME=${APP_NAME}
     -DAPP_VERSION=${APP_VERSION}
+    -DAPP_REQUESTED_CAPS=${APP_REQUESTED_CAPS}
     -DAPP_HEAP_SIZE=992
     -DABI_FILE=${APP_PLATFORM_ABI_FILE}
     -DOUT_MF_INC=${heap_mf}
@@ -149,6 +154,7 @@ add_custom_command(
     -DKEY_DIR=${CMAKE_CURRENT_SOURCE_DIR}/keys
     -DAPP_NAME=forbidden
     -DAPP_VERSION=1
+    -DAPP_REQUESTED_CAPS=${APP_REQUESTED_CAPS}
     -DABI_FILE=${APP_PLATFORM_ABI_FILE}
     -DSKIP_IMPORT_CHECK=1
     -DOUT_MF_INC=${forbidden_mf}
@@ -174,6 +180,7 @@ add_custom_command(
     -DKEY_DIR=${CMAKE_CURRENT_SOURCE_DIR}/keys
     -DAPP_NAME=evil
     -DAPP_VERSION=1
+    -DAPP_REQUESTED_CAPS=${APP_REQUESTED_CAPS}
     -DABI_FILE=${APP_PLATFORM_ABI_FILE}
     -DOUT_INC=${evil}
     -DOUT_MF_INC=${evil_mf}

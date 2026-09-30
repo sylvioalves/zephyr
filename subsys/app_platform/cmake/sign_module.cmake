@@ -13,17 +13,25 @@
 # signed; SKIP_IMPORT_CHECK signs it anyway, for tests of the loader check.
 #
 # The manifest carries the interface major version and the other facts the
-# firmware build wrote to ABI_FILE, the per-application heap size APP_HEAP_SIZE
-# and the capabilities APP_REQUESTED_CAPS and APP_REQUIRED_CAPS (0 when unset).
+# firmware build wrote to ABI_FILE, the per-application heap size APP_HEAP_SIZE,
+# the capabilities the application asks for, APP_REQUESTED_CAPS, and those it
+# cannot run without, APP_REQUIRED_CAPS (none when unset). Each is a number or
+# comma-separated capability names without the APP_CAP_ prefix, such as
+# LOG,TIME. The application is granted no capability it does not request.
 # The layout is built by sign_module.py and matches struct app_manifest
 # (app_manifest.h). ABI_MAJOR_OVERRIDE, TARGET_OVERRIDE and MANIFEST_LEN
 # produce a manifest this firmware refuses or one with fields it does not know,
 # for tests.
 #
-# Inputs: MODULE_BIN, KEY_DIR, APP_NAME, APP_VERSION, ABI_FILE, OUT_MF_INC,
-#         OUT_SIG_INC, PYTHON_EXECUTABLE. Optional: OUT_PUB_INC, OUT_MANIFEST,
-#         APP_HEAP_SIZE, APP_REQUESTED_CAPS, APP_REQUIRED_CAPS,
+# Inputs: MODULE_BIN, KEY_DIR, APP_NAME, APP_VERSION, APP_REQUESTED_CAPS,
+#         ABI_FILE, OUT_MF_INC, OUT_SIG_INC, PYTHON_EXECUTABLE. Optional:
+#         OUT_PUB_INC, OUT_MANIFEST, APP_HEAP_SIZE, APP_REQUIRED_CAPS,
 #         ABI_MAJOR_OVERRIDE, TARGET_OVERRIDE, MANIFEST_LEN, SKIP_IMPORT_CHECK.
+
+if(NOT DEFINED APP_REQUESTED_CAPS)
+  message(FATAL_ERROR "APP_REQUESTED_CAPS is not set for ${APP_NAME}: list the "
+    "capabilities the module uses, such as -DAPP_REQUESTED_CAPS=LOG,TIME")
+endif()
 
 set(args
   --module ${MODULE_BIN}

@@ -7,6 +7,8 @@ project(app_persist)
 # Identity bound into the signed manifest; keep in sync with src/main.c.
 set(APP_NAME    "persist")
 set(APP_VERSION 1)
+set(APP_REQUESTED_CAPS LOG,RANDOM)
+set(APP_REQUIRED_CAPS  LOG)
 
 target_sources(app PRIVATE src/main.c)
 target_compile_definitions(app PRIVATE
@@ -34,6 +36,8 @@ add_custom_command(
     -DKEY_DIR=${CMAKE_CURRENT_SOURCE_DIR}/keys
     -DAPP_NAME=${APP_NAME}
     -DAPP_VERSION=${APP_VERSION}
+    -DAPP_REQUESTED_CAPS=${APP_REQUESTED_CAPS}
+    -DAPP_REQUIRED_CAPS=${APP_REQUIRED_CAPS}
     -DABI_FILE=${APP_PLATFORM_ABI_FILE}
     -DOUT_MF_INC=${mf}
     -DOUT_SIG_INC=${sig}

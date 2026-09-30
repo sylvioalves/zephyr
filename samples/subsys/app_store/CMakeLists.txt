@@ -7,6 +7,8 @@ project(app_store)
 # Identity bound into the signed manifest.
 set(APP_NAME    "store")
 set(APP_VERSION 1)
+set(APP_REQUESTED_CAPS LOG)
+set(APP_REQUIRED_CAPS  LOG)
 
 set(ext_name blink_app)
 set(ext_src module/src/${ext_name}.c)
@@ -32,6 +34,8 @@ add_custom_command(
           -DKEY_DIR=${CMAKE_CURRENT_SOURCE_DIR}/keys
           -DAPP_NAME=${APP_NAME}
           -DAPP_VERSION=${APP_VERSION}
+          -DAPP_REQUESTED_CAPS=${APP_REQUESTED_CAPS}
+          -DAPP_REQUIRED_CAPS=${APP_REQUIRED_CAPS}
           -DABI_FILE=${APP_PLATFORM_ABI_FILE}
           -DOUT_MF_INC=${ext_mf}
           -DOUT_SIG_INC=${ext_sig}
