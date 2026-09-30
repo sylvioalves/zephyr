@@ -13,7 +13,7 @@ function(add_sized_module name pad)
   set(sig ${ZEPHYR_BINARY_DIR}/include/generated/${name}.sig.inc)
   set(pub ${ZEPHYR_BINARY_DIR}/include/generated/${name}.pubkey.inc)
 
-  add_llext_target(${name}_ext OUTPUT ${bin}
+  app_platform_add_module(${name}_ext OUTPUT ${bin}
     SOURCES ${PROJECT_SOURCE_DIR}/module/src/pad_app.c)
   llext_compile_definitions(${name}_ext PAD_BYTES=${pad})
   llext_include_directories(${name}_ext ${ZEPHYR_BINARY_DIR}/include/generated)

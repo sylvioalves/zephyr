@@ -15,10 +15,8 @@
  * The echo server's address is compiled in (ECHO_HOST/ECHO_PORT).
  */
 
-#include <zephyr/app_platform/app_services.h>
+#include <zephyr/app_platform/app_sdk.h>
 
-#include <zephyr/llext/symbol.h>
-#include <zephyr/kernel.h>
 #include <zephyr/sys/util.h>
 
 #ifndef ECHO_HOST
@@ -127,12 +125,12 @@ void app_main(void *arg)
 			       (int)(app_svc_uptime_ms() - tw), " ms");
 			last = now;
 		}
-		k_msleep(1000);
+		app_sleep_ms(1000);
 	}
 	app_svc_log("watch: done");
 
 	for (;;) {
-		k_msleep(1000);
+		app_sleep_ms(1000);
 	}
 }
 EXPORT_SYMBOL(app_main);

@@ -12,10 +12,7 @@
  * check, the copy and the message queue.
  */
 
-#include <zephyr/app_platform/app_services.h>
-
-#include <zephyr/llext/symbol.h>
-#include <zephyr/kernel.h>
+#include <zephyr/app_platform/app_sdk.h>
 
 /* Append an unsigned decimal to a string buffer. */
 static int put_u32(char *out, int i, uint32_t v)
@@ -122,7 +119,7 @@ void app_main(void *arg)
 	app_svc_log("bench: done");
 	for (;;) {
 		app_svc_heartbeat();
-		k_msleep(1000);
+		app_sleep_ms(1000);
 	}
 }
 EXPORT_SYMBOL(app_main);

@@ -13,7 +13,7 @@ set(bin ${PROJECT_BINARY_DIR}/llext/psram.llext)
 set(inc ${ZEPHYR_BINARY_DIR}/include/generated/psram.inc)
 set(sha ${ZEPHYR_BINARY_DIR}/include/generated/psram.sha256.inc)
 
-add_llext_target(psram_ext OUTPUT ${bin} SOURCES ${ext_src})
+app_platform_add_module(psram_ext OUTPUT ${bin} SOURCES ${ext_src})
 llext_include_directories(psram_ext ${ZEPHYR_BINARY_DIR}/include/generated)
 generate_inc_file_for_target(app ${bin} ${inc})
 

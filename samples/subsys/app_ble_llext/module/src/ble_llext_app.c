@@ -4,12 +4,10 @@
  * SPDX-License-Identifier: Apache-2.0
  */
 
-#include <zephyr/app_platform/app_services.h>
-#include <zephyr/app_platform/app_caps.h>
+#include <zephyr/app_platform/app_sdk.h>
 #include <zephyr/app_platform/app_dispatch.h>
 #include <errno.h>
 #include <stdio.h>
-#include <zephyr/llext/symbol.h>
 
 /* The served service UUID and the two characteristics under it, as
  * little-endian bytes. The host grants the service UUID to this application,

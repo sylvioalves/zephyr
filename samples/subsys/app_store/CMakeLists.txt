@@ -17,7 +17,7 @@ set(ext_sig ${ZEPHYR_BINARY_DIR}/include/generated/${ext_name}.sig.inc)
 set(ext_pub ${ZEPHYR_BINARY_DIR}/include/generated/${ext_name}.pubkey.inc)
 
 # Build the downloadable module as an llext.
-add_llext_target(${ext_name}_ext OUTPUT ${ext_bin} SOURCES ${ext_src})
+app_platform_add_module(${ext_name}_ext OUTPUT ${ext_bin} SOURCES ${ext_src})
 
 # Embed the module bytes as a C array.
 generate_inc_file_for_target(app ${ext_bin} ${ext_inc})

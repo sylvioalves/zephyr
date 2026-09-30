@@ -13,7 +13,7 @@ function(add_module name)
   set(inc ${ZEPHYR_BINARY_DIR}/include/generated/${name}.inc)
   set(sha ${ZEPHYR_BINARY_DIR}/include/generated/${name}.sha256.inc)
 
-  add_llext_target(${name}_ext OUTPUT ${bin} SOURCES ${src})
+  app_platform_add_module(${name}_ext OUTPUT ${bin} SOURCES ${src})
   llext_include_directories(${name}_ext ${ZEPHYR_BINARY_DIR}/include/generated)
   generate_inc_file_for_target(app ${bin} ${inc})
 

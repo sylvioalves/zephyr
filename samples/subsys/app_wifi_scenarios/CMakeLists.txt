@@ -11,7 +11,7 @@ set(bin ${PROJECT_BINARY_DIR}/llext/net_app.llext)
 set(inc ${ZEPHYR_BINARY_DIR}/include/generated/net_app.inc)
 set(sha ${ZEPHYR_BINARY_DIR}/include/generated/net_app.sha256.inc)
 
-add_llext_target(net_ext OUTPUT ${bin} SOURCES ${ext_src})
+app_platform_add_module(net_ext OUTPUT ${bin} SOURCES ${ext_src})
 llext_include_directories(net_ext ${ZEPHYR_BINARY_DIR}/include/generated)
 generate_inc_file_for_target(app ${bin} ${inc})
 

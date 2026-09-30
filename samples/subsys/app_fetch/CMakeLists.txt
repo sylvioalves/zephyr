@@ -22,7 +22,7 @@ set(serve_dir ${PROJECT_BINARY_DIR}/serve)
 set(served_ext ${serve_dir}/${APP_NAME}.llext)
 set(served_mf ${serve_dir}/${APP_NAME}.manifest)
 
-add_llext_target(fetch_ext OUTPUT ${bin} SOURCES ${ext_src})
+app_platform_add_module(fetch_ext OUTPUT ${bin} SOURCES ${ext_src})
 llext_include_directories(fetch_ext ${ZEPHYR_BINARY_DIR}/include/generated)
 generate_inc_file_for_target(app ${bin} ${inc})
 

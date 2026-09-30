@@ -22,7 +22,7 @@ set(bundle_dir ${PROJECT_BINARY_DIR}/bundle)
 set(bundle_ext ${bundle_dir}/${APP_NAME}.llext)
 set(bundle_mf  ${bundle_dir}/${APP_NAME}.manifest)
 
-add_llext_target(install_ext OUTPUT ${bin} SOURCES ${ext_src})
+app_platform_add_module(install_ext OUTPUT ${bin} SOURCES ${ext_src})
 llext_include_directories(install_ext ${ZEPHYR_BINARY_DIR}/include/generated)
 generate_inc_file_for_target(app ${bin} ${inc})
 

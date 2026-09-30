@@ -12,15 +12,13 @@
  * interference surfaces as a verify mismatch. A per-instance tag, derived from
  * the mapped base address, distinguishes the two instances' data.
  *
- * The module only uses the user-mode service syscalls (app_svc_*) and builds its
- * log strings by hand, so it has no dependency on libc symbols that would need
- * to be resolved at load time.
+ * The module calls only the functions of app_sdk.h and builds its log strings
+ * by hand, so it resolves nothing but the platform's exported functions at
+ * load time.
  */
 
-#include <zephyr/app_platform/app_services.h>
+#include <zephyr/app_platform/app_sdk.h>
 
-#include <zephyr/llext/symbol.h>
-#include <zephyr/kernel.h>
 #include <zephyr/sys/util.h>
 
 #define REGION_SIZE (128 * 1024)
@@ -68,7 +66,7 @@ void app_main(void *arg)
 		app_svc_log("map FAILED");
 		for (;;) {
 			app_svc_heartbeat();
-			k_msleep(1000);
+			app_sleep_ms(1000);
 		}
 	}
 
@@ -90,7 +88,7 @@ void app_main(void *arg)
 
 	uint32_t iters = 0;
 	uint32_t errors = 0;
-	int64_t deadline = k_uptime_get() + STRESS_MS;
+	int64_t deadline = app_uptime_get() + STRESS_MS;
 
 	/*
 	 * The hot loop intentionally makes no service syscalls. These apps are
@@ -100,7 +98,7 @@ void app_main(void *arg)
 	 * The work itself - direct loads and stores to the mapped region - needs
 	 * no kernel help.
 	 */
-	while (k_uptime_get() < deadline) {
+	while (app_uptime_get() < deadline) {
 		uint8_t seed = (uint8_t)(tag + iters);
 
 		for (size_t j = 0; j < size; j++) {
@@ -128,7 +126,7 @@ void app_main(void *arg)
 
 	for (;;) {
 		app_svc_heartbeat();
-		k_msleep(1000);
+		app_sleep_ms(1000);
 	}
 }
 EXPORT_SYMBOL(app_main);

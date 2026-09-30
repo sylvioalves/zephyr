@@ -10,9 +10,7 @@
  * version logs its own banner, so the hot-update is visible at runtime.
  */
 
-#include <zephyr/app_platform/app_services.h>
-#include <zephyr/llext/symbol.h>
-#include <zephyr/kernel.h>
+#include <zephyr/app_platform/app_sdk.h>
 
 #ifndef APP_VERSION
 #define APP_VERSION 0
@@ -35,7 +33,7 @@ void app_main(void *arg)
 			app_svc_log("app v2: tick (now with extra logging)");
 		}
 		app_svc_heartbeat();
-		k_msleep(500);
+		app_sleep_ms(500);
 	}
 }
 EXPORT_SYMBOL(app_main);

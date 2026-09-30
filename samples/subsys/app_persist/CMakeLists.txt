@@ -19,7 +19,7 @@ set(mf  ${ZEPHYR_BINARY_DIR}/include/generated/persist.manifest.inc)
 set(sig ${ZEPHYR_BINARY_DIR}/include/generated/persist.sig.inc)
 set(pub ${ZEPHYR_BINARY_DIR}/include/generated/persist.pubkey.inc)
 
-add_llext_target(persist_ext OUTPUT ${bin} SOURCES ${ext_src})
+app_platform_add_module(persist_ext OUTPUT ${bin} SOURCES ${ext_src})
 llext_include_directories(persist_ext ${ZEPHYR_BINARY_DIR}/include/generated)
 generate_inc_file_for_target(app ${bin} ${inc})
 

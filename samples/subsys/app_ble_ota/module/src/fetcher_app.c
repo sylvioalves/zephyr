@@ -12,10 +12,8 @@
  * supervisor is subscribed to, and the supervisor does the verifying.
  */
 
-#include <zephyr/app_platform/app_services.h>
+#include <zephyr/app_platform/app_sdk.h>
 
-#include <zephyr/llext/symbol.h>
-#include <zephyr/kernel.h>
 #include <zephyr/sys/util.h>
 
 #ifndef OTA_PEER_NAME
@@ -87,7 +85,7 @@ void app_main(void *arg)
 	 * them.
 	 */
 	for (;;) {
-		k_msleep(1000);
+		app_sleep_ms(1000);
 	}
 }
 EXPORT_SYMBOL(app_main);

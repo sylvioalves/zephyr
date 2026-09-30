@@ -12,10 +12,7 @@
  * service library, so this module links none of them and stays small.
  */
 
-#include <zephyr/app_platform/app_services.h>
-
-#include <zephyr/llext/symbol.h>
-#include <zephyr/kernel.h>
+#include <zephyr/app_platform/app_sdk.h>
 
 /* Format milli-degrees as "DD.d" without pulling printf into the module. */
 static void fmt_temp(int milli, char *out)
@@ -56,7 +53,7 @@ void app_main(void *arg)
 		fmt_temp(app_svc_die_temp_milli(), payload);
 		app_svc_mqtt_publish(payload);
 		app_svc_heartbeat();
-		k_msleep(10000);
+		app_sleep_ms(10000);
 	}
 }
 EXPORT_SYMBOL(app_main);

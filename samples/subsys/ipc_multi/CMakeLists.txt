@@ -16,7 +16,7 @@ function(build_role name role)
   set(inc ${ZEPHYR_BINARY_DIR}/include/generated/${name}.inc)
   set(sha ${ZEPHYR_BINARY_DIR}/include/generated/${name}.sha256.inc)
 
-  add_llext_target(${name}_ext OUTPUT ${bin} SOURCES ${ext_src})
+  app_platform_add_module(${name}_ext OUTPUT ${bin} SOURCES ${ext_src})
   llext_compile_definitions(${name}_ext ROLE=${role})
   llext_include_directories(${name}_ext
     ${ZEPHYR_BINARY_DIR}/include/generated

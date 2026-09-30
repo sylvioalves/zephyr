@@ -8,9 +8,7 @@
  * granted, logging each step before it is shown and the service result after.
  */
 
-#include <zephyr/app_platform/app_services.h>
-#include <zephyr/llext/symbol.h>
-#include <zephyr/kernel.h>
+#include <zephyr/app_platform/app_sdk.h>
 #include <stdio.h>
 
 #define RGB_CYCLES  2
@@ -55,7 +53,7 @@ void app_main(void *arg)
 			if (rc != 0) {
 				failed++;
 			}
-			k_msleep(RGB_STEP_MS);
+			app_sleep_ms(RGB_STEP_MS);
 		}
 	}
 

@@ -13,7 +13,7 @@ set(bin ${PROJECT_BINARY_DIR}/llext/hello.llext)
 set(inc ${ZEPHYR_BINARY_DIR}/include/generated/hello.inc)
 set(sha ${ZEPHYR_BINARY_DIR}/include/generated/hello.sha256.inc)
 
-add_llext_target(hello_ext OUTPUT ${bin} SOURCES ${ext_src})
+app_platform_add_module(hello_ext OUTPUT ${bin} SOURCES ${ext_src})
 llext_include_directories(hello_ext ${ZEPHYR_BINARY_DIR}/include/generated)
 generate_inc_file_for_target(app ${bin} ${inc})
 

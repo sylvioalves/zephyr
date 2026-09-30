@@ -10,15 +10,13 @@
  * instances of this module run in parallel as isolated user-mode apps so the
  * maximum number of concurrent loadable apps can be measured.
  *
- * The module uses only service syscalls (app_svc_*) and builds its log line by
- * hand, so it has no libc or supervisor-symbol dependencies to resolve at load
+ * The module calls only the functions of app_sdk.h and builds its log line by
+ * hand, so it resolves nothing but the platform's exported functions at load
  * time.
  */
 
-#include <zephyr/app_platform/app_services.h>
+#include <zephyr/app_platform/app_sdk.h>
 
-#include <zephyr/llext/symbol.h>
-#include <zephyr/kernel.h>
 #include <zephyr/sys/util.h>
 
 static int put_str(char *out, int i, const char *s)
@@ -75,7 +73,7 @@ void app_main(void *arg)
 			app_svc_log(line);
 		}
 
-		k_msleep(1000);
+		app_sleep_ms(1000);
 	}
 }
 EXPORT_SYMBOL(app_main);

@@ -14,10 +14,7 @@
  * through service syscalls.
  */
 
-#include <zephyr/app_platform/app_services.h>
-
-#include <zephyr/llext/symbol.h>
-#include <zephyr/kernel.h>
+#include <zephyr/app_platform/app_sdk.h>
 
 void app_main(void *arg)
 {
@@ -25,7 +22,7 @@ void app_main(void *arg)
 
 	for (int i = 0; i < 5; i++) {
 		app_svc_log("store app: running from a verified install");
-		k_msleep(500);
+		app_sleep_ms(500);
 	}
 	app_svc_log("store app: done");
 }

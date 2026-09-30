@@ -14,7 +14,7 @@ set(bin ${PROJECT_BINARY_DIR}/llext/rgb_app.llext)
 set(inc ${ZEPHYR_BINARY_DIR}/include/generated/rgb_app.inc)
 set(sha ${ZEPHYR_BINARY_DIR}/include/generated/rgb_app.sha256.inc)
 
-add_llext_target(rgb_app_ext OUTPUT ${bin} SOURCES ${ext_src})
+app_platform_add_module(rgb_app_ext OUTPUT ${bin} SOURCES ${ext_src})
 llext_include_directories(rgb_app_ext ${ZEPHYR_BINARY_DIR}/include/generated)
 generate_inc_file_for_target(app ${bin} ${inc})
 

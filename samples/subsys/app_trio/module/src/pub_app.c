@@ -10,9 +10,7 @@
  * the system only through service syscalls.
  */
 
-#include <zephyr/app_platform/app_services.h>
-#include <zephyr/llext/symbol.h>
-#include <zephyr/kernel.h>
+#include <zephyr/app_platform/app_sdk.h>
 
 static void fmt_temp(int milli, char *out)
 {
@@ -83,7 +81,7 @@ void app_main(void *arg)
 
 		fmt_temp(app_svc_die_temp_milli(), payload);
 		app_svc_mqtt_publish(payload);
-		k_msleep(5000);
+		app_sleep_ms(5000);
 	}
 }
 EXPORT_SYMBOL(app_main);

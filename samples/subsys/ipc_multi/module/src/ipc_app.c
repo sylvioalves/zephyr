@@ -13,10 +13,7 @@
  * only copied bytes - no shared memory.
  */
 
-#include <zephyr/app_platform/app_services.h>
-
-#include <zephyr/llext/symbol.h>
-#include <zephyr/kernel.h>
+#include <zephyr/app_platform/app_sdk.h>
 
 #ifndef ROLE
 #define ROLE 0
@@ -33,7 +30,7 @@ void app_main(void *arg)
 #if ROLE == ROLE_PRODUCER
 	app_svc_ipc_register("producer");
 	/* Give the others a moment to register and subscribe. */
-	k_msleep(500);
+	app_sleep_ms(500);
 
 	app_svc_log("producer: sending to consumer by name");
 	int rc = app_svc_ipc_send_to("consumer", "hello-consumer", 15);
@@ -76,7 +73,7 @@ void app_main(void *arg)
 
 	for (;;) {
 		app_svc_heartbeat();
-		k_msleep(1000);
+		app_sleep_ms(1000);
 	}
 }
 EXPORT_SYMBOL(app_main);

@@ -12,7 +12,7 @@ set(f_bin ${PROJECT_BINARY_DIR}/llext/fetcher_app.llext)
 set(f_inc ${ZEPHYR_BINARY_DIR}/include/generated/fetcher_app.inc)
 set(f_sha ${ZEPHYR_BINARY_DIR}/include/generated/fetcher_app.sha256.inc)
 
-add_llext_target(fetcher_ext OUTPUT ${f_bin} SOURCES ${f_src})
+app_platform_add_module(fetcher_ext OUTPUT ${f_bin} SOURCES ${f_src})
 llext_include_directories(fetcher_ext ${ZEPHYR_BINARY_DIR}/include/generated)
 generate_inc_file_for_target(app ${f_bin} ${f_inc})
 
@@ -40,7 +40,7 @@ add_dependencies(app fetcher_sha)
 set(o_src ${PROJECT_SOURCE_DIR}/module/src/ota_app.c)
 set(o_bin ${PROJECT_BINARY_DIR}/llext/ota_app.llext)
 
-add_llext_target(ota_ext OUTPUT ${o_bin} SOURCES ${o_src})
+app_platform_add_module(ota_ext OUTPUT ${o_bin} SOURCES ${o_src})
 llext_include_directories(ota_ext ${ZEPHYR_BINARY_DIR}/include/generated)
 add_dependencies(app ota_ext)
 

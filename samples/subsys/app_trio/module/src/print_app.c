@@ -10,9 +10,7 @@
  * touches the network - it only consumes the in-device message bus.
  */
 
-#include <zephyr/app_platform/app_services.h>
-#include <zephyr/llext/symbol.h>
-#include <zephyr/kernel.h>
+#include <zephyr/app_platform/app_sdk.h>
 
 void app_main(void *arg)
 {

@@ -12,10 +12,8 @@
  * isolated llext module.
  */
 
-#include <zephyr/app_platform/app_services.h>
+#include <zephyr/app_platform/app_sdk.h>
 
-#include <zephyr/llext/symbol.h>
-#include <zephyr/kernel.h>
 #include <errno.h>
 
 static void say(const char *label, int rc)
@@ -258,7 +256,7 @@ void app_main(void *arg)
 	app_svc_log("probe: done - all from platform-owned services");
 	for (;;) {
 		app_svc_heartbeat();
-		k_msleep(1000);
+		app_sleep_ms(1000);
 	}
 }
 EXPORT_SYMBOL(app_main);

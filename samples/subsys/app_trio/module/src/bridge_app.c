@@ -11,9 +11,7 @@
  * without sharing memory with either neighbour.
  */
 
-#include <zephyr/app_platform/app_services.h>
-#include <zephyr/llext/symbol.h>
-#include <zephyr/kernel.h>
+#include <zephyr/app_platform/app_sdk.h>
 
 static size_t z_strlen(const char *s)
 {

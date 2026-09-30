@@ -13,7 +13,7 @@ set(bin ${PROJECT_BINARY_DIR}/llext/bench.llext)
 set(inc ${ZEPHYR_BINARY_DIR}/include/generated/bench.inc)
 set(sha ${ZEPHYR_BINARY_DIR}/include/generated/bench.sha256.inc)
 
-add_llext_target(bench_ext OUTPUT ${bin} SOURCES ${ext_src})
+app_platform_add_module(bench_ext OUTPUT ${bin} SOURCES ${ext_src})
 llext_include_directories(bench_ext ${ZEPHYR_BINARY_DIR}/include/generated)
 generate_inc_file_for_target(app ${bin} ${inc})
 
