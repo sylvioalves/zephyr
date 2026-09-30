@@ -33,7 +33,8 @@
  * the region up with @ref app_svc_heap_info, since static data of a built-in
  * application is outside its memory domain and a cache in the data of a
  * loadable one would cost it a memory partition. The same functions work
- * without user mode.
+ * without user mode. A loadable module calls them through
+ * @ref app_platform_sdk, which runs them in the firmware.
  */
 
 /** Start of a heap region. The heap memory follows it. */

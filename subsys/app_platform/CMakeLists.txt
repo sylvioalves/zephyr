@@ -3,6 +3,8 @@
 
 zephyr_library()
 
+include(${CMAKE_CURRENT_SOURCE_DIR}/cmake/app_module.cmake)
+
 zephyr_library_sources(app_manager.c app_sync.c app_heap.c)
 zephyr_library_sources_ifdef(CONFIG_SHELL                 app_shell.c)
 zephyr_library_sources_ifdef(CONFIG_APP_PLATFORM_LOADER   app_loader.c)

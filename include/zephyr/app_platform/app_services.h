@@ -7,6 +7,10 @@
 #ifndef ZEPHYR_INCLUDE_APP_PLATFORM_SERVICES_H_
 #define ZEPHYR_INCLUDE_APP_PLATFORM_SERVICES_H_
 
+#if defined(APP_PLATFORM_MODULE)
+#error "an application module includes app_sdk.h instead of app_services.h"
+#endif
+
 #include <zephyr/kernel.h>
 #include <zephyr/app_platform/app_svc_types.h>
 

@@ -7,7 +7,11 @@
 #ifndef ZEPHYR_INCLUDE_APP_PLATFORM_APP_DISPATCH_H_
 #define ZEPHYR_INCLUDE_APP_PLATFORM_APP_DISPATCH_H_
 
+#if defined(APP_PLATFORM_MODULE)
+#include <zephyr/app_platform/app_sdk.h>
+#else
 #include <zephyr/app_platform/app_services.h>
+#endif
 
 /**
  * @file
