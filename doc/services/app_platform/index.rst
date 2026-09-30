@@ -103,11 +103,12 @@ started like any other.
    app_platform_grant_gpio(id, BIT(0));
    app_platform_start(id);
 
-A partition added to a domain belongs to the slot: it stays when the application is stopped,
-started again, relaunched after a fault, which reuses its slot, or removed, and a later application
-in the same slot inherits it unless the launcher removes it. Grants are dropped whenever the
-application stops or is reclaimed, so a launcher grants them again before starting a stopped
-application, and an application relaunched after a fault runs without them.
+A partition added to a domain stays while the application is stopped, started again or relaunched
+after a fault, which reuses its slot. A new application launched into a slot gets the domain back
+with none of the partitions its previous tenant had, so a launcher adds its partitions again at
+every launch. Grants are dropped whenever the application stops or is reclaimed, so a launcher
+grants them again before starting a stopped application, and an application relaunched after a
+fault runs without them.
 
 Supervision
 ===========
@@ -133,11 +134,14 @@ are turned off, and a display viewport it drew in is filled with
 application set more recently is left as it is. Other device state an application changed, such as the real-time clock
 or EEPROM contents, is kept.
 
-An application that dies inside a service while it holds the service's lock, through a fault in
+An application that dies inside a service while it owns the service's lock, through a fault in
 the service or a stop that outlasts :kconfig:option:`CONFIG_APP_PLATFORM_STOP_WAIT_MS`, can leave
 the state behind that lock half updated. The service is then disabled: every later call to it
-fails with ``-EIO`` until the next boot, and the resources it held for the dead application are
-not released. Other services and applications keep running.
+fails with ``-EIO`` until the next boot. An application that dies while it only waits for the lock
+does not disable the service. The external RAM and ring services still take the region of each
+application reclaimed afterwards out of its domain, and leave that memory allocated. The other
+services keep the resources they held for the applications reclaimed after the lock broke. Other
+services and applications keep running.
 
 Worker threads
 ==============
