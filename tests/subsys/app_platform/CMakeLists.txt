@@ -8,7 +8,7 @@ set(APP_NAME    "testmod")
 set(APP_VERSION 1)
 set(APP_REQUESTED_CAPS LOG)
 
-target_sources(app PRIVATE src/main.c src/loader_neg.c src/abi.c src/module_run.c)
+target_sources(app PRIVATE src/main.c src/loader_neg.c src/abi.c src/caps.c src/module_run.c)
 target_sources_ifdef(CONFIG_USERSPACE app PRIVATE src/hostile.c)
 if(CONFIG_APP_PLATFORM_APP_THREADS GREATER 0)
   target_sources(app PRIVATE src/threads.c)
@@ -136,6 +136,31 @@ add_custom_command(
 add_custom_target(test_heap_sign DEPENDS ${heap_mf} ${heap_sig})
 add_dependencies(test_heap_sign app_platform_abi)
 add_dependencies(app test_heap_sign)
+
+# The same module requesting and requiring more capabilities, for the
+# capability suite. Reuses the key generated above.
+set(caps_mf  ${ZEPHYR_BINARY_DIR}/include/generated/test_mod.caps.manifest.inc)
+set(caps_sig ${ZEPHYR_BINARY_DIR}/include/generated/test_mod.caps.sig.inc)
+
+add_custom_command(
+  OUTPUT  ${caps_mf} ${caps_sig}
+  COMMAND ${CMAKE_COMMAND}
+    -DMODULE_BIN=${bin}
+    -DKEY_DIR=${CMAKE_CURRENT_SOURCE_DIR}/keys
+    -DAPP_NAME=${APP_NAME}
+    -DAPP_VERSION=${APP_VERSION}
+    -DAPP_REQUESTED_CAPS=LOG,TIME,RANDOM
+    -DAPP_REQUIRED_CAPS=LOG,TIME
+    -DABI_FILE=${APP_PLATFORM_ABI_FILE}
+    -DOUT_MF_INC=${caps_mf}
+    -DOUT_SIG_INC=${caps_sig}
+    -DPYTHON_EXECUTABLE=${PYTHON_EXECUTABLE}
+    -P ${ZEPHYR_BASE}/subsys/app_platform/cmake/sign_module.cmake
+  DEPENDS ${bin} ${sig} ${APP_PLATFORM_ABI_FILE}
+)
+add_custom_target(test_caps_sign DEPENDS ${caps_mf} ${caps_sig})
+add_dependencies(test_caps_sign app_platform_abi)
+add_dependencies(app test_caps_sign)
 
 # A module importing a function outside the exported interface, signed without
 # the signer's import check for the loader's. Reuses the key generated above.
