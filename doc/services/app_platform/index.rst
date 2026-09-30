@@ -47,12 +47,16 @@ hardware does not report goes unnoticed. Run only trusted applications this way.
 A module does not depend on the mode: it reaches the services only through the
 functions the firmware exports, see `Module interface`_, so the same signed
 module runs in a firmware with user mode and in one without. Without user mode
-the module executes from RAM the kernel itself must be allowed to execute. The
-Arm MPU of an XIP target and the RISC-V PMP with
+the module executes from the llext heap as kernel code. The Arm MPU of an XIP
+target and the RISC-V PMP with
 :kconfig:option:`CONFIG_PMP_DATA_EXECUTION_PREVENTION` make RAM non-executable, so
-there a module runs only with user mode, or with
-:kconfig:option:`CONFIG_ARM_MPU` or
-:kconfig:option:`CONFIG_PMP_DATA_EXECUTION_PREVENTION` disabled.
+the loader enables :kconfig:option:`CONFIG_LLEXT_HEAP_EXECUTABLE`, which maps the
+llext heap executable for the kernel with a static MPU region or a locked PMP
+entry. That heap then holds writable and executable memory at once. On an Armv7-M
+MPU the heap size, :kconfig:option:`CONFIG_LLEXT_HEAP_SIZE`, must be a power of
+two. With the option disabled, a RISC-V module whose code would land in
+non-executable memory is refused with ``-ENOEXEC``, and on the Arm MPU it faults
+on its first instruction and is reclaimed.
 
 Capabilities and grants
 =======================

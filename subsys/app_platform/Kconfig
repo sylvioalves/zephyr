@@ -179,11 +179,16 @@ config APP_PLATFORM_LOADER
 	depends on !LLEXT_EXPORT_BUILTINS_BY_SLID
 	depends on PSA_CRYPTO
 	imply LLEXT_CONTIGUOUS_REGIONS
+	imply LLEXT_HEAP_EXECUTABLE
 	help
 	  Verify a downloaded module by SHA-256 and load it as an llext, so a
 	  tampered or corrupted module is rejected and never linked. Enable a
 	  PSA crypto provider (for example CONFIG_PSA_CRYPTO and
 	  CONFIG_PSA_WANT_ALG_SHA_256) for the SHA-256 implementation.
+
+	  Without USERSPACE a module runs from the llext heap as kernel code,
+	  so LLEXT_HEAP_EXECUTABLE is enabled where the Arm MPU or RISC-V PMP
+	  data execution prevention would make the heap non-executable.
 
 	  A module that imports a symbol outside the functions exported to
 	  modules and the few listed in subsys/app_platform/abi/app_imports.txt
