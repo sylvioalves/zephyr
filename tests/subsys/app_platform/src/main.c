@@ -798,6 +798,259 @@ ZTEST(lifecycle, test_fault_relaunch_keeps_slot)
 #endif
 }
 
+#ifdef CONFIG_USERSPACE
+K_APPMEM_PARTITION_DEFINE(grant_part);
+K_APP_BMEM(grant_part) static volatile uint32_t grant_runs;
+K_APP_BMEM(grant_part) static volatile int grant_rc[2];
+K_APP_BMEM(grant_part) static volatile int ctl_rc[2];
+K_APP_BMEM(grant_part) static volatile bool ctl_done;
+#else
+static volatile uint32_t grant_runs;
+static volatile int grant_rc[2];
+static volatile int ctl_rc[2];
+static volatile bool ctl_done;
+#endif
+
+static atomic_t configured;
+
+static int grant_window(int id, void *user)
+{
+	ARG_UNUSED(user);
+	atomic_inc(&configured);
+	app_platform_grant_flash(id, 0U, 4096U);
+	return 0;
+}
+
+static int map_results(int id, void *user)
+{
+	ARG_UNUSED(user);
+	atomic_inc(&configured);
+#ifdef CONFIG_USERSPACE
+	return k_mem_domain_add_partition(app_platform_domain(id), &grant_part);
+#else
+	ARG_UNUSED(id);
+	return 0;
+#endif
+}
+
+static int refuse_start(int id, void *user)
+{
+	ARG_UNUSED(id);
+	ARG_UNUSED(user);
+	atomic_inc(&configured);
+	return -EIO;
+}
+
+/* Record the flash read of each run, and fault on the first run when @p arg
+ * is not NULL.
+ */
+static void flash_reader_app(void *arg)
+{
+	uint8_t buf[4];
+	uint32_t run = grant_runs;
+
+	if (run < ARRAY_SIZE(grant_rc)) {
+		grant_rc[run] = app_svc_flash_read(0U, buf, sizeof(buf));
+	}
+	grant_runs = run + 1U;
+	if (arg != NULL && run == 0U) {
+		crasher_app(NULL);
+	}
+	for (;;) {
+		k_msleep(10);
+	}
+}
+
+static void control_app(void *arg)
+{
+	int target = (int)(uintptr_t)arg;
+
+	ctl_rc[0] = app_svc_app_start(target);
+	ctl_rc[1] = app_svc_app_restart(target);
+	ctl_done = true;
+	for (;;) {
+		k_msleep(10);
+	}
+}
+
+static bool wait_runs(uint32_t runs, int ms)
+{
+	for (int i = 0; i < ms / 5 && grant_runs < runs; i++) {
+		k_msleep(5);
+	}
+	return grant_runs >= runs;
+}
+
+static void reset_results(void)
+{
+	grant_runs = 0U;
+	ctl_done = false;
+	for (size_t i = 0; i < ARRAY_SIZE(grant_rc); i++) {
+		grant_rc[i] = 1;
+		ctl_rc[i] = 1;
+	}
+	atomic_set(&configured, 0);
+}
+
+ZTEST(lifecycle, test_configure_grants_survive_fault_relaunch)
+{
+	struct app_def def = {
+		.name = "grantfault",
+		.source = APP_BUILTIN,
+		.entry = flash_reader_app,
+		.arg = (void *)1,
+		.caps = APP_CAP_LOG | APP_CAP_FLASH,
+		.stopped = true,
+		.configure = grant_window,
+	};
+	struct k_mem_domain *dom;
+	struct app_platform_status st;
+	bool relaunched = false;
+	int id;
+
+	reset_results();
+	id = app_platform_launch(&def);
+	zassert_true(id >= 0, "launch failed (%d)", id);
+	zassert_equal(atomic_get(&configured), 0, "a stopped launch ran the hook");
+	dom = app_platform_domain(id);
+#ifdef CONFIG_USERSPACE
+	zassert_equal(k_mem_domain_add_partition(dom, &grant_part), 0);
+#endif
+	zassert_equal(app_platform_set_restart(id, true), 0);
+	zassert_equal(app_platform_start(id), id);
+
+	for (int i = 0; i < 400 && !relaunched; i++) {
+		relaunched = grant_runs >= 2U && app_platform_status(id, &st) == 0 &&
+			     st.restarts == 1U;
+		k_msleep(5);
+	}
+	zassert_true(relaunched, "the application was not relaunched");
+	zassert_equal(grant_rc[0], 0, "first run read %d", grant_rc[0]);
+	zassert_equal(grant_rc[1], 0, "relaunch read %d", grant_rc[1]);
+	zassert_equal(atomic_get(&configured), 2);
+	zassert_equal(app_platform_remove(id), 0);
+	zassert_true(wait_slot_free("grantfault", 2000));
+#ifdef CONFIG_USERSPACE
+	zassert_equal(k_mem_domain_remove_partition(dom, &grant_part), 0);
+#else
+	ARG_UNUSED(dom);
+#endif
+}
+
+ZTEST(lifecycle, test_configure_grants_survive_stop_start)
+{
+	struct app_def def = {
+		.name = "grantstop",
+		.source = APP_BUILTIN,
+		.entry = flash_reader_app,
+		.caps = APP_CAP_LOG | APP_CAP_FLASH,
+		.stopped = true,
+		.configure = grant_window,
+	};
+	struct k_mem_domain *dom;
+	int id;
+
+	reset_results();
+	id = app_platform_launch(&def);
+	zassert_true(id >= 0, "launch failed (%d)", id);
+	dom = app_platform_domain(id);
+#ifdef CONFIG_USERSPACE
+	zassert_equal(k_mem_domain_add_partition(dom, &grant_part), 0);
+#endif
+	zassert_equal(app_platform_start(id), id);
+	zassert_true(wait_runs(1U, 2000), "the application did not run");
+	zassert_equal(app_platform_stop(id), 0);
+	zassert_equal(app_platform_start(id), id);
+	zassert_true(wait_runs(2U, 2000), "the application did not run again");
+	zassert_equal(grant_rc[0], 0, "first run read %d", grant_rc[0]);
+	zassert_equal(grant_rc[1], 0, "second run read %d", grant_rc[1]);
+	zassert_equal(atomic_get(&configured), 2);
+	zassert_equal(app_platform_remove(id), 0);
+	zassert_true(wait_slot_free("grantstop", 2000));
+#ifdef CONFIG_USERSPACE
+	zassert_equal(k_mem_domain_remove_partition(dom, &grant_part), 0);
+#else
+	ARG_UNUSED(dom);
+#endif
+}
+
+ZTEST(lifecycle, test_control_start_of_held_app)
+{
+	struct app_def target = {
+		.name = "heldtgt",
+		.source = APP_BUILTIN,
+		.entry = quitter_app,
+		.caps = APP_CAP_LOG,
+		.stopped = true,
+	};
+	struct app_def ctl = {
+		.name = "ctl",
+		.source = APP_BUILTIN,
+		.entry = control_app,
+		.caps = APP_CAP_LOG | APP_CAP_CONTROL,
+		.configure = map_results,
+	};
+	struct app_platform_status st;
+	struct k_mem_domain *dom;
+	int tid;
+	int cid;
+
+	reset_results();
+	tid = app_platform_launch(&target);
+	zassert_true(tid >= 0, "launch failed (%d)", tid);
+	ctl.arg = (void *)(uintptr_t)tid;
+	cid = app_platform_launch(&ctl);
+	zassert_true(cid >= 0, "launch failed (%d)", cid);
+	dom = app_platform_domain(cid);
+	zassert_equal(atomic_get(&configured), 1, "the launch did not run the hook");
+
+	for (int i = 0; i < 400 && !ctl_done; i++) {
+		k_msleep(5);
+	}
+	zassert_true(ctl_done, "the control application did not run");
+	zassert_equal(ctl_rc[0], -EAGAIN, "control start returned %d", ctl_rc[0]);
+	zassert_equal(ctl_rc[1], -EAGAIN, "control restart returned %d", ctl_rc[1]);
+	zassert_equal(app_platform_status(tid, &st), 0);
+	zassert_false(st.active, "a held application was started");
+
+	zassert_equal(app_platform_start(tid), tid);
+	zassert_true(wait_slot_free("heldtgt", 2000), "the firmware start did not run it");
+	zassert_equal(app_platform_remove(cid), 0);
+	zassert_true(wait_slot_free("ctl", 2000));
+#ifdef CONFIG_USERSPACE
+	zassert_equal(k_mem_domain_remove_partition(dom, &grant_part), 0);
+#else
+	ARG_UNUSED(dom);
+#endif
+}
+
+ZTEST(lifecycle, test_configure_failure)
+{
+	struct app_def def = {
+		.name = "refused",
+		.source = APP_BUILTIN,
+		.entry = quitter_app,
+		.caps = APP_CAP_LOG,
+		.configure = refuse_start,
+	};
+	struct app_platform_status st;
+	int id;
+
+	reset_results();
+	zassert_equal(app_platform_launch(&def), -EIO);
+	zassert_true(wait_slot_free("refused", 2000), "a refused launch kept its slot");
+
+	def.stopped = true;
+	id = app_platform_launch(&def);
+	zassert_true(id >= 0, "launch failed (%d)", id);
+	zassert_equal(app_platform_start(id), -EIO);
+	zassert_equal(app_platform_status(id, &st), 0);
+	zassert_false(st.active, "a refused start is running");
+	zassert_equal(atomic_get(&configured), 2);
+	zassert_equal(app_platform_remove(id), 0);
+	zassert_true(wait_slot_free("refused", 2000));
+}
+
 static void file_writer_app(void *arg)
 {
 	uint8_t buf[256];
