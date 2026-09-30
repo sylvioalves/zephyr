@@ -547,6 +547,28 @@ int llext_restore(struct llext **ext, struct llext_loader **ldr, unsigned int n_
  * @}
  */
 
+/** @cond INTERNAL_HIDDEN */
+#ifdef CONFIG_LLEXT_HEAP_EXECUTABLE
+#ifdef CONFIG_LLEXT_HEAP_MEMBLK
+extern uint8_t llext_ext_heap_buf[];
+#define LLEXT_HEAP_EXEC_START llext_ext_heap_buf
+#define LLEXT_HEAP_EXEC_SIZE  (CONFIG_LLEXT_EXT_HEAP_SIZE * 1024)
+#else
+extern char kheap_llext_heap[];
+#define LLEXT_HEAP_EXEC_START kheap_llext_heap
+#define LLEXT_HEAP_EXEC_SIZE  (CONFIG_LLEXT_HEAP_SIZE * 1024)
+#endif
+
+#if defined(CONFIG_RISCV_PMP)
+#define LLEXT_HEAP_EXEC_ALIGN CONFIG_PMP_GRANULARITY
+#elif defined(CONFIG_MPU_REQUIRES_POWER_OF_TWO_ALIGNMENT)
+#define LLEXT_HEAP_EXEC_ALIGN LLEXT_HEAP_EXEC_SIZE
+#else
+#define LLEXT_HEAP_EXEC_ALIGN CONFIG_ARM_MPU_REGION_MIN_ALIGN_AND_SIZE
+#endif
+#endif /* CONFIG_LLEXT_HEAP_EXECUTABLE */
+/** @endcond */
+
 #ifdef __cplusplus
 }
 #endif

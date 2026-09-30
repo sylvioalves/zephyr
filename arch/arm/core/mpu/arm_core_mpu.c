@@ -12,6 +12,10 @@
 #include "arm_core_mpu_dev.h"
 #include <zephyr/linker/linker-defs.h>
 
+#if defined(CONFIG_LLEXT_HEAP_EXECUTABLE)
+#include <zephyr/llext/llext.h>
+#endif
+
 #define LOG_LEVEL CONFIG_MPU_LOG_LEVEL
 #include <zephyr/logging/log.h>
 LOG_MODULE_REGISTER(mpu);
@@ -119,6 +123,14 @@ static const struct z_arm_mpu_partition static_regions[] = {
 #endif
 	},
 #endif /* CONFIG_SRAM_VECTOR_TABLE */
+#if defined(CONFIG_LLEXT_HEAP_EXECUTABLE)
+	{
+		/* Loadable extension heap, holding extension text */
+		.start = (uint32_t)LLEXT_HEAP_EXEC_START,
+		.size = LLEXT_HEAP_EXEC_SIZE,
+		.attr = K_MEM_PARTITION_P_RWX_U_RWX,
+	},
+#endif /* CONFIG_LLEXT_HEAP_EXECUTABLE */
 #if !defined(CONFIG_MULTITHREADING) && defined(CONFIG_MPU_STACK_GUARD)
 	/* Main stack MPU guard to detect overflow.
 	 * Note:

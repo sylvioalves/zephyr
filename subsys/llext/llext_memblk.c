@@ -14,10 +14,12 @@
 LOG_MODULE_DECLARE(llext, CONFIG_LLEXT_LOG_LEVEL);
 
 #ifdef CONFIG_LLEXT_HEAP_EXECUTABLE
+#ifdef CONFIG_RISCV_PMP
 #include <zephyr/arch/riscv/csr.h>
 #include <zephyr/arch/riscv/pmp.h>
+#endif
 
-#define LLEXT_HEAP_ALIGN __aligned(CONFIG_PMP_GRANULARITY)
+#define LLEXT_HEAP_ALIGN __aligned(LLEXT_HEAP_EXEC_ALIGN)
 #else
 #define LLEXT_HEAP_ALIGN
 #endif
@@ -60,10 +62,15 @@ uint8_t llext_ext_heap_buf[CONFIG_LLEXT_EXT_HEAP_SIZE * KB(1)]
 	__aligned(CONFIG_LLEXT_HEAP_MEMBLK_BLOCK_SIZE) LLEXT_HEAP_ALIGN
 	__attribute__((section(".llext_ext_heap")));
 #ifdef CONFIG_LLEXT_HEAP_EXECUTABLE
-BUILD_ASSERT(sizeof(llext_ext_heap_buf) % CONFIG_PMP_GRANULARITY == 0,
-	     "LLEXT heap size must be a multiple of CONFIG_PMP_GRANULARITY");
+BUILD_ASSERT(LLEXT_HEAP_EXEC_SIZE % LLEXT_HEAP_EXEC_ALIGN == 0,
+	     "LLEXT heap size must be a multiple of the memory protection granularity");
+BUILD_ASSERT(!IS_ENABLED(CONFIG_MPU_REQUIRES_POWER_OF_TWO_ALIGNMENT) ||
+		     IS_POWER_OF_TWO(LLEXT_HEAP_EXEC_SIZE),
+	     "LLEXT heap size must be a power of two for this MPU");
+#ifdef CONFIG_RISCV_PMP
 PMP_SOC_REGION_DEFINE(llext_heap_exec, llext_ext_heap_buf,
 		      llext_ext_heap_buf + sizeof(llext_ext_heap_buf), PMP_R | PMP_W | PMP_X);
+#endif
 #endif /* CONFIG_LLEXT_HEAP_EXECUTABLE */
 SYS_MEM_BLOCKS_DEFINE_WITH_EXT_BUF(llext_ext_heap, CONFIG_LLEXT_HEAP_MEMBLK_BLOCK_SIZE,
 				   CONFIG_LLEXT_EXT_HEAP_SIZE * KB(1) /

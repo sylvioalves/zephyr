@@ -156,16 +156,25 @@ config LLEXT_CONTIGUOUS_REGIONS
 	  except for an extension loaded with detached sections.
 
 config LLEXT_HEAP_EXECUTABLE
-	bool "Executable llext heap for machine mode"
-	depends on RISCV_PMP && PMP_DATA_EXECUTION_PREVENTION
+	bool "Executable llext heap for the kernel"
+	depends on (RISCV_PMP && PMP_DATA_EXECUTION_PREVENTION) || ARM_MPU
 	depends on !USERSPACE && !LLEXT_HEAP_DYNAMIC
 	help
-	  Map the whole LLEXT heap readable, writable and executable for
-	  machine mode with a locked PMP entry, so that extension code copied
-	  into the heap can run. This gives up data execution prevention for
-	  the heap. The entry takes one PMP slot, or two when the heap is not
+	  Map the whole LLEXT heap readable, writable and executable for the
+	  kernel, so that extension code copied into the heap can run where
+	  memory protection makes RAM non-executable. This gives up execute
+	  protection for the heap.
+
+	  On RISC-V with PMP data execution prevention a locked PMP entry
+	  covers the heap. It takes one PMP slot, or two when the heap is not
 	  a naturally aligned power of two. Without this option, extensions
 	  whose code cannot run in place are refused with -ENOEXEC.
+
+	  With the Arm MPU a static MPU region covers the heap, aligned to its
+	  size on an MPU that needs power-of-two regions, whose heap size must
+	  then be a power of two. Without this option, extension code copied
+	  into the heap of an execute-in-place image faults on its first
+	  instruction.
 
 config LLEXT_BUILD_PIC
 	bool "Use -fPIC when building LLEXT"
