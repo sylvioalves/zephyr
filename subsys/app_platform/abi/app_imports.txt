@@ -42,3 +42,14 @@ __aeabi_memset8     arm
 __aeabi_uidiv       arm
 __aeabi_uidivmod    arm
 __aeabi_uldivmod    arm
+
+__divdi3            riscv
+__moddi3            riscv
+__udivdi3           riscv
+__umoddi3           riscv
+__divsi3            riscv
+__modsi3            riscv
+__muldi3            riscv
+__mulsi3            riscv
+__udivsi3           riscv
+__umodsi3           riscv
