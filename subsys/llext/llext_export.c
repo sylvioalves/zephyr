@@ -74,6 +74,38 @@ EXPORT_GROUP_SYMBOL(LIBC, __aeabi_ldivmod);
 EXPORT_GROUP_SYMBOL(LIBC, __aeabi_uldivmod);
 #endif /* CONFIG_ARM && !CONFIG_CPU_AARCH32_CORTEX_R */
 
+#if defined(CONFIG_RISCV) && !defined(CONFIG_64BIT)
+/* RV32 lowers 64-bit division and modulo to these run-time helpers. */
+extern void __divdi3(void);
+extern void __udivdi3(void);
+extern void __moddi3(void);
+extern void __umoddi3(void);
+
+EXPORT_GROUP_SYMBOL(LIBC, __divdi3);
+EXPORT_GROUP_SYMBOL(LIBC, __udivdi3);
+EXPORT_GROUP_SYMBOL(LIBC, __moddi3);
+EXPORT_GROUP_SYMBOL(LIBC, __umoddi3);
+
+#if !defined(CONFIG_RISCV_ISA_EXT_M)
+/* Without the M extension, 32-bit multiplication and division, and
+ * 64-bit multiplication, are lowered to run-time helpers as well.
+ */
+extern void __mulsi3(void);
+extern void __muldi3(void);
+extern void __divsi3(void);
+extern void __udivsi3(void);
+extern void __modsi3(void);
+extern void __umodsi3(void);
+
+EXPORT_GROUP_SYMBOL(LIBC, __mulsi3);
+EXPORT_GROUP_SYMBOL(LIBC, __muldi3);
+EXPORT_GROUP_SYMBOL(LIBC, __divsi3);
+EXPORT_GROUP_SYMBOL(LIBC, __udivsi3);
+EXPORT_GROUP_SYMBOL(LIBC, __modsi3);
+EXPORT_GROUP_SYMBOL(LIBC, __umodsi3);
+#endif /* !CONFIG_RISCV_ISA_EXT_M */
+#endif /* CONFIG_RISCV && !CONFIG_64BIT */
+
 /* These symbols are used if CCAC is given the flag -Os */
 #ifdef __CCAC__
 extern void __ac_mc_va(void);
