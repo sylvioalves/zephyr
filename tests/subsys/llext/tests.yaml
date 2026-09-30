@@ -73,6 +73,17 @@ tests:
       - CONFIG_USERSPACE=y
       - CONFIG_LLEXT_VENEERS=y
       - CONFIG_LLEXT_STORAGE_WRITABLE=n
+  # Arm MPU without userspace: extension code copied into the LLEXT heap
+  # runs from the static MPU region that makes the heap executable.
+  llext.readonly_mpu.heap_executable:
+    arch_allow:
+      - arm
+    filter: CONFIG_ARM_MPU
+    extra_configs:
+      - CONFIG_USERSPACE=n
+      - CONFIG_LLEXT_VENEERS=y
+      - CONFIG_LLEXT_STORAGE_WRITABLE=n
+      - CONFIG_LLEXT_HEAP_EXECUTABLE=y
   llext.readonly_mpu.memblk:
     arch_allow:
       - arm # Currently not supported on RISC-V
