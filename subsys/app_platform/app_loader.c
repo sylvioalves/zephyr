@@ -87,9 +87,6 @@ LOG_MODULE_DECLARE(app_platform, CONFIG_APP_PLATFORM_LOG_LEVEL);
 	(IS_ENABLED(__ARM_PCS_VFP) ? EF_ARM_ABI_FLOAT_SOFT : EF_ARM_ABI_FLOAT_HARD)
 #endif
 
-/* Magic of the previous fixed-layout manifest format. */
-#define MANIFEST_MAGIC_V3 0x33464d41U
-
 #if defined(CONFIG_MBEDTLS_PSA_CRYPTO_LEGACY_RNG) && defined(CONFIG_MBEDTLS_HEAP_SIZE)
 BUILD_ASSERT(CONFIG_MBEDTLS_HEAP_SIZE >= 4096,
 	     "Without an entropy driver mbed TLS runs its own DRBG, and verifying a module "
@@ -536,7 +533,7 @@ static int manifest_verify(const struct app_manifest *mf, size_t mf_len, const u
 {
 	uint8_t digest[32];
 
-	if (mf_len >= sizeof(mf->magic) && mf->magic == MANIFEST_MAGIC_V3) {
+	if (mf_len >= sizeof(mf->magic) && mf->magic == APP_MANIFEST_MAGIC_V3) {
 		LOG_WRN("manifest format 3 is no longer accepted, reinstall the application");
 		return -ENOTSUP;
 	}

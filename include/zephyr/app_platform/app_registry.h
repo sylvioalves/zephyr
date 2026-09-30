@@ -76,7 +76,9 @@ int app_registry_install(const char *name, bool autostart);
  * Records @p version and refuses to overwrite an existing record with a lower
  * version, so a signed-but-old image cannot be replayed onto a device that has
  * already accepted a newer one. Equal versions are accepted (re-install of the
- * same image).
+ * same image). Unlike @ref app_registry_commit it knows nothing of the new
+ * image, so it makes no exception for an installed image this firmware cannot
+ * load.
  *
  * @retval 0 on success.
  * @retval -EACCES if @p version is older than the installed record's version.
@@ -319,6 +321,12 @@ int app_registry_load_staged_manifest(const char *name, union app_manifest_buf *
  * staged files replace the installed ones and the record is bound to
  * @p mf's module hash, which @ref app_registry_check enforces at boot.
  *
+ * A lower version is installed, and logged, only when this firmware cannot
+ * load the installed image, because its manifest has a retired format or names
+ * another interface major version or target, and @p mf names this firmware's.
+ * After a firmware rollback to an older interface major version this lets the
+ * application be brought back to a version built for it.
+ *
  * @param name      Application name.
  * @param autostart Whether the platform launches it at boot.
  * @param mf        The verified manifest of the staged image.
@@ -326,7 +334,7 @@ int app_registry_load_staged_manifest(const char *name, union app_manifest_buf *
  * @retval 0 Success.
  * @retval -EINVAL @p mf names a different application.
  * @retval -ENAMETOOLONG @p name does not fit a record.
- * @retval -EACCES @p mf is older than the installed version.
+ * @retval -EACCES @p mf is older than an installed version this firmware loads.
  * @retval -ENOSPC The registry already holds @ref APP_REG_MAX records.
  * @retval -errno The staged files could not be moved, or the registry
  *         could not be written back.

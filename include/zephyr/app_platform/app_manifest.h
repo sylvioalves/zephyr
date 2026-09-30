@@ -50,6 +50,9 @@
 /** Manifest magic: 'A' 'M' 'F' '4', little-endian. */
 #define APP_MANIFEST_MAGIC 0x34464d41U
 
+/** Magic of the retired fixed-layout format 3 manifest, which is refused. */
+#define APP_MANIFEST_MAGIC_V3 0x33464d41U
+
 /** Manifest format this firmware writes and the oldest it accepts. */
 #define APP_MANIFEST_FORMAT 4U
 

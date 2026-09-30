@@ -10,6 +10,10 @@
 
 #include <zephyr/app_platform/app_registry.h>
 #include <zephyr/app_platform/app_manifest.h>
+#ifdef CONFIG_APP_PLATFORM_LOADER
+#include <zephyr/app_platform/app_abi.h>
+#include <zephyr/app_platform_abi.h>
+#endif
 
 #include <zephyr/kernel.h>
 #include <zephyr/sys/printk.h>
@@ -497,6 +501,39 @@ static int promote(const char *name, const char *staged_ext, const char *ext)
 	return rc;
 }
 
+/* Whether a manifest names the interface major version and target of this
+ * firmware.
+ */
+static bool loads_here(const struct app_manifest *mf)
+{
+#ifdef CONFIG_APP_PLATFORM_LOADER
+	return mf->abi_major == APP_ABI_MAJOR && mf->target == APP_PLATFORM_TARGET;
+#else
+	ARG_UNUSED(mf);
+	return false;
+#endif
+}
+
+/* Whether the installed manifest of @p name describes an image this firmware
+ * refuses to load: one of a retired format, another interface major version or
+ * another target.
+ */
+static bool installed_cannot_load(const char *name)
+{
+	union app_manifest_buf mf;
+	uint8_t sig[APP_MANIFEST_SIG_LEN];
+	size_t len = 0U;
+
+	if (app_registry_load_manifest(name, &mf, &len, sig, sizeof(sig)) != 0 ||
+	    len < sizeof(mf.mf.magic)) {
+		return false;
+	}
+	if (mf.mf.magic == APP_MANIFEST_MAGIC_V3) {
+		return true;
+	}
+	return mf.mf.magic == APP_MANIFEST_MAGIC && len >= sizeof(mf.mf) && !loads_here(&mf.mf);
+}
+
 int app_registry_commit(const char *name, bool autostart, const struct app_manifest *mf)
 {
 	if (strncmp(mf->name, name, APP_MANIFEST_NAME_MAX) != 0) {
@@ -510,10 +547,14 @@ int app_registry_commit(const char *name, bool autostart, const struct app_manif
 	int idx = find(name);
 
 	if (idx >= 0 && mf->version < reg.apps[idx].version) {
-		LOG_WRN("rejected '%s' v%u: older than installed v%u (rollback)",
-			name, mf->version, reg.apps[idx].version);
-		app_registry_discard(name);
-		return -EACCES;
+		if (!installed_cannot_load(name) || !loads_here(mf)) {
+			LOG_WRN("rejected '%s' v%u: older than installed v%u (rollback)",
+				name, mf->version, reg.apps[idx].version);
+			app_registry_discard(name);
+			return -EACCES;
+		}
+		LOG_WRN("installing '%s' v%u over v%u, which cannot load on this firmware", name,
+			mf->version, reg.apps[idx].version);
 	}
 	if (idx < 0 && reg.count >= APP_REG_MAX) {
 		app_registry_discard(name);
