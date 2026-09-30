@@ -1,0 +1,32 @@
+common:
+  tags: app_platform
+  harness: ztest
+  sysbuild: true
+  timeout: 60
+  # The test image loads a module built and signed by a second firmware image
+  # for the same target, which has other syscall numbers and another tick rate.
+  # The scenarios cross a firmware with user mode and one without.
+  platform_allow:
+    - mps2/an385
+    - qemu_cortex_a53
+    - qemu_riscv32/qemu_virt_riscv32/smp
+  integration_platforms:
+    - mps2/an385
+tests:
+  app_platform.abi.renumber:
+    extra_args:
+      - app_abi_producer_CONFIG_USERSPACE=y
+      - app_platform_abi_CONFIG_USERSPACE=y
+  # Without user mode the module runs from RAM that the Arm MPU of an XIP target
+  # and the RISC-V PMP make non-executable for the kernel, so this firmware runs
+  # without the Arm MPU and without PMP data execution prevention.
+  app_platform.abi.renumber.from_user_mode:
+    extra_args:
+      - app_abi_producer_CONFIG_USERSPACE=y
+      - app_platform_abi_CONFIG_USERSPACE=n
+      - arch:arm:app_platform_abi_CONFIG_ARM_MPU=n
+      - arch:riscv:app_platform_abi_CONFIG_PMP_DATA_EXECUTION_PREVENTION=n
+  app_platform.abi.renumber.to_user_mode:
+    extra_args:
+      - app_abi_producer_CONFIG_USERSPACE=n
+      - app_platform_abi_CONFIG_USERSPACE=y
