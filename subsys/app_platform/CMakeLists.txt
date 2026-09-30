@@ -38,9 +38,7 @@ if(CONFIG_APP_PLATFORM_RTC OR CONFIG_APP_PLATFORM_W1 OR CONFIG_APP_PLATFORM_POWE
   zephyr_library_sources(app_devices.c)
 endif()
 
-if(CONFIG_APP_PLATFORM_SERVICES)
-  zephyr_syscall_header(${ZEPHYR_BASE}/include/zephyr/app_platform/app_services.h)
-endif()
+zephyr_syscall_header(${ZEPHYR_BASE}/include/zephyr/app_platform/app_services.h)
 
 # The ABI identifier the loader requires in a signed manifest. Signing rules
 # take APP_PLATFORM_ABI_FILE and depend on the app_platform_abi target.
