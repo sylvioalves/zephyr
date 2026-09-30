@@ -57,6 +57,20 @@ struct svc_lock {
 int app_service_lock(struct svc_lock *lock, k_timeout_t timeout);
 int app_service_unlock(struct svc_lock *lock);
 
+/* Returned by app_service_lock_reclaim() for a broken lock: the caller goes on
+ * without the mutex and does not unlock it.
+ */
+#define SVC_LOCK_FORCED 1
+
+/* Take a service lock in a reclaim hook. On the reaper a broken lock yields
+ * SVC_LOCK_FORCED instead of -EIO: its owner is dead and no thread can take it
+ * again, so the hook releases the reclaimed slot's own records and mappings
+ * without it. It frees no memory on that path, since the dead owner may have
+ * left an allocator or the slot's record half updated. Elsewhere it behaves
+ * like app_service_lock().
+ */
+int app_service_lock_reclaim(struct svc_lock *lock, k_timeout_t timeout);
+
 /* Per-resource grants live in the service that owns the resource, indexed by
  * application slot. A slot is reused once its previous tenant is reclaimed, so
  * the manager drops the grants before it hands the slot to a new application:

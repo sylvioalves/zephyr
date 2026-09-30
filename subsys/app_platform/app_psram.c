@@ -55,11 +55,14 @@ static size_t round_pow2(size_t v)
 
 static void psram_release(int id)
 {
+	int rc;
+
 	if (id < 0 || id >= MAX_APPS) {
 		return;
 	}
 
-	if (app_service_lock(&psram_lock, K_FOREVER) != 0) {
+	rc = app_service_lock_reclaim(&psram_lock, K_FOREVER);
+	if (rc < 0) {
 		return;
 	}
 	if (regions[id].used) {
@@ -70,10 +73,14 @@ static void psram_release(int id)
 			(void)k_mem_domain_remove_partition(dom, &regions[id].part);
 		}
 #endif
-		shared_multi_heap_free(regions[id].base);
+		if (rc == 0) {
+			shared_multi_heap_free(regions[id].base);
+		}
 		regions[id] = (struct psram_region){0};
 	}
-	app_service_unlock(&psram_lock);
+	if (rc == 0) {
+		app_service_unlock(&psram_lock);
+	}
 }
 
 int z_impl_app_svc_psram_map(size_t size, uintptr_t *out_addr, size_t *out_size)

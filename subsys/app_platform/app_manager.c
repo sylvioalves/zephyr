@@ -299,6 +299,14 @@ int app_service_unlock(struct svc_lock *lock)
 	return rc;
 }
 
+int app_service_lock_reclaim(struct svc_lock *lock, k_timeout_t timeout)
+{
+	if (k_current_get() == &reaper_thread && atomic_get(&lock->broken) != 0) {
+		return SVC_LOCK_FORCED;
+	}
+	return app_service_lock(lock, timeout);
+}
+
 int app_platform_id_current(void)
 {
 	struct running_app *a = app_of_thread(k_current_get());

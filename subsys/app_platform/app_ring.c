@@ -94,10 +94,13 @@ static struct ring_region *ring_of_current(int *out_id)
 
 static void ring_release(int id)
 {
+	int rc;
+
 	if (id < 0 || id >= MAX_APPS) {
 		return;
 	}
-	if (app_service_lock(&ring_lock, SVC_LOCK_TIMEOUT) != 0) {
+	rc = app_service_lock_reclaim(&ring_lock, SVC_LOCK_TIMEOUT);
+	if (rc < 0) {
 		return;
 	}
 	if (rings[id].used) {
@@ -109,10 +112,14 @@ static void ring_release(int id)
 							    &rings[id].part);
 		}
 #endif
-		k_free(rings[id].base);
+		if (rc == 0) {
+			k_free(rings[id].base);
+		}
 		rings[id] = (struct ring_region){0};
 	}
-	app_service_unlock(&ring_lock);
+	if (rc == 0) {
+		app_service_unlock(&ring_lock);
+	}
 }
 
 int z_impl_app_svc_ring_bind(size_t bytes, uintptr_t *out_addr, size_t *out_cap)
