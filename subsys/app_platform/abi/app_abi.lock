@@ -1,0 +1,299 @@
+# Copyright (c) 2026 Espressif Systems (Shanghai) Co., Ltd.
+# SPDX-License-Identifier: Apache-2.0
+#
+# The interface loadable application modules are built against, as released.
+#
+# Every build compares the interface with this file: the functions of app_abi.txt, the types and
+# constants of app_svc_types.h and app_caps.h, and the module entry point of app_sdk.h, and
+# asserts the recorded layouts and values against the compiler. A recorded line never changes and
+# is never removed while the major version stays the same. A new entry is appended, by hand or with
+# gen_app_abi.py --update-lock, which appends nothing but new entries. Raising the major version
+# in app_abi.txt lets --update-lock rewrite the whole file.
+#
+# func <name> <version> <kind> <return type> (<parameter types>)
+# type <typedef> <type>
+# entry <symbol> <return type> (<parameter types>)
+# const <macro> <value>
+# enum <enum>.<enumerator> <value>
+# struct <struct> size <bytes>
+# field <struct>.<field> offset <bytes> size <bytes>
+
+major 1
+func log 1 svc void (const char *)
+func heartbeat 1 svc void (void)
+func stop_requested 1 svc int (void)
+func thread_spawn 1 svc int (app_thread_entry_t, void *, int)
+func thread_join 1 svc int (int, int32_t)
+func sem_init 1 svc int (uint32_t, uint32_t)
+func sem_give 1 svc int (int)
+func sem_take 1 svc int (int, int32_t)
+func heap_info 1 svc int (uintptr_t *, size_t *)
+func sha256 1 svc int (const uint8_t *, size_t, uint8_t *)
+func random 1 svc int (uint8_t *, size_t)
+func uptime_ms 1 svc uint32_t (void)
+func cycles 1 svc uint32_t (void)
+func die_temp_milli 1 svc int (void)
+func kv_set 1 svc int (const char *, uint32_t)
+func kv_get 1 svc int (const char *, uint32_t *)
+func kv_delete 1 svc int (const char *)
+func flash_read 1 svc int (uint32_t, uint8_t *, size_t)
+func flash_write 1 svc int (uint32_t, const uint8_t *, size_t)
+func flash_erase 1 svc int (uint32_t, size_t)
+func sensor_count 1 svc int (void)
+func sensor_info 1 svc int (int, struct app_svc_sensor_info *)
+func sensor_read 1 svc int (int, int32_t *)
+func device_id 1 svc int (uint8_t *, size_t)
+func reset_cause 1 svc int (uint32_t *)
+func timer_start 1 svc int (uint32_t)
+func timer_wait 1 svc int (uint32_t)
+func timer_create 1 svc int (void)
+func timer_arm 1 svc int (int, uint32_t, int)
+func timer_slot_wait 1 svc int (int, int32_t)
+func timer_stop 1 svc int (int)
+func timer_elapsed 1 svc int (int)
+func timer_free 1 svc int (int)
+func rtc_now 1 svc int (uint32_t *)
+func rtc_set 1 svc int (uint32_t)
+func net_ready 1 svc int (void)
+func mqtt_open 1 svc int (const char *, const char *, const char *)
+func mqtt_publish 1 svc int (const char *)
+func mqtt_recv 1 svc int (char *, size_t, uint32_t)
+func wifi_status 1 svc int (struct app_svc_wifi_status *)
+func wifi_connect 1 svc int (const char *, const char *)
+func wifi_disconnect 1 svc int (void)
+func resolve 1 svc int (const char *, char *, size_t)
+func udp_open 1 svc int (const char *, uint16_t)
+func udp_send 1 svc int (const void *, size_t)
+func udp_recv 1 svc int (void *, size_t, uint32_t)
+func udp_recv_from 1 svc int (void *, size_t, uint32_t, char *, size_t, uint16_t *)
+func udp_close 1 svc int (void)
+func tcp_connect 1 svc int (const char *, uint16_t)
+func tcp_send 1 svc int (const void *, size_t)
+func tcp_recv 1 svc int (void *, size_t, uint32_t)
+func tcp_close 1 svc int (void)
+func gpio_count 1 svc int (void)
+func gpio_set 1 svc int (int, int)
+func gpio_find 1 svc int (const char *)
+func event_wait 1 svc int (struct app_event *, int32_t)
+func gpio_watch 1 svc int (int, int)
+func ipc_send 1 svc int (int, const void *, size_t)
+func ipc_recv 1 svc int (void *, size_t, uint32_t)
+func ipc_register 1 svc int (const char *)
+func ipc_send_to 1 svc int (const char *, const void *, size_t)
+func topic_subscribe 1 svc int (const char *)
+func topic_publish 1 svc int (const char *, const void *, size_t)
+func app_count 1 svc int (void)
+func app_info 1 svc int (int, struct app_svc_app_info *)
+func app_stop 1 svc int (int)
+func app_start 1 svc int (int)
+func app_restart 1 svc int (int)
+func counter_count 1 svc int (void)
+func counter_start 1 svc int (int)
+func counter_stop 1 svc int (int)
+func counter_read 1 svc int (int, uint32_t *)
+func counter_frequency 1 svc int (int, uint32_t *)
+func dac_count 1 svc int (void)
+func dac_write 1 svc int (int, uint32_t)
+func eeprom_size 1 svc int (void)
+func eeprom_read 1 svc int (uint32_t, void *, size_t)
+func eeprom_write 1 svc int (uint32_t, const void *, size_t)
+func rtcdev_get 1 svc int (struct app_svc_rtc_time *)
+func rtcdev_set 1 svc int (const struct app_svc_rtc_time *)
+func w1_reset 1 svc int (void)
+func w1_read_byte 1 svc int (void)
+func w1_write_byte 1 svc int (uint8_t)
+func charger_online 1 svc int (void)
+func battery_percent 1 svc int (void)
+func regulator_count 1 svc int (void)
+func regulator_enable 1 svc int (int, int)
+func stepper_count 1 svc int (void)
+func stepper_stop 1 svc int (int)
+func stepper_move_by 1 svc int (int, int32_t)
+func stepper_position 1 svc int (int, int32_t *)
+func file_open 1 svc int (const char *, int)
+func file_write 1 svc int (int, const void *, size_t)
+func file_read 1 svc int (int, void *, size_t)
+func file_seek 1 svc int (int, int32_t, int)
+func file_close 1 svc int (int)
+func pwm_set 1 svc int (int, uint32_t)
+func pwm_find 1 svc int (const char *)
+func adc_read 1 svc int (int)
+func led_set 1 svc int (int, int)
+func led_count 1 svc int (void)
+func led_find 1 svc int (const char *)
+func rgb_set 1 svc int (int, uint8_t, uint8_t, uint8_t)
+func rgb_count 1 svc int (void)
+func display_info 1 svc int (struct app_svc_display_info *)
+func display_vsync 1 svc int (void)
+func display_write 1 svc int (uint16_t, uint16_t, uint16_t, uint16_t, const void *, size_t)
+func display_fill 1 svc int (uint16_t, uint16_t, uint16_t, uint16_t, uint32_t)
+func button_wait 1 svc int (int32_t)
+func checkpoint_set 1 svc void (uint32_t)
+func checkpoint_get 1 svc uint32_t (void)
+func pulse_emit 1 svc int (uint32_t)
+func pulse_count 1 svc int (int32_t *)
+func motor_set 1 svc int (uint32_t, uint32_t)
+func i2c_read 1 svc int (uint16_t, uint8_t *, size_t)
+func i2c_write 1 svc int (uint16_t, const uint8_t *, size_t)
+func i2c_write_read 1 svc int (uint16_t, const uint8_t *, size_t, uint8_t *, size_t)
+func spi_xfer 1 svc int (const uint8_t *, uint8_t *, size_t)
+func uart_write 1 svc int (const uint8_t *, size_t)
+func uart_read 1 svc int (uint8_t *, size_t)
+func uart_configure 1 svc int (uint32_t, uint8_t, uint8_t, uint8_t)
+func uart_close 1 svc int (void)
+func ring_bind 1 svc int (size_t, uintptr_t *, size_t *)
+func ring_unbind 1 svc int (void)
+func ring_flush 1 svc int (void)
+func ring_fill 1 svc int (void)
+func ble_scan 1 svc int (const char *, uint32_t)
+func ble_hr_read 1 svc int (uint32_t, uint8_t *)
+func ble_ota_fetch 1 svc int (const char *, uint32_t, uint32_t *)
+func ble_gatt_read 1 svc int (const char *, const uint8_t *, size_t, const uint8_t *, size_t,
+                              uint8_t *, size_t, uint32_t)
+func ble_gatt_write 1 svc int (const char *, const uint8_t *, size_t, const uint8_t *, size_t,
+                               const uint8_t *, size_t, uint32_t)
+func ble_serve_start 1 svc int (const char *, const uint8_t *, size_t, const struct app_ble_chrc *,
+                                size_t)
+func ble_serve_set 1 svc int (int, const uint8_t *, size_t)
+func ble_serve_get 1 svc int (int, uint8_t *, size_t)
+func ble_serve_stop 1 svc int (void)
+func ble_notify 1 svc int (int, const void *, size_t)
+func ble_is_connected 1 svc int (void)
+func ble_advertise 1 svc int (int, uint32_t)
+func radio_send 1 svc int (const void *, size_t)
+func radio_recv 1 svc int (void *, size_t, uint32_t)
+func can_send 1 svc int (uint32_t, const uint8_t *, size_t)
+func can_recv 1 svc int (uint32_t *, uint8_t *, size_t, uint32_t)
+func dma_copy 1 svc int (const uint8_t *, uint8_t *, size_t)
+func psram_map 1 svc int (size_t, uintptr_t *, size_t *)
+func psram_unmap 1 svc int (void)
+func sleep_ms 1 fw int32_t (int32_t)
+func sleep_us 1 fw int32_t (int32_t)
+func uptime_get 1 fw int64_t (void)
+func yield 1 fw void (void)
+func malloc 1 fw void * (size_t)
+func calloc 1 fw void * (size_t, size_t)
+func aligned_alloc 1 fw void * (size_t, size_t)
+func realloc 1 fw void * (void *, size_t)
+func free 1 fw void (void *)
+type app_caps_t uint64_t
+type app_thread_entry_t void (*)(void *)
+entry app_main void (void *)
+const APP_CAP_LOG 0x1
+const APP_CAP_CRYPTO 0x2
+const APP_CAP_RANDOM 0x4
+const APP_CAP_TIME 0x8
+const APP_CAP_SENSOR 0x10
+const APP_CAP_KV 0x20
+const APP_CAP_FLASH 0x40
+const APP_CAP_GPIO 0x80
+const APP_CAP_PWM 0x100
+const APP_CAP_ADC 0x200
+const APP_CAP_I2C 0x400
+const APP_CAP_SPI 0x800
+const APP_CAP_UART 0x1000
+const APP_CAP_NET 0x2000
+const APP_CAP_BLE 0x4000
+const APP_CAP_RADIO 0x8000
+const APP_CAP_IPC 0x10000
+const APP_CAP_INSPECT 0x20000
+const APP_CAP_CONTROL 0x40000
+const APP_CAP_CAN 0x80000
+const APP_CAP_DMA 0x100000
+const APP_CAP_PSRAM 0x200000
+const APP_CAP_SOCKET 0x400000
+const APP_CAP_LED 0x800000
+const APP_CAP_INPUT 0x1000000
+const APP_CAP_COUNTER 0x2000000
+const APP_CAP_MOTOR 0x4000000
+const APP_CAP_COUNTER_DEV 0x8000000
+const APP_CAP_DAC 0x10000000
+const APP_CAP_EEPROM 0x20000000
+const APP_CAP_RTC 0x40000000
+const APP_CAP_RTC_SET 0x80000000
+const APP_CAP_W1 0x100000000
+const APP_CAP_POWER 0x200000000
+const APP_CAP_REGULATOR 0x400000000
+const APP_CAP_STEPPER 0x800000000
+const APP_CAP_FS 0x1000000000
+const APP_CAP_RGB 0x2000000000
+const APP_CAP_DISPLAY 0x4000000000
+const APP_CAP_THREAD 0x8000000000
+const APP_TIMER_SLOTS 0x4
+const APP_BLE_GATT_MAX 0x40
+const APP_BLE_SERVE_MAX_CHRC 0x4
+enum app_event_kind.APP_EVENT_NONE 0x0
+enum app_event_kind.APP_EVENT_BUTTON 0x1
+enum app_event_kind.APP_EVENT_GPIO 0x2
+enum app_event_kind.APP_EVENT_GATT_WRITE 0x3
+enum app_event_kind.APP_EVENT_BLE_CONNECTED 0x4
+enum app_event_kind.APP_EVENT_BLE_DISCONNECTED 0x5
+enum app_event_kind.APP_EVENT_STOP 0x6
+enum app_pixel_format.APP_PIXEL_FORMAT_RGB_888 0x1
+enum app_pixel_format.APP_PIXEL_FORMAT_MONO01 0x2
+enum app_pixel_format.APP_PIXEL_FORMAT_MONO10 0x4
+enum app_pixel_format.APP_PIXEL_FORMAT_ARGB_8888 0x8
+enum app_pixel_format.APP_PIXEL_FORMAT_RGB_565 0x10
+enum app_pixel_format.APP_PIXEL_FORMAT_RGB_565X 0x20
+enum app_pixel_format.APP_PIXEL_FORMAT_L_8 0x40
+enum app_pixel_format.APP_PIXEL_FORMAT_AL_88 0x80
+enum app_pixel_format.APP_PIXEL_FORMAT_XRGB_8888 0x100
+enum app_pixel_format.APP_PIXEL_FORMAT_BGR_888 0x200
+enum app_pixel_format.APP_PIXEL_FORMAT_ABGR_8888 0x400
+enum app_pixel_format.APP_PIXEL_FORMAT_RGBA_8888 0x800
+enum app_pixel_format.APP_PIXEL_FORMAT_BGRA_8888 0x1000
+enum app_uart_parity.APP_UART_PARITY_NONE 0x0
+enum app_uart_parity.APP_UART_PARITY_ODD 0x1
+enum app_uart_parity.APP_UART_PARITY_EVEN 0x2
+struct app_svc_sensor_info size 27
+field app_svc_sensor_info.name offset 0 size 16
+field app_svc_sensor_info.unit offset 16 size 10
+field app_svc_sensor_info.present offset 26 size 1
+struct app_svc_wifi_status size 51
+field app_svc_wifi_status.connected offset 0 size 1
+field app_svc_wifi_status.ssid offset 1 size 33
+field app_svc_wifi_status.ipv4 offset 34 size 16
+field app_svc_wifi_status.rssi offset 50 size 1
+struct app_event size 12
+field app_event.kind offset 0 size 1
+field app_event.line offset 1 size 1
+field app_event.value offset 2 size 1
+field app_event.code offset 4 size 2
+field app_event.seq offset 8 size 4
+struct app_svc_app_info size 48
+field app_svc_app_info.name offset 0 size 16
+field app_svc_app_info.active offset 16 size 1
+field app_svc_app_info.monitored offset 17 size 1
+field app_svc_app_info.faulted offset 18 size 1
+field app_svc_app_info.stack_size offset 20 size 4
+field app_svc_app_info.stack_used offset 24 size 4
+field app_svc_app_info.reserved offset 28 size 4
+field app_svc_app_info.cpu_cycles offset 32 size 8
+field app_svc_app_info.cpu_total offset 40 size 8
+struct app_svc_rtc_time size 8
+field app_svc_rtc_time.year offset 0 size 2
+field app_svc_rtc_time.month offset 2 size 1
+field app_svc_rtc_time.day offset 3 size 1
+field app_svc_rtc_time.hour offset 4 size 1
+field app_svc_rtc_time.minute offset 5 size 1
+field app_svc_rtc_time.second offset 6 size 1
+struct app_display_rect size 8
+field app_display_rect.x offset 0 size 2
+field app_display_rect.y offset 2 size 2
+field app_display_rect.width offset 4 size 2
+field app_display_rect.height offset 6 size 2
+struct app_svc_display_info size 12
+field app_svc_display_info.width offset 0 size 2
+field app_svc_display_info.height offset 2 size 2
+field app_svc_display_info.pixel_format offset 4 size 4
+field app_svc_display_info.bytes_per_pixel offset 8 size 1
+struct app_ring_hdr size 16
+field app_ring_hdr.head offset 0 size 4
+field app_ring_hdr.tail offset 4 size 4
+field app_ring_hdr.reserved offset 8 size 8
+struct app_ble_chrc size 20
+field app_ble_chrc.uuid offset 0 size 16
+field app_ble_chrc.uuid_len offset 16 size 1
+field app_ble_chrc.readable offset 17 size 1
+field app_ble_chrc.writable offset 18 size 1
+field app_ble_chrc.notifiable offset 19 size 1

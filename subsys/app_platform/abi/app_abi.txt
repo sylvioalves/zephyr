@@ -11,7 +11,8 @@
 # builds the function, or "-" when it is always built.
 #
 # A released entry never changes. A new signature or behavior takes a new entry with the next
-# version, and the old one stays as a "fw" entry for the modules built against it.
+# version, and the old one stays as a "fw" entry for the modules built against it. The build
+# holds the entries, and the types and constants they pass, to the ones recorded in app_abi.lock.
 #
 # The "major" line is the major version of the whole interface. The signed manifest of a module
 # records it and a firmware loads only modules of its own major version. It is raised only for a

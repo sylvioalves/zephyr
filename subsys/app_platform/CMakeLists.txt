@@ -43,38 +43,62 @@ endif()
 zephyr_syscall_header(${ZEPHYR_BASE}/include/zephyr/app_platform/app_services.h)
 
 # The functions exported to loadable application modules, their declarations
-# and the service names a module calls them by, generated from one table.
+# and the service names a module calls them by, generated from one table. The
+# interface is checked against the released one recorded in the lock file.
 set(abi_table ${CMAKE_CURRENT_SOURCE_DIR}/abi/app_abi.txt)
 set(abi_script ${CMAKE_CURRENT_SOURCE_DIR}/abi/gen_app_abi.py)
+set(abi_lock ${CMAKE_CURRENT_SOURCE_DIR}/abi/app_abi.lock)
 set(abi_services_h ${ZEPHYR_BASE}/include/zephyr/app_platform/app_services.h)
+set(abi_types_h ${ZEPHYR_BASE}/include/zephyr/app_platform/app_svc_types.h)
+set(abi_caps_h ${ZEPHYR_BASE}/include/zephyr/app_platform/app_caps.h)
+set(abi_sdk_h ${ZEPHYR_BASE}/include/zephyr/app_platform/app_sdk.h)
 set(abi_gen_dir ${ZEPHYR_BINARY_DIR}/include/generated/zephyr/app_platform)
 set(abi_decls_h ${abi_gen_dir}/app_abi.h)
 set(abi_forward_h ${abi_gen_dir}/app_abi_forward.h)
 set(abi_exports_c ${CMAKE_CURRENT_BINARY_DIR}/app_abi_exports.c)
+set(abi_lock_c ${CMAKE_CURRENT_BINARY_DIR}/app_abi_lock.c)
 set(abi_imports ${CMAKE_CURRENT_SOURCE_DIR}/abi/app_imports.txt)
 set(abi_allowed_inc ${abi_gen_dir}/app_abi_imports.inc)
 set(abi_allowed_txt ${ZEPHYR_BINARY_DIR}/app_platform_imports.txt)
 file(MAKE_DIRECTORY ${abi_gen_dir})
 
+set(abi_sources
+  --table ${abi_table}
+  --services ${abi_services_h}
+  --types ${abi_types_h}
+  --caps ${abi_caps_h}
+  --sdk ${abi_sdk_h}
+  --lock ${abi_lock}
+)
+set(abi_outputs ${abi_decls_h} ${abi_forward_h} ${abi_exports_c} ${abi_lock_c}
+  ${abi_allowed_inc} ${abi_allowed_txt}
+)
 add_custom_command(
-  OUTPUT ${abi_decls_h} ${abi_forward_h} ${abi_exports_c} ${abi_allowed_inc} ${abi_allowed_txt}
+  OUTPUT ${abi_outputs}
   COMMAND ${PYTHON_EXECUTABLE} ${abi_script}
-    --table ${abi_table}
-    --services ${abi_services_h}
+    ${abi_sources}
     --decls ${abi_decls_h}
     --forward ${abi_forward_h}
     --exports ${abi_exports_c}
+    --lock-asserts ${abi_lock_c}
     --imports ${abi_imports}
     --arch ${ARCH}
     --allowed-inc ${abi_allowed_inc}
     --allowed-txt ${abi_allowed_txt}
-  DEPENDS ${abi_script} ${abi_table} ${abi_services_h} ${abi_imports}
+  DEPENDS ${abi_script} ${abi_table} ${abi_services_h} ${abi_types_h} ${abi_caps_h}
+    ${abi_sdk_h} ${abi_lock} ${abi_imports}
 )
-add_custom_target(app_platform_exports
-  DEPENDS ${abi_decls_h} ${abi_forward_h} ${abi_exports_c} ${abi_allowed_inc} ${abi_allowed_txt}
-)
+add_custom_target(app_platform_exports DEPENDS ${abi_outputs})
 add_dependencies(zephyr_generated_headers app_platform_exports)
+zephyr_library_sources(${abi_lock_c})
 zephyr_library_sources_ifdef(CONFIG_LLEXT ${abi_exports_c} app_abi.c)
+
+# Appends new interface entries to the lock file, or rewrites it after a major
+# version change: west build -t app_platform_abi_lock
+add_custom_target(app_platform_abi_lock
+  COMMAND ${PYTHON_EXECUTABLE} ${abi_script} ${abi_sources} --update-lock
+  VERBATIM
+)
 add_dependencies(${ZEPHYR_CURRENT_LIBRARY} app_platform_exports)
 
 # What the signer puts in a manifest for this firmware. Signing rules take
