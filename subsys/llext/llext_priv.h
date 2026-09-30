@@ -38,6 +38,20 @@ int llext_copy_regions(struct llext_loader *ldr, struct llext *ext,
 void llext_free_regions(struct llext *ext);
 void llext_adjust_mmu_permissions(struct llext *ext);
 
+#if defined(CONFIG_RISCV_PMP) && defined(CONFIG_PMP_DATA_EXECUTION_PREVENTION) &&               \
+	!defined(CONFIG_USERSPACE)
+#define LLEXT_PMP_DEP 1
+bool llext_dep_allows_exec(const void *addr, size_t len);
+#else
+static inline bool llext_dep_allows_exec(const void *addr, size_t len)
+{
+	ARG_UNUSED(addr);
+	ARG_UNUSED(len);
+
+	return true;
+}
+#endif
+
 /*
  * ELF parsing (llext_load.c)
  */

@@ -395,6 +395,13 @@ static int llext_map_sections(struct llext_loader *ldr, struct llext *ext,
 					(void *)((char *)detached_sect_ptr + shdr->sh_size));
 				return -ENOEXEC;
 			}
+
+			if (mem_idx == LLEXT_MEM_TEXT &&
+			    !llext_dep_allows_exec(detached_sect_ptr, shdr->sh_size)) {
+				LOG_ERR("Detached text section %s at %p is not executable with "
+					"data execution prevention", name, detached_sect_ptr);
+				return -ENOEXEC;
+			}
 			continue;
 		}
 

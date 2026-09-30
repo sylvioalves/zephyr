@@ -21,6 +21,12 @@ LOG_MODULE_DECLARE(llext, CONFIG_LLEXT_LOG_LEVEL);
 #include "llext_priv.h"
 #include "llext_mem.h"
 
+#ifdef LLEXT_PMP_DEP
+#include <zephyr/arch/riscv/csr.h>
+#include <zephyr/arch/riscv/pmp.h>
+#include <zephyr/linker/linker-defs.h>
+#endif
+
 #ifdef CONFIG_LLEXT_HEAP_DYNAMIC
 bool llext_heap_inited;
 #endif
@@ -30,6 +36,31 @@ bool llext_heap_inited;
 #define LLEXT_PMP_GRANULARITY CONFIG_PMP_GRANULARITY
 #else
 #define LLEXT_PMP_GRANULARITY 1
+#endif
+
+#ifdef LLEXT_PMP_DEP
+/* Machine mode can only fetch from the read-only image and from executable
+ * SoC PMP regions.
+ */
+bool llext_dep_allows_exec(const void *addr, size_t len)
+{
+	uintptr_t start = (uintptr_t)addr;
+	uintptr_t end = start + len;
+
+	if (start >= (uintptr_t)__rom_region_start &&
+	    end <= (uintptr_t)__rom_region_start + (uintptr_t)__rom_region_size) {
+		return true;
+	}
+
+	STRUCT_SECTION_FOREACH(pmp_soc_region, region) {
+		if ((region->perm & PMP_X) != 0U && start >= (uintptr_t)region->start &&
+		    end <= (uintptr_t)region->end) {
+			return true;
+		}
+	}
+
+	return false;
+}
 #endif
 
 /*
@@ -197,7 +228,8 @@ static int llext_copy_region(struct llext_loader *ldr, struct llext *ext,
 				if ((IS_ALIGNED(ext->mem[mem_idx], region_align) ||
 				     ldr_parm->pre_located) &&
 				    ((mem_idx != LLEXT_MEM_TEXT) ||
-				     arch_is_instr_mem(ext->mem[mem_idx], region_alloc))) {
+				     (arch_is_instr_mem(ext->mem[mem_idx], region_alloc) &&
+				      llext_dep_allows_exec(ext->mem[mem_idx], region_alloc)))) {
 					/* Map this region directly to the ELF buffer */
 					llext_init_mem_part(ext, mem_idx,
 							    (uintptr_t)ext->mem[mem_idx],
@@ -263,6 +295,14 @@ static int llext_copy_region(struct llext_loader *ldr, struct llext *ext,
 		LOG_ERR("Failed allocating %zd bytes %zd-aligned for region %d",
 			(size_t)region_alloc, (size_t)region_align, mem_idx);
 		return -ENOMEM;
+	}
+
+	if ((region->sh_flags & SHF_EXECINSTR) != 0 &&
+	    !llext_dep_allows_exec(ext->mem[mem_idx], region_alloc)) {
+		LOG_ERR("region %d at %p is not executable with data execution prevention",
+			mem_idx, ext->mem[mem_idx]);
+		ret = -ENOEXEC;
+		goto err;
 	}
 
 	ext->alloc_size += region_alloc;
