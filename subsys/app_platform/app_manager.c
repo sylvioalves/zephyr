@@ -1126,6 +1126,26 @@ int app_platform_init(void)
 	return 0;
 }
 
+#ifdef CONFIG_USERSPACE
+/* Remove every partition but the C library's from an unused slot domain. */
+static void drop_partitions(struct k_mem_domain *dom)
+{
+	for (int j = 0; j < CONFIG_MAX_DOMAIN_PARTITIONS; j++) {
+		struct k_mem_partition part = dom->partitions[j];
+
+		if (part.size == 0U) {
+			continue;
+		}
+#ifdef Z_LIBC_PARTITION_EXISTS
+		if (part.start == z_libc_partition.start && part.size == z_libc_partition.size) {
+			continue;
+		}
+#endif
+		(void)k_mem_domain_remove_partition(dom, &part);
+	}
+}
+#endif
+
 /* Common launch: find a free slot, set up the domain and, unless the definition
  * asks for a stopped launch, start a user-mode thread. A relaunch after a fault
  * passes the slot it held in @p prev and takes it again when it is free.
@@ -1174,7 +1194,9 @@ static int launch(const struct app_def *def, struct llext *ext, int prev)
 #endif
 		/* A slot's memory domain is initialized once and reused, because
 		 * re-initializing a live domain is a fatal error on some
-		 * architectures rather than a fresh start.
+		 * architectures rather than a fresh start. A new application
+		 * gets it back with the C library partition only, while a
+		 * relaunch after a fault keeps what the slot had.
 		 */
 #ifdef CONFIG_USERSPACE
 		if (!a->domain_ready) {
@@ -1183,6 +1205,8 @@ static int launch(const struct app_def *def, struct llext *ext, int prev)
 			k_mem_domain_add_partition(&a->domain, &z_libc_partition);
 #endif
 			a->domain_ready = true;
+		} else if (i != prev) {
+			drop_partitions(&a->domain);
 		}
 #endif
 
