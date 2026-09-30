@@ -50,13 +50,14 @@ def build_manifest(module, args, facts):
         sys.exit(f"application name '{args.name}' is longer than {NAME_MAX - 1} bytes")
     abi_id = bytes.fromhex(facts["abi_id"])
     abi_major = int(args.abi_major if args.abi_major is not None else facts["abi_major"], 0)
+    target = int(args.target if args.target is not None else facts["target"], 0)
     body = FIELDS.pack(
         args.version,
         len(module),
         name,
         hashlib.sha256(module).digest(),
         abi_id,
-        0,
+        target,
         abi_major,
         0,
         args.heap_size,
@@ -106,6 +107,7 @@ def main():
     parser.add_argument("--required-caps", type=lambda v: int(v, 0), default=0)
     parser.add_argument("--key-id", type=lambda v: int(v, 0), default=0)
     parser.add_argument("--abi-major", help="interface major version, overrides the firmware's")
+    parser.add_argument("--target", help="target fingerprint, overrides the firmware's")
     parser.add_argument(
         "--manifest-len",
         type=int,

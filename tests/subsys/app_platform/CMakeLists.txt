@@ -79,11 +79,12 @@ add_dependencies(test_badabi app_platform_abi)
 add_dependencies(app test_badabi)
 
 # The same module under a manifest carrying fields past the ones the firmware
-# knows, and under one cut short of them. Reuses the key generated above.
-foreach(variant long:200 short:100)
+# knows, under one cut short of them, and signed for another target. Reuses the
+# key generated above.
+foreach(variant long:MANIFEST_LEN=200 short:MANIFEST_LEN=100 target:TARGET_OVERRIDE=0)
   string(REPLACE ":" ";" variant ${variant})
   list(GET variant 0 tag)
-  list(GET variant 1 len)
+  list(GET variant 1 input)
   set(v_mf  ${ZEPHYR_BINARY_DIR}/include/generated/test_mod.${tag}.manifest.inc)
   set(v_sig ${ZEPHYR_BINARY_DIR}/include/generated/test_mod.${tag}.sig.inc)
 
@@ -95,7 +96,7 @@ foreach(variant long:200 short:100)
       -DAPP_NAME=${APP_NAME}
       -DAPP_VERSION=${APP_VERSION}
       -DABI_FILE=${APP_PLATFORM_ABI_FILE}
-      -DMANIFEST_LEN=${len}
+      -D${input}
       -DOUT_MF_INC=${v_mf}
       -DOUT_SIG_INC=${v_sig}
       -DPYTHON_EXECUTABLE=${PYTHON_EXECUTABLE}

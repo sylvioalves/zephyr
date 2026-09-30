@@ -5,13 +5,15 @@
  */
 
 /* Additional loader negatives: wrong key, truncated, padded, name mismatch,
- * foreign ABI, foreign ELF class, CPU or ELF flags, and the manifest format.
+ * foreign ABI or target, foreign ELF class, CPU or ELF flags, and the manifest
+ * format.
  */
 
 #include <zephyr/ztest.h>
 #include <zephyr/app_platform/app_loader.h>
 #include <zephyr/app_platform/app_manifest.h>
 #include <zephyr/app_platform/app_registry.h>
+#include <zephyr/app_platform_abi.h>
 #include <zephyr/kernel.h>
 #include <zephyr/fs/fs.h>
 #include <zephyr/sys/byteorder.h>
@@ -46,6 +48,12 @@ static const uint8_t short_manifest[] = {
 };
 static const uint8_t short_sig[] = {
 #include "test_mod.short.sig.inc"
+};
+static const uint8_t target_manifest[] = {
+#include "test_mod.target.manifest.inc"
+};
+static const uint8_t target_sig[] = {
+#include "test_mod.target.sig.inc"
 };
 
 #define MANIFEST_V3_MAGIC 0x33464d41U
@@ -188,6 +196,30 @@ ZTEST(loader_neg, test_file_foreign_abi_rejected)
 	(void)fs_unlink(path);
 	zassert_equal(rc, -ENOEXEC, "foreign ABI must be rejected (%d)", rc);
 	zassert_is_null(ext);
+}
+
+/* A module signed for another target is refused. */
+ZTEST(loader_neg, test_foreign_target_rejected)
+{
+	struct app_manifest mf;
+	struct llext *ext = NULL;
+	void *entry = NULL;
+
+	BUILD_ASSERT(APP_PLATFORM_TARGET != 0U, "the foreign target must differ");
+
+	memcpy(&mf, target_manifest, sizeof(mf));
+	zassert_equal(mf.target, 0U);
+	memcpy(work, mod_bytes, ARRAY_SIZE(mod_bytes));
+	int rc = app_loader_verify_load_manifest(&mf, sizeof(mf), target_sig,
+						 ARRAY_SIZE(target_sig), work,
+						 ARRAY_SIZE(mod_bytes), mod_pubkey,
+						 ARRAY_SIZE(mod_pubkey), "app_main", &ext, &entry);
+
+	zassert_equal(rc, -ENOEXEC, "foreign target must be rejected (%d)", rc);
+	zassert_is_null(ext);
+
+	memcpy(&mf, mod_manifest, sizeof(mf));
+	zassert_equal(mf.target, APP_PLATFORM_TARGET, "the signer used another target");
 }
 
 /* A module for another ELF class or CPU is refused before it is hashed. */

@@ -23,9 +23,12 @@
  *
  * The manifest also carries the major version of the application interface the
  * module was built against, @ref app_manifest.abi_major, and a module is loaded
- * only by a firmware exporting the same major version. The heap size and the
- * capabilities the application requests and requires are part of the signed
- * body, so they are decided by the signer, not by whoever launches the module.
+ * only by a firmware exporting the same major version. Likewise @ref
+ * app_manifest.target, a fingerprint of the architecture, SoC and compiler
+ * options of the firmware build, must equal the firmware's. The heap size and
+ * the capabilities the application requests and requires are part of the
+ * signed body, so they are decided by the signer, not by whoever launches the
+ * module.
  *
  * The manifest starts with a fixed header, the magic, the length of the signed
  * manifest and its format. The signature covers exactly @ref

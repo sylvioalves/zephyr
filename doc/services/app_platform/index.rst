@@ -224,10 +224,22 @@ older than the one already recorded.
 The manifest also carries the major version of the module interface the module
 was built against, from the ``major`` line of
 :zephyr_file:`subsys/app_platform/abi/app_abi.txt`, and the loader refuses a
-module of another major version with ``-ENOEXEC``. The loader refuses with
-``-ENOEXEC`` as well a module whose ELF flags do not match the firmware: on
-RISC-V the floating-point ABI and the compressed and embedded base ISA bits, on
-Arm the EABI version and a float ABI bit when the object sets one.
+module of another major version with ``-ENOEXEC``.
+
+A module runs only on the target it was built for. The firmware build describes
+its target by the architecture, the SoC (:kconfig:option:`CONFIG_SOC`) and the
+code generation options it passes the compiler, those starting with ``-m`` such
+as ``-march``, ``-mabi``, ``-mcpu``, ``-mfpu`` and ``-mfloat-abi``, and hashes
+that description to a 32-bit fingerprint. The signer writes the fingerprint
+into the manifest and the loader refuses a module whose fingerprint differs
+from the one compiled into the firmware with ``-ENOEXEC``. The fingerprint and
+the description are written to ``build/zephyr/app_platform_abi.txt``. The loader
+also checks the ELF flags of the module before hashing it and refuses a
+mismatch with ``-ENOEXEC``: on RISC-V the floating-point ABI and the compressed
+and embedded base ISA bits, on Arm the EABI version and a float ABI bit when the
+object sets one. An Arm relocatable object keeps its floating-point calling
+convention in build attributes rather than in its flags, which leaves it to the
+fingerprint.
 
 Manifest format
 ---------------
@@ -271,7 +283,8 @@ bytes. The signing script ``sign_module.cmake`` builds it from
      - build identifier of the interface headers, recorded but not checked
    * - 96
      - ``uint32 target``
-     - target the module was built for
+     - fingerprint of the target the module was built for, must equal the
+       firmware's
    * - 100
      - ``uint16 abi_major``
      - interface major version, must equal the firmware's

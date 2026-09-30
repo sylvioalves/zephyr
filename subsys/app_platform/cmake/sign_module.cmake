@@ -13,13 +13,14 @@
 # firmware build wrote to ABI_FILE, the per-application heap size APP_HEAP_SIZE
 # and the capabilities APP_REQUESTED_CAPS and APP_REQUIRED_CAPS (0 when unset).
 # The layout is built by sign_module.py and matches struct app_manifest
-# (app_manifest.h). ABI_MAJOR_OVERRIDE and MANIFEST_LEN produce a manifest
-# this firmware refuses or one with fields it does not know, for tests.
+# (app_manifest.h). ABI_MAJOR_OVERRIDE, TARGET_OVERRIDE and MANIFEST_LEN
+# produce a manifest this firmware refuses or one with fields it does not know,
+# for tests.
 #
 # Inputs: MODULE_BIN, KEY_DIR, APP_NAME, APP_VERSION, ABI_FILE, OUT_MF_INC,
 #         OUT_SIG_INC, PYTHON_EXECUTABLE. Optional: OUT_PUB_INC, OUT_MANIFEST,
 #         APP_HEAP_SIZE, APP_REQUESTED_CAPS, APP_REQUIRED_CAPS,
-#         ABI_MAJOR_OVERRIDE, MANIFEST_LEN.
+#         ABI_MAJOR_OVERRIDE, TARGET_OVERRIDE, MANIFEST_LEN.
 
 set(args
   --module ${MODULE_BIN}
@@ -38,6 +39,7 @@ foreach(opt
     APP_REQUESTED_CAPS:--requested-caps
     APP_REQUIRED_CAPS:--required-caps
     ABI_MAJOR_OVERRIDE:--abi-major
+    TARGET_OVERRIDE:--target
     MANIFEST_LEN:--manifest-len)
   string(REPLACE ":" ";" opt ${opt})
   list(GET opt 0 var)

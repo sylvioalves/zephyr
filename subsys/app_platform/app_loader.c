@@ -15,6 +15,7 @@
 #include <zephyr/app_platform/app_loader.h>
 #include <zephyr/app_platform/app_manifest.h>
 #include <zephyr/app_platform/app_abi.h>
+#include <zephyr/app_platform_abi.h>
 
 #include <zephyr/kernel.h>
 #include <zephyr/llext/llext.h>
@@ -428,6 +429,11 @@ static int manifest_verify(const struct app_manifest *mf, size_t mf_len, const u
 	if (mf->abi_major != APP_ABI_MAJOR) {
 		LOG_WRN("'%s' built for interface %u, this firmware exports %u, rejected",
 			mf->name, mf->abi_major, APP_ABI_MAJOR);
+		return -ENOEXEC;
+	}
+	if (mf->target != APP_PLATFORM_TARGET) {
+		LOG_WRN("'%s' built for target %08x, this firmware is %08x, rejected", mf->name,
+			mf->target, APP_PLATFORM_TARGET);
 		return -ENOEXEC;
 	}
 	return 0;

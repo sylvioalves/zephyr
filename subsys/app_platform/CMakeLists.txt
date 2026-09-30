@@ -77,6 +77,18 @@ if(CONFIG_APP_PLATFORM_LOADER)
   set(APP_PLATFORM_ABI_FILE ${ZEPHYR_BINARY_DIR}/app_platform_abi.txt CACHE INTERNAL "")
   file(GLOB abi_headers ${abi_dir}/*.h)
 
+  # The target a module is built for: the architecture, the SoC and the code
+  # generation options the compiler is given, such as -march, -mabi, -mcpu,
+  # -mfpu and -mfloat-abi. Its hash is signed into the manifest.
+  set(target_desc "arch=${ARCH} soc=${CONFIG_SOC}")
+  foreach(flag ${TOOLCHAIN_C_FLAGS})
+    if(flag MATCHES "^-m")
+      string(APPEND target_desc " ${flag}")
+    endif()
+  endforeach()
+  string(SHA256 target "${target_desc}")
+  string(SUBSTRING ${target} 0 8 target)
+
   add_custom_command(
     OUTPUT ${abi_h} ${APP_PLATFORM_ABI_FILE}
     COMMAND ${CMAKE_COMMAND}
@@ -84,11 +96,14 @@ if(CONFIG_APP_PLATFORM_LOADER)
       -DHEADER_DIR=${abi_dir}
       -DISOLATION=$<IF:$<BOOL:${CONFIG_USERSPACE}>,userspace,none>
       -DABI_TABLE=${abi_table}
+      -DTARGET=0x${target}
+      -DTARGET_DESC=${target_desc}
       -DOUT_H=${abi_h}
       -DOUT_ID=${APP_PLATFORM_ABI_FILE}
       -P ${CMAKE_CURRENT_SOURCE_DIR}/cmake/abi_id.cmake
     DEPENDS ${syscall_list} ${abi_headers} ${abi_table}
       ${CMAKE_CURRENT_SOURCE_DIR}/cmake/abi_id.cmake
+    VERBATIM
   )
   add_custom_target(app_platform_abi DEPENDS ${abi_h} ${APP_PLATFORM_ABI_FILE})
   add_dependencies(app_platform_abi ${SYSCALL_LIST_H_TARGET})
