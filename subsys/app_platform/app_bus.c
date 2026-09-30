@@ -304,7 +304,6 @@ int z_impl_app_svc_uart_read(uint8_t *buf, size_t len)
 #endif
 }
 
-#ifdef CONFIG_USERSPACE
 int z_impl_app_svc_i2c_write(uint16_t addr, const uint8_t *buf, size_t len)
 {
 	if (!app_has_cap(APP_CAP_I2C)) {
@@ -358,6 +357,7 @@ int z_impl_app_svc_i2c_write_read(uint16_t addr, const uint8_t *tx, size_t tx_le
 #endif
 }
 
+#ifdef CONFIG_USERSPACE
 static inline int z_vrfy_app_svc_i2c_read(uint16_t addr, uint8_t *buf, size_t len)
 {
 	K_OOPS(K_SYSCALL_MEMORY_WRITE(buf, len));
