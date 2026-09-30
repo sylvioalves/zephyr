@@ -63,7 +63,8 @@ add_custom_command(
 )
 add_custom_target(app_platform_exports DEPENDS ${abi_decls_h} ${abi_forward_h} ${abi_exports_c})
 add_dependencies(zephyr_generated_headers app_platform_exports)
-zephyr_library_sources_ifdef(CONFIG_LLEXT ${abi_exports_c})
+zephyr_library_sources_ifdef(CONFIG_LLEXT ${abi_exports_c} app_abi.c)
+add_dependencies(${ZEPHYR_CURRENT_LIBRARY} app_platform_exports)
 
 # The ABI identifier the loader requires in a signed manifest. Signing rules
 # take APP_PLATFORM_ABI_FILE and depend on the app_platform_abi target.
