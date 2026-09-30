@@ -37,7 +37,7 @@ static const uint8_t mod_pubkey[] = {
 };
 
 /* A mutable copy used to craft malformed variants. */
-static uint8_t work[8192];
+static uint8_t work[8192] __aligned(8);
 
 static struct app_manifest manifest_copy(void)
 {
