@@ -860,4 +860,38 @@ static void ztest_suite_teardown(void *data)
 #endif
 }
 
-ZTEST_SUITE(llext, NULL, ztest_suite_setup, NULL, NULL, ztest_suite_teardown);
+/* Machine mode cannot run extension code from the LLEXT heap under PMP data
+ * execution prevention unless the heap is made executable.
+ */
+#define LLEXT_HEAP_NO_EXEC                                                                         \
+	(IS_ENABLED(CONFIG_RISCV_PMP) && IS_ENABLED(CONFIG_PMP_DATA_EXECUTION_PREVENTION) &&      \
+	 !IS_ENABLED(CONFIG_USERSPACE) && !IS_ENABLED(CONFIG_LLEXT_HEAP_EXECUTABLE))
+
+static void llext_before(void *data)
+{
+	ARG_UNUSED(data);
+
+	if (LLEXT_HEAP_NO_EXEC) {
+		ztest_test_skip();
+	}
+}
+
+ZTEST(llext_heap_no_exec, test_load_refused)
+{
+	struct llext_buf_loader buf_loader =
+		LLEXT_BUF_LOADER(hello_world_ext, sizeof(hello_world_ext));
+	struct llext_load_param ldr_parm = LLEXT_LOAD_PARAM_DEFAULT;
+	struct llext *ext = NULL;
+	int res;
+
+	if (!LLEXT_HEAP_NO_EXEC) {
+		ztest_test_skip();
+	}
+
+	res = llext_load(&buf_loader.loader, "hello_world", &ext, &ldr_parm);
+	zassert_equal(res, -ENOEXEC, "load should be refused, got %d", res);
+	zassert_is_null(ext, "no extension should be returned");
+}
+
+ZTEST_SUITE(llext, NULL, ztest_suite_setup, llext_before, NULL, ztest_suite_teardown);
+ZTEST_SUITE(llext_heap_no_exec, NULL, NULL, NULL, NULL, NULL);

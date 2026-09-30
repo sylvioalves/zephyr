@@ -138,6 +138,22 @@ tests:
       - CONFIG_LLEXT_VENEERS=y
       - CONFIG_LLEXT_STORAGE_WRITABLE=n
       - CONFIG_LLEXT_CONTIGUOUS_REGIONS=y
+  # RISC-V with PMP data execution prevention and no userspace: machine
+  # mode cannot run code copied into the LLEXT heap, so loading an
+  # extension is refused unless the heap is made executable.
+  llext.riscv_dep:
+    filter: CONFIG_RISCV_PMP and CONFIG_PMP_DATA_EXECUTION_PREVENTION
+    integration_platforms:
+      - qemu_riscv32
+    extra_configs:
+      - CONFIG_LLEXT_STORAGE_WRITABLE=n
+  llext.riscv_dep.heap_executable:
+    filter: CONFIG_RISCV_PMP and CONFIG_PMP_DATA_EXECUTION_PREVENTION
+    integration_platforms:
+      - qemu_riscv32
+    extra_configs:
+      - CONFIG_LLEXT_STORAGE_WRITABLE=n
+      - CONFIG_LLEXT_HEAP_EXECUTABLE=y
   llext.readonly_mmu:
     arch_allow:
       - arm64
