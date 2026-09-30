@@ -13,6 +13,15 @@
 #include <zephyr/logging/log.h>
 LOG_MODULE_DECLARE(llext, CONFIG_LLEXT_LOG_LEVEL);
 
+#ifdef CONFIG_LLEXT_HEAP_EXECUTABLE
+#include <zephyr/arch/riscv/csr.h>
+#include <zephyr/arch/riscv/pmp.h>
+
+#define LLEXT_HEAP_ALIGN __aligned(CONFIG_PMP_GRANULARITY)
+#else
+#define LLEXT_HEAP_ALIGN
+#endif
+
 Z_HEAP_DEFINE_IN_SECT(llext_metadata_heap, (CONFIG_LLEXT_METADATA_HEAP_SIZE * KB(1)),
 		      __attribute__((section(".llext_metadata_heap"))));
 #ifdef CONFIG_HARVARD
@@ -48,7 +57,14 @@ BUILD_ASSERT(CONFIG_LLEXT_HEAP_MEMBLK_BLOCK_SIZE % LLEXT_PAGE_SIZE == 0,
 	     "CONFIG_LLEXT_HEAP_MEMBLK_BLOCK_SIZE must be multiple of LLEXT_PAGE_SIZE");
 #endif
 uint8_t llext_ext_heap_buf[CONFIG_LLEXT_EXT_HEAP_SIZE * KB(1)]
-	__aligned(CONFIG_LLEXT_HEAP_MEMBLK_BLOCK_SIZE) __attribute__((section(".llext_ext_heap")));
+	__aligned(CONFIG_LLEXT_HEAP_MEMBLK_BLOCK_SIZE) LLEXT_HEAP_ALIGN
+	__attribute__((section(".llext_ext_heap")));
+#ifdef CONFIG_LLEXT_HEAP_EXECUTABLE
+BUILD_ASSERT(sizeof(llext_ext_heap_buf) % CONFIG_PMP_GRANULARITY == 0,
+	     "LLEXT heap size must be a multiple of CONFIG_PMP_GRANULARITY");
+PMP_SOC_REGION_DEFINE(llext_heap_exec, llext_ext_heap_buf,
+		      llext_ext_heap_buf + sizeof(llext_ext_heap_buf), PMP_R | PMP_W | PMP_X);
+#endif /* CONFIG_LLEXT_HEAP_EXECUTABLE */
 SYS_MEM_BLOCKS_DEFINE_WITH_EXT_BUF(llext_ext_heap, CONFIG_LLEXT_HEAP_MEMBLK_BLOCK_SIZE,
 				   CONFIG_LLEXT_EXT_HEAP_SIZE * KB(1) /
 					   CONFIG_LLEXT_HEAP_MEMBLK_BLOCK_SIZE,

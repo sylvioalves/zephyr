@@ -155,6 +155,18 @@ config LLEXT_CONTIGUOUS_REGIONS
 	  copied, even when they could be used in place from the ELF buffer,
 	  except for an extension loaded with detached sections.
 
+config LLEXT_HEAP_EXECUTABLE
+	bool "Executable llext heap for machine mode"
+	depends on RISCV_PMP && PMP_DATA_EXECUTION_PREVENTION
+	depends on !USERSPACE && !LLEXT_HEAP_DYNAMIC
+	help
+	  Map the whole LLEXT heap readable, writable and executable for
+	  machine mode with a locked PMP entry, so that extension code copied
+	  into the heap can run. This gives up data execution prevention for
+	  the heap. The entry takes one PMP slot, or two when the heap is not
+	  a naturally aligned power of two. Without this option, extensions
+	  whose code cannot run in place are refused with -ENOEXEC.
+
 config LLEXT_BUILD_PIC
 	bool "Use -fPIC when building LLEXT"
 	depends on XTENSA
