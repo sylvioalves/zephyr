@@ -8,7 +8,7 @@
 #define ZEPHYR_INCLUDE_APP_PLATFORM_SERVICES_H_
 
 #include <zephyr/kernel.h>
-#include <zephyr/app_platform/app_caps.h>
+#include <zephyr/app_platform/app_svc_types.h>
 
 /**
  * @brief Application platform shared services
@@ -62,9 +62,6 @@ __syscall void app_svc_heartbeat(void);
  * @retval 0 No stop was requested.
  */
 __syscall int app_svc_stop_requested(void);
-
-/** Entry point of an application worker thread. */
-typedef void (*app_thread_entry_t)(void *arg);
 
 /**
  * @brief Start a worker thread in the calling application. Needs
@@ -322,13 +319,6 @@ __syscall int app_svc_flash_erase(uint32_t off, size_t len);
  */
 void app_platform_grant_flash(int id, uint32_t base, uint32_t len);
 
-/** Metadata for one announced sensor service. */
-struct app_svc_sensor_info {
-	char name[16];   /**< service name, for example "temperature" */
-	char unit[10];   /**< unit of the value, for example "m.degC" */
-	bool present;    /**< a device on this board backs the kind    */
-};
-
 /**
  * @brief Number of sensor kinds the platform announces.
  *        Needs @ref APP_CAP_SENSOR.
@@ -411,9 +401,6 @@ __syscall int app_svc_timer_start(uint32_t ms);
  *         timeout.
  */
 __syscall int app_svc_timer_wait(uint32_t timeout_ms);
-
-/** Timer slots an application may hold at once. */
-#define APP_TIMER_SLOTS 4
 
 /**
  * @brief Claim one of the application's timer slots. Needs @ref APP_CAP_TIME.
@@ -565,14 +552,6 @@ __syscall int app_svc_mqtt_publish(const char *payload);
  *         capability, negative errno otherwise.
  */
 __syscall int app_svc_mqtt_recv(char *payload, size_t cap, uint32_t timeout_ms);
-
-/** Snapshot of the shared Wi-Fi link, filled by @ref app_svc_wifi_status. */
-struct app_svc_wifi_status {
-	uint8_t  connected;  /**< Non-zero when the link has an IPv4 address. */
-	char     ssid[33];   /**< SSID the link is joined to (NUL-terminated). */
-	char     ipv4[16];   /**< Dotted IPv4 address, empty when none. */
-	int8_t   rssi;       /**< Cached signal strength in dBm, 0 if unknown. */
-};
 
 /**
  * @brief Read the shared Wi-Fi link's status. Needs @ref APP_CAP_NET.
@@ -781,30 +760,6 @@ __syscall int app_svc_gpio_find(const char *name);
 void app_platform_grant_gpio(int id, uint32_t line_mask);
 
 /**
- * @brief Kinds of event delivered through @ref app_svc_event_wait.
- */
-enum app_event_kind {
-	APP_EVENT_NONE = 0,   /**< no event (timeout) */
-	APP_EVENT_BUTTON,     /**< the board button was pressed */
-	APP_EVENT_GPIO,       /**< a granted input line changed */
-	APP_EVENT_GATT_WRITE, /**< a peer wrote a served characteristic */
-	APP_EVENT_BLE_CONNECTED,    /**< a peer connected to the served app */
-	APP_EVENT_BLE_DISCONNECTED, /**< the connected peer went away */
-	APP_EVENT_STOP,       /**< the platform asked the application to exit */
-};
-
-/**
- * @brief One input event delivered to an application.
- */
-struct app_event {
-	uint8_t  kind;   /**< one of @ref app_event_kind */
-	uint8_t  line;   /**< GPIO line index, or served characteristic index */
-	uint8_t  value;  /**< line level, or pressed state for a key */
-	uint16_t code;   /**< key code, for @ref APP_EVENT_BUTTON */
-	uint32_t seq;    /**< per-application counter, gaps mean dropped events */
-};
-
-/**
  * @brief Wait for the next input event. Needs @ref APP_CAP_INPUT.
  *
  * Each application has its own queue, so one application waiting does not
@@ -921,18 +876,6 @@ __syscall int app_svc_topic_subscribe(const char *topic);
  *         capability.
  */
 __syscall int app_svc_topic_publish(const char *topic, const void *buf, size_t len);
-
-/** A user-mode-safe snapshot of one application group. */
-struct app_svc_app_info {
-	char     name[16];
-	uint8_t  active;
-	uint8_t  monitored;
-	uint8_t  faulted;
-	uint32_t stack_size;
-	uint32_t stack_used;
-	uint64_t cpu_cycles;
-	uint64_t cpu_total;
-};
 
 /**
  * @brief Number of application group slots. Needs @ref APP_CAP_INSPECT.
@@ -1158,16 +1101,6 @@ __syscall int app_svc_eeprom_write(uint32_t off, const void *buf, size_t len);
 
 /** @brief Grant an application a byte window of the EEPROM. */
 void app_platform_grant_eeprom(int id, size_t base, size_t len);
-
-/** A user-mode-safe wall-clock time. */
-struct app_svc_rtc_time {
-	uint16_t year;    /**< full year, e.g. 2026 */
-	uint8_t  month;   /**< month [1, 12] */
-	uint8_t  day;     /**< day of the month [1, 31] */
-	uint8_t  hour;    /**< hour [0, 23] */
-	uint8_t  minute;  /**< minute [0, 59] */
-	uint8_t  second;  /**< second [0, 59] */
-};
 
 /**
  * @brief Read the real-time clock device. Needs @ref APP_CAP_RTC.
@@ -1527,22 +1460,6 @@ __syscall int app_svc_rgb_count(void);
 /** @brief Grant an application a set of RGB LED pixels (bit N = pixel N). */
 void app_platform_grant_rgb(int id, uint32_t pixel_mask);
 
-/** A rectangle on the display, in panel coordinates. */
-struct app_display_rect {
-	uint16_t x;      /**< left column */
-	uint16_t y;      /**< top row */
-	uint16_t width;  /**< width in pixels */
-	uint16_t height; /**< height in pixels */
-};
-
-/** What an application sees of the display: its viewport and the pixel layout. */
-struct app_svc_display_info {
-	uint16_t width;          /**< viewport width in pixels */
-	uint16_t height;         /**< viewport height in pixels */
-	uint32_t pixel_format;   /**< PIXEL_FORMAT_* value of the panel */
-	uint8_t  bytes_per_pixel; /**< bytes per pixel in a write buffer */
-};
-
 /**
  * @brief Describe the calling application's viewport. Needs @ref APP_CAP_DISPLAY
  *        and a viewport grant (@ref app_platform_grant_display).
@@ -1814,13 +1731,6 @@ __syscall int app_svc_uart_write(const uint8_t *buf, size_t len);
  */
 __syscall int app_svc_uart_read(uint8_t *buf, size_t len);
 
-/** @brief Parity for @ref app_svc_uart_configure. */
-enum app_uart_parity {
-	APP_UART_PARITY_NONE = 0,
-	APP_UART_PARITY_ODD,
-	APP_UART_PARITY_EVEN,
-};
-
 /**
  * @brief Set the secondary UART's line parameters. Needs @ref APP_CAP_UART.
  *
@@ -1857,21 +1767,6 @@ __syscall int app_svc_uart_configure(uint32_t baud, uint8_t parity,
  * @retval -ENODEV when no secondary UART is chosen.
  */
 __syscall int app_svc_uart_close(void);
-
-/**
- * @brief Header at the front of a ring bound with @ref app_svc_ring_bind.
- *
- * The application writes at @c head and the platform consumes from @c tail
- * when sending; the platform writes at @c head and the application consumes
- * from @c tail when receiving. Both live in the application's own memory, so
- * the platform re-reads and range-checks them on every use and reports
- * @c -EBADMSG rather than trusting a value that cannot be right.
- */
-struct app_ring_hdr {
-	volatile uint32_t head;  /**< index one past the newest byte */
-	volatile uint32_t tail;  /**< index of the oldest unread byte */
-	uint32_t reserved[2];    /**< pad the data to an aligned offset */
-};
 
 /**
  * @brief Bind a bulk-transfer ring into the application's memory. Needs
@@ -1995,11 +1890,6 @@ __syscall int app_svc_ble_ota_fetch(const char *name, uint32_t timeout_ms,
 				    uint32_t *out_len);
 
 /**
- * @brief Maximum payload one generic GATT read or write may carry.
- */
-#define APP_BLE_GATT_MAX 64
-
-/**
  * @brief Read a characteristic from a BLE peer by UUID. Needs
  *        @ref APP_CAP_BLE and a service grant
  *        (@ref app_platform_grant_ble_gatt).
@@ -2076,20 +1966,6 @@ __syscall int app_svc_ble_gatt_write(const char *name,
  * @param uuid_len 2 or 16.
  */
 void app_platform_grant_ble_gatt(int id, const uint8_t *uuid, size_t uuid_len);
-
-/**
- * @brief Maximum characteristics one application may serve.
- */
-#define APP_BLE_SERVE_MAX_CHRC 4
-
-/** @brief A characteristic the application asks the platform to serve. */
-struct app_ble_chrc {
-	uint8_t uuid[16];   /**< characteristic UUID bytes, little-endian */
-	uint8_t uuid_len;   /**< 2 or 16 */
-	uint8_t readable;   /**< non-zero to allow reads */
-	uint8_t writable;   /**< non-zero to allow writes */
-	uint8_t notifiable; /**< non-zero to allow @ref app_svc_ble_notify */
-};
 
 /**
  * @brief Serve a GATT service and start advertising. Needs @ref APP_CAP_BLE
