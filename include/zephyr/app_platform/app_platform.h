@@ -39,6 +39,16 @@ enum app_source {
 typedef void (*app_entry_t)(void *arg);
 
 /**
+ * @brief A hook that prepares an application group each time it starts.
+ *
+ * @param id   Group id of the application about to start.
+ * @param user The pointer given with the hook.
+ * @retval 0 Start the application.
+ * @retval <0 Keep the application stopped; the start call returns this value.
+ */
+typedef int (*app_configure_t)(int id, void *user);
+
+/**
  * @brief A catalog entry describing an installable application.
  *
  * @p caps is opaque to the platform: it is stored per application and exposed
@@ -61,6 +71,18 @@ typedef void (*app_entry_t)(void *arg);
  * @ref app_platform_stop, so the caller can add memory partitions to
  * @ref app_platform_domain and grant resources before any application code
  * runs. @ref app_platform_start then starts it.
+ *
+ * @p configure, when not NULL, is called with the group id and
+ * @p configure_user every time the application is about to start: at a launch
+ * that is not stopped, in @ref app_platform_start and when the supervisor
+ * relaunches the application after a fault. It runs once the cleanup of the
+ * previous run is complete and before any application code runs, so the grants
+ * it sets are in place for every run. It runs on the thread that starts the
+ * application, the supervisor for a relaunch, so it must not block and is
+ * limited to setting grants and adding memory partitions to
+ * @ref app_platform_domain. When it fails, a launch returns its error and
+ * leaves no application behind, and a start or a relaunch leaves the
+ * application stopped.
  */
 struct app_def {
 	const char     *name;    /**< unique application name */
@@ -72,6 +94,8 @@ struct app_def {
 	size_t          heap_size; /**< per-application heap bytes, 0 for none */
 	uint32_t        cpu_mask;  /**< CPUs the application may run on, 0 for any */
 	bool            stopped;   /**< launch without starting, see below */
+	app_configure_t configure; /**< called before each start, NULL for none, see below */
+	void           *configure_user; /**< passed to @ref app_def.configure */
 };
 
 /**
@@ -101,6 +125,7 @@ int app_platform_init(void);
  *         disabled.
  * @retval -EINVAL The CPU mask names a CPU the system does not have, or more
  *         than one with @kconfig{CONFIG_SCHED_CPU_MASK_PIN_ONLY}.
+ * @retval <0 The error @ref app_def.configure returned.
  */
 int app_platform_launch(const struct app_def *def);
 
@@ -130,6 +155,8 @@ int app_platform_launch_llext(const char *name, struct llext *ext,
 struct app_launch_opts {
 	uint32_t cpu_mask; /**< CPUs the application may run on, as @ref app_def.cpu_mask */
 	bool     stopped;  /**< launch without starting, as @ref app_def.stopped */
+	app_configure_t configure; /**< called before each start, as @ref app_def.configure */
+	void    *configure_user; /**< passed to @p configure */
 };
 
 /**
@@ -149,6 +176,7 @@ struct app_launch_opts {
  *         than one with @kconfig{CONFIG_SCHED_CPU_MASK_PIN_ONLY}.
  * @retval -ENOTSUP The CPU mask is not 0 and
  *         @kconfig{CONFIG_APP_PLATFORM_CPU_AFFINITY} is disabled.
+ * @retval <0 The error the configure hook returned.
  *
  * The other return values are those of @ref app_platform_launch_llext.
  */
@@ -219,7 +247,8 @@ bool app_platform_stop_requested(void);
  * @ref app_platform_stop: creates its user-mode thread in its existing memory
  * domain, with the partitions and grants the group has, and its watchdog
  * channel when it is monitored. The heap region is zeroed and initialized
- * again.
+ * again. The configure hook of the group, see @ref app_def.configure, runs
+ * before the thread is created.
  *
  * @param id Group id.
  * @retval id The group was started.
@@ -227,6 +256,7 @@ bool app_platform_stop_requested(void);
  * @retval -EALREADY The group is already running.
  * @retval -ENOTSUP The group has no entry point.
  * @retval -EBUSY The previous stop of the group has not completed.
+ * @retval <0 The error the configure hook returned; the group stays stopped.
  */
 int app_platform_start(int id);
 

@@ -100,6 +100,8 @@ struct running_app {
 	size_t              module_bytes; /* loadable-extension footprint, 0 if built-in */
 	size_t              heap_size; /* heap bytes declared at launch */
 	uint32_t            cpu_mask;  /* CPUs the threads may run on, 0 for any */
+	app_configure_t     configure; /* called before each start, may be NULL */
+	void               *configure_user;
 #ifdef CONFIG_LLEXT
 	struct llext       *ext;       /* retained so a stopped app can restart */
 #endif
@@ -835,9 +837,28 @@ static int start_app(struct running_app *a)
 	return id;
 }
 
+/* Run the configure hook of a slot whose cleanup is complete, right before it
+ * starts.
+ */
+static int prepare_start(struct running_app *a)
+{
+	int rc = 0;
+
+	if (a->configure != NULL) {
+		rc = a->configure(a - apps, a->configure_user);
+	}
+	if (rc != 0) {
+		LOG_WRN("app '%s' not started: configure failed (%d)", a->name, rc);
+		return rc < 0 ? rc : -ECANCELED;
+	}
+	return 0;
+}
+
 /* Re-create the user-mode thread of a stopped app in its existing domain. */
 static int restart_thread(struct running_app *a)
 {
+	int rc;
+
 	/* Wait for any pending reaper cleanup of this slot to finish, so its
 	 * per-app service resources are released before the app runs again.
 	 */
@@ -845,6 +866,10 @@ static int restart_thread(struct running_app *a)
 		return -EBUSY;
 	}
 	app_platform_heap_reset(a - apps);
+	rc = prepare_start(a);
+	if (rc != 0) {
+		return rc;
+	}
 	return start_app(a);
 }
 
@@ -947,6 +972,8 @@ static void supervisor(void *p1, void *p2, void *p3)
 			.arg = a->arg,
 			.heap_size = a->heap_size,
 			.cpu_mask = a->cpu_mask,
+			.configure = a->configure,
+			.configure_user = a->configure_user,
 		};
 		uint32_t restarts = a->restarts;
 
@@ -978,7 +1005,7 @@ static void supervisor(void *p1, void *p2, void *p3)
 			int nid = launch(&def, NULL, req.id);
 
 			if (nid < 0) {
-				LOG_ERR("app '%s' could not be restarted", name);
+				LOG_ERR("app '%s' could not be restarted (%d)", name, nid);
 			} else {
 				apps[nid].restarts = restarts + 1U;
 			}
@@ -1196,6 +1223,8 @@ static int launch(const struct app_def *def, struct llext *ext, int prev)
 		a->module_bytes = 0;
 		a->heap_size = heap_size;
 		a->cpu_mask = def->cpu_mask;
+		a->configure = def->configure;
+		a->configure_user = def->configure_user;
 #ifdef CONFIG_LLEXT
 		a->ext = ext;
 #endif
@@ -1255,6 +1284,24 @@ static int launch(const struct app_def *def, struct llext *ext, int prev)
 			LOG_DBG("launched app '%s' stopped (group %d)", name, i);
 			return i;
 		}
+		rc = prepare_start(a);
+		if (rc != 0) {
+			/* A relaunch after a fault stays stopped in its slot. A new
+			 * launch is released; its caller keeps the extension.
+			 */
+			if (prev < 0) {
+#ifdef CONFIG_LLEXT
+#ifdef CONFIG_USERSPACE
+				if (ext != NULL) {
+					unmap_module(&a->domain, ext);
+				}
+#endif
+				a->ext = NULL;
+#endif
+				reclaim_ex(a, true);
+			}
+			return rc;
+		}
 		return start_app(a);
 	}
 	return -ENOSPC;
@@ -1286,6 +1333,8 @@ int app_platform_launch_llext_opts(const char *name, struct llext *ext, app_entr
 	if (opts != NULL) {
 		def.cpu_mask = opts->cpu_mask;
 		def.stopped = opts->stopped;
+		def.configure = opts->configure;
+		def.configure_user = opts->configure_user;
 	}
 
 #ifdef CONFIG_APP_PLATFORM_LOADER
