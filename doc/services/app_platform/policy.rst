@@ -56,6 +56,42 @@ identity (name, version, module hash and interface version) and the
 capabilities it requests and requires. The loader records those, but the mask
 the launcher sets still decides what the application may use.
 
+.. _app_platform_abi_stability:
+
+Interface stability
+*******************
+
+A module is built once and keeps running on later firmware for the same target.
+What it depends on is the module interface: the functions listed in
+:zephyr_file:`subsys/app_platform/abi/app_abi.txt`, the types, constants,
+capability bits and enumerators of ``app_svc_types.h`` and ``app_caps.h``, and
+the ``app_main()`` entry point. The released interface is recorded in
+:zephyr_file:`subsys/app_platform/abi/app_abi.lock`, and every build holds the
+sources to it:
+
+* Entries are only appended. A new service, type, constant, capability bit or
+  enumerator adds lines to the lock, which the build lists and
+  ``gen_app_abi.py --update-lock`` appends. A recorded line never changes.
+* A function whose signature or behavior changes takes a new entry with the
+  next version. The old version stays exported, as an entry the firmware
+  implements, for the modules built against it.
+* A structure shared with modules never changes. A changed structure is a new
+  structure, passed by a new version of the functions that use it. Shared
+  structures use fixed-width fields and explicit padding, so their layout is the
+  same on every target, and the build refuses one whose layout depends on the
+  alignment of 64-bit fields.
+* Anything else, such as removing an entry or renumbering a capability, breaks
+  the modules already built and takes a new major version in ``app_abi.txt``.
+  The lock is then rewritten, and a firmware loads only modules of its own
+  major version.
+
+The interface holds no syscall number, kernel structure or kernel configuration
+value. A module built against one firmware therefore runs in another one with
+other drivers, other syscalls, another tick rate, with or without user mode, as
+long as both are built for the same target and export the functions the module
+calls. The target is the architecture, the SoC and the code generation options
+of the compiler, whose fingerprint the signed manifest carries.
+
 Classifying a subsystem
 ***********************
 

@@ -43,8 +43,16 @@ supervision, the restart budget, reclaim and the capability and grant checks all
 work as before, but only as a contract: nothing stops an application from
 writing any memory or calling kernel functions directly, and a fault the
 hardware does not report goes unnoticed. Run only trusted applications this way.
+
 A module does not depend on the mode: it reaches the services only through the
-functions the firmware exports, see `Module interface`_.
+functions the firmware exports, see `Module interface`_, so the same signed
+module runs in a firmware with user mode and in one without. Without user mode
+the module executes from RAM the kernel itself must be allowed to execute. The
+Arm MPU of an XIP target and the RISC-V PMP with
+:kconfig:option:`CONFIG_PMP_DATA_EXECUTION_PREVENTION` make RAM non-executable, so
+there a module runs only with user mode, or with
+:kconfig:option:`CONFIG_ARM_MPU` or
+:kconfig:option:`CONFIG_PMP_DATA_EXECUTION_PREVENTION` disabled.
 
 Capabilities and grants
 =======================
@@ -233,7 +241,11 @@ as ``-march``, ``-mabi``, ``-mcpu``, ``-mfpu`` and ``-mfloat-abi``, and hashes
 that description to a 32-bit fingerprint. The signer writes the fingerprint
 into the manifest and the loader refuses a module whose fingerprint differs
 from the one compiled into the firmware with ``-ENOEXEC``. The fingerprint and
-the description are written to ``build/zephyr/app_platform_abi.txt``. The loader
+the description are written to ``build/zephyr/app_platform_abi.txt``. The
+fingerprint leaves out the kernel configuration, such as user mode, the tick
+rate, the syscall numbering and the services built in, none of which a module
+depends on: a module that calls a service the firmware lacks fails to load on
+the unresolved symbol instead. The loader
 also checks the ELF flags of the module before hashing it and refuses a
 mismatch with ``-ENOEXEC``: on RISC-V the floating-point ABI and the compressed
 and embedded base ISA bits, on Arm the EABI version and a float ABI bit when the
@@ -279,8 +291,8 @@ bytes. The signing script ``sign_module.cmake`` builds it from
      - ``uint8 module_sha256[32]``
      - SHA-256 of the module
    * - 80
-     - ``uint8 abi_id[16]``
-     - build identifier of the interface headers, recorded but not checked
+     - ``uint8 reserved1[16]``
+     - zero
    * - 96
      - ``uint32 target``
      - fingerprint of the target the module was built for, must equal the
@@ -341,6 +353,19 @@ the services built into the firmware are exported, in the ``APP_ABI`` symbol gro
 service fails to load on the unresolved symbol. A released entry never changes: a new signature or
 behavior takes a new entry with the next version, and the old entry stays for the modules built
 against it.
+
+The released interface is recorded in :zephyr_file:`subsys/app_platform/abi/app_abi.lock`: every
+exported function with its signature, the typedefs, constants, capability bits and enumerators of
+``app_svc_types.h`` and ``app_caps.h``, the layout of every structure in ``app_svc_types.h``, the
+``app_main()`` entry point and the major version. The generator computes these lines from the
+sources on every build and fails when a recorded line changed or disappeared, pointing at the
+line and the versioning rule, and when the interface has an entry the lock does not record yet,
+listing the lines to append. ``west build -t app_platform_abi_lock``, or
+``subsys/app_platform/abi/gen_app_abi.py --update-lock`` without a build, appends them; it never
+changes a recorded line unless the major version was raised, when it rewrites the file. The
+recorded layouts and values also become build assertions, so every target's compiler confirms
+them. The lock does not depend on the configuration: a service built out of the firmware keeps
+its entries. The rules are described in :ref:`app_platform_abi_stability`.
 
 A module must not include ``kernel.h``, a header that declares syscalls, or ``app_services.h``.
 ``app_sdk.h`` refuses to build after one of them and, with GCC or Clang, makes one included after
