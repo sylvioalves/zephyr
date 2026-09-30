@@ -144,6 +144,7 @@ int z_impl_app_svc_psram_map(size_t size, uintptr_t *out_addr, size_t *out_size)
 		return rc;
 	}
 #endif
+	app_platform_test_point(APP_TEST_POINT_PSRAM_MAP);
 	regions[id].used = true;
 	app_service_unlock(&psram_lock);
 

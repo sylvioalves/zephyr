@@ -307,6 +307,13 @@ int app_service_lock_reclaim(struct svc_lock *lock, k_timeout_t timeout)
 	return app_service_lock(lock, timeout);
 }
 
+#ifdef CONFIG_APP_PLATFORM_TEST_FAULT_POINTS
+__weak void app_platform_test_point(int point)
+{
+	ARG_UNUSED(point);
+}
+#endif
+
 int app_platform_id_current(void)
 {
 	struct running_app *a = app_of_thread(k_current_get());

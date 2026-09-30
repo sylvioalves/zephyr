@@ -158,6 +158,13 @@ config APP_PLATFORM_STOP_WAIT_MS
 	  thread. After this long it is stopped anyway, and each service whose
 	  lock it still holds is disabled.
 
+config APP_PLATFORM_TEST_FAULT_POINTS
+	bool
+	help
+	  Call app_platform_test_point() at fixed points where a service holds
+	  its lock, so a test can make an application fault there. Only tests
+	  enable it.
+
 config APP_PLATFORM_WDT_TIMEOUT_MS
 	int "Application liveness watchdog timeout (ms)"
 	default 2000

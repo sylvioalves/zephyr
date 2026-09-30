@@ -71,6 +71,19 @@ int app_service_unlock(struct svc_lock *lock);
  */
 int app_service_lock_reclaim(struct svc_lock *lock, k_timeout_t timeout);
 
+/* Points inside services where app_platform_test_point() is called. */
+#define APP_TEST_POINT_PSRAM_MAP 0
+
+#ifdef CONFIG_APP_PLATFORM_TEST_FAULT_POINTS
+/* Called with the service lock held; a test overrides the empty default. */
+void app_platform_test_point(int point);
+#else
+static inline void app_platform_test_point(int point)
+{
+	ARG_UNUSED(point);
+}
+#endif
+
 /* Per-resource grants live in the service that owns the resource, indexed by
  * application slot. A slot is reused once its previous tenant is reclaimed, so
  * the manager drops the grants before it hands the slot to a new application:
