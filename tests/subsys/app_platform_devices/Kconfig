@@ -1,0 +1,7 @@
+# Copyright (c) 2026 Espressif Systems (Shanghai) Co., Ltd.
+# SPDX-License-Identifier: Apache-2.0
+
+config APP_PLATFORM_TEST_FAULT_POINTS
+	default y
+
+source "Kconfig.zephyr"

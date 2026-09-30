@@ -60,9 +60,7 @@ static int slot_of(const char *name)
 	return -1;
 }
 
-/* A slot keeps its memory domain across launches, so the report partition is
- * added to it only once.
- */
+/* Add the report partition to a slot's domain unless it is already there. */
 static void add_report_part(int id)
 {
 #ifdef CONFIG_USERSPACE
@@ -1402,13 +1400,90 @@ ZTEST(devices, test_service_fault_breaks_only_its_lock)
 	expect_rc("lk_other", eeprom_no_window, APP_CAP_LOG | APP_CAP_EEPROM, -EACCES);
 }
 
+static void hold_owner(void *a)
+{
+	ARG_UNUSED(a);
+
+	report_rc = test_svc_hold(TEST_HOLD_OWN);
+	report_done = 1;
+}
+
+static void hold_waiter(void *a)
+{
+	ARG_UNUSED(a);
+
+	(void)test_svc_hold(TEST_HOLD_WAIT);
+}
+
+static void hold_use(void *a)
+{
+	ARG_UNUSED(a);
+
+	report_rc = test_svc_hold(TEST_HOLD_USE);
+	report_done = 1;
+}
+
+/* An application removed while it waits for a service lock that another one
+ * holds never owned the lock, so the service keeps working for everyone else.
+ */
+ZTEST(devices, test_service_waiter_removal_keeps_lock)
+{
+	const struct app_def owner = {
+		.name = "hd_own", .source = APP_BUILTIN, .entry = hold_owner,
+		.caps = APP_CAP_LOG,
+	};
+	const struct app_def waiter = {
+		.name = "hd_wait", .source = APP_BUILTIN, .entry = hold_waiter,
+		.caps = APP_CAP_LOG,
+	};
+	int wid;
+
+	report_done = 0;
+	zassert_true(launch_reporting(&owner) >= 0, "hd_own launch failed");
+	for (int i = 0; i < 200 && !test_svc_hold_taken(); i++) {
+		k_msleep(5);
+	}
+	zassert_true(test_svc_hold_taken(), "hd_own never took the lock");
+
+	wid = app_platform_launch(&waiter);
+	zassert_true(wid >= 0, "hd_wait launch failed");
+	k_msleep(50);
+	zassert_equal(app_platform_remove(wid), 0);
+	zassert_true(wait_slot_free("hd_wait", CONFIG_APP_PLATFORM_STOP_WAIT_MS + 2000),
+		     "hd_wait never ended");
+
+	test_svc_hold_release();
+	zassert_true(wait_slot_free("hd_own", 2000), "hd_own never exited");
+	zassert_equal(report_done, 1, "hd_own did not report");
+	zassert_equal(report_rc, 0, "hd_own rc %d", report_rc);
+
+	expect_rc("hd_use", hold_use, APP_CAP_LOG, 0);
+}
+
 /* ---- External RAM mapping ---- */
 
-#define PSRAM_REGION_SIZE 16384U
+#define PSRAM_REGION_SIZE 32768U
 #define PSRAM_MAP_SIZE    4096U
 
 static uint8_t __aligned(PSRAM_MAP_SIZE) psram_backing[PSRAM_REGION_SIZE];
 static struct shared_multi_heap_region psram_region;
+static bool psram_added;
+
+static void psram_region_add(void)
+{
+	if (psram_added) {
+		return;
+	}
+	(void)memset(psram_backing, 0x5A, sizeof(psram_backing));
+	psram_region = (struct shared_multi_heap_region){
+		.attr = SMH_REG_ATTR_EXTERNAL,
+		.addr = (uintptr_t)psram_backing,
+		.size = sizeof(psram_backing),
+	};
+	zassert_equal(shared_multi_heap_add(&psram_region, NULL), 0,
+		      "external region registration failed");
+	psram_added = true;
+}
 
 static void psram_map_size(size_t size)
 {
@@ -1462,18 +1537,107 @@ ZTEST(devices, test_psram_absent_zeroed_and_reclaimed)
 	expect_rc("p_np", psram_map_small, APP_CAP_LOG, -EPERM);
 	expect_rc("p_none", psram_map_small, APP_CAP_PSRAM, -ENOTSUP);
 
-	(void)memset(psram_backing, 0x5A, sizeof(psram_backing));
-	psram_region = (struct shared_multi_heap_region){
-		.attr = SMH_REG_ATTR_EXTERNAL,
-		.addr = (uintptr_t)psram_backing,
-		.size = sizeof(psram_backing),
-	};
-	zassert_equal(shared_multi_heap_add(&psram_region, NULL), 0,
-		      "external region registration failed");
+	psram_region_add();
 
 	expect_rc("p_big", psram_map_huge, APP_CAP_PSRAM, -ENOMEM);
 	expect_rc("p_one", psram_zero_then_dirty, APP_CAP_PSRAM, 0);
 	expect_rc("p_two", psram_zero_then_dirty, APP_CAP_PSRAM, 0);
+}
+
+static void psram_map_and_park(void *a)
+{
+	ARG_UNUSED(a);
+
+	uintptr_t addr;
+	size_t got;
+
+	report_rc = app_svc_psram_map(PSRAM_MAP_SIZE, &addr, &got);
+	report_done = 1;
+	k_sleep(K_FOREVER);
+}
+
+/* True when a partition of slot @p id lies in the external RAM region. */
+static bool maps_psram(int id)
+{
+#ifdef CONFIG_USERSPACE
+	struct k_mem_domain *dom = app_platform_domain(id);
+	uintptr_t lo = (uintptr_t)psram_backing;
+	uintptr_t hi = lo + sizeof(psram_backing);
+
+	zassert_not_null(dom, "slot %d has no domain", id);
+	for (int i = 0; i < CONFIG_MAX_DOMAIN_PARTITIONS; i++) {
+		if (dom->partitions[i].size != 0U && dom->partitions[i].start >= lo &&
+		    dom->partitions[i].start < hi) {
+			return true;
+		}
+	}
+#else
+	ARG_UNUSED(id);
+#endif
+	return false;
+}
+
+/* A fault inside the external RAM service breaks its lock. A region mapped
+ * before that still leaves its application's domain when the application
+ * stops, and the slot of the faulted application reaches the next one without
+ * the region the fault left mapped.
+ */
+ZTEST(devices, test_psram_lock_break_unmaps_regions)
+{
+	Z_TEST_SKIP_IFNDEF(CONFIG_USERSPACE);
+
+	const struct app_def hold = {
+		.name = "pb_hold", .source = APP_BUILTIN, .entry = psram_map_and_park,
+		.caps = APP_CAP_PSRAM,
+	};
+	const struct app_def flt = {
+		.name = "pb_flt", .source = APP_BUILTIN, .entry = psram_map_small,
+		.caps = APP_CAP_PSRAM,
+	};
+	const struct app_def next = {
+		.name = "pb_next", .source = APP_BUILTIN, .entry = psram_map_small,
+		.caps = APP_CAP_PSRAM, .stopped = true,
+	};
+	bool mapped = true;
+	int hid;
+	int fid;
+	int nid;
+
+	psram_region_add();
+
+	report_done = 0;
+	hid = launch_reporting(&hold);
+	zassert_true(hid >= 0, "pb_hold launch failed");
+	for (int i = 0; i < 200 && report_done == 0; i++) {
+		k_msleep(5);
+	}
+	zassert_equal(report_done, 1, "pb_hold did not report");
+	zassert_equal(report_rc, 0, "pb_hold map rc %d", report_rc);
+	zassert_true(maps_psram(hid), "pb_hold region not mapped");
+
+	report_done = 0;
+	test_psram_fault_arm();
+	fid = launch_reporting(&flt);
+	zassert_true(fid >= 0, "pb_flt launch failed");
+	zassert_true(wait_slot_free("pb_flt", 2000), "pb_flt never reclaimed");
+	zassert_equal(report_done, 0, "pb_flt did not fault (rc %d)", report_rc);
+	zassert_false(test_psram_fault_armed(), "pb_flt never reached the fault point");
+
+	zassert_equal(app_platform_stop(hid), 0);
+	for (int i = 0; i < 200 && mapped; i++) {
+		k_msleep(5);
+		mapped = maps_psram(hid);
+	}
+	zassert_false(mapped, "pb_hold kept its region after the lock broke");
+
+	nid = app_platform_launch(&next);
+	zassert_equal(nid, fid, "pb_next took slot %d, not %d", nid, fid);
+	zassert_false(maps_psram(nid), "pb_next inherited the region of pb_flt");
+
+	zassert_equal(app_platform_remove(nid), 0);
+	zassert_equal(app_platform_remove(hid), 0);
+	zassert_true(wait_slot_free("pb_next", 2000), "pb_next never released");
+	zassert_true(wait_slot_free("pb_hold", 2000), "pb_hold never released");
 }
 
 /* The file service works within a filesystem the system mounts, so the suite
