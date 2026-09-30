@@ -50,6 +50,41 @@ LOG_MODULE_DECLARE(app_platform, CONFIG_APP_PLATFORM_LOG_LEVEL);
 #define ELF_MACHINE 94U
 #endif
 
+/* The e_flags bits that must match the firmware and those that must be clear.
+ * RISC-V records the floating-point calling convention and the compressed and
+ * embedded base ISA. An Arm relocatable object records only the EABI version,
+ * its calling convention lives in build attributes, so a float ABI bit is
+ * checked only when one is set.
+ */
+#if defined(CONFIG_RISCV)
+#define EF_RISCV_RVC       0x0001U
+#define EF_RISCV_FLOAT_ABI 0x0006U
+#define EF_RISCV_RVE       0x0008U
+#if defined(__riscv_float_abi_quad)
+#define ELF_FLAGS_FLOAT 0x0006U
+#elif defined(__riscv_float_abi_double)
+#define ELF_FLAGS_FLOAT 0x0004U
+#elif defined(__riscv_float_abi_single)
+#define ELF_FLAGS_FLOAT 0x0002U
+#else
+#define ELF_FLAGS_FLOAT 0x0000U
+#endif
+#define ELF_FLAGS_MASK (EF_RISCV_RVC | EF_RISCV_FLOAT_ABI | EF_RISCV_RVE)
+#define ELF_FLAGS                                                                                  \
+	((IS_ENABLED(__riscv_compressed) ? EF_RISCV_RVC : 0U) | ELF_FLAGS_FLOAT |                  \
+	 (IS_ENABLED(__riscv_abi_rve) ? EF_RISCV_RVE : 0U))
+#define ELF_FLAGS_FORBID 0U
+#elif defined(CONFIG_ARM)
+#define EF_ARM_EABIMASK       0xff000000U
+#define EF_ARM_EABI_VER5      0x05000000U
+#define EF_ARM_ABI_FLOAT_SOFT 0x00000200U
+#define EF_ARM_ABI_FLOAT_HARD 0x00000400U
+#define ELF_FLAGS_MASK        EF_ARM_EABIMASK
+#define ELF_FLAGS             EF_ARM_EABI_VER5
+#define ELF_FLAGS_FORBID                                                                           \
+	(IS_ENABLED(__ARM_PCS_VFP) ? EF_ARM_ABI_FLOAT_SOFT : EF_ARM_ABI_FLOAT_HARD)
+#endif
+
 static const uint8_t abi_id[APP_MANIFEST_ABI_ID_LEN] = APP_PLATFORM_ABI_ID;
 
 #if defined(CONFIG_MBEDTLS_PSA_CRYPTO_LEGACY_RNG) && defined(CONFIG_MBEDTLS_HEAP_SIZE)
@@ -101,23 +136,25 @@ static int ecdsa_verify(const uint8_t *pubkey, size_t pubkey_len,
  * inside the image. @p hdr supplies at least the
  * ELF header; @p hdr_len is how many header bytes are available; @p total_len
  * is the full image size the section table must lie within (equal to @p hdr_len
- * for a buffer fully in memory, or the file size when streaming).
+ * for a buffer fully in memory, or the file size when streaming). A module
+ * whose e_flags do not match the firmware's is refused with -ENOEXEC.
  */
-static int elf_bounds_chk(const uint8_t *hdr, size_t hdr_len, size_t total_len)
+static int elf_bounds_chk(const char *name, const uint8_t *hdr, size_t hdr_len,
+			  size_t total_len)
 {
 	elf_ehdr_t eh;
 
 	if (hdr_len < ELF_HDR_MIN || total_len < ELF_HDR_MIN) {
-		return -E2BIG;
+		goto invalid;
 	}
 	memcpy(&eh, hdr, sizeof(eh));
 	if (sys_get_le32(eh.e_ident) != ELF_MAGIC || eh.e_ident[ELF_EI_CLASS] != ELF_CLASS ||
 	    eh.e_type != ET_REL) {
-		return -E2BIG;
+		goto invalid;
 	}
 #ifdef ELF_MACHINE
 	if (eh.e_machine != ELF_MACHINE) {
-		return -E2BIG;
+		goto invalid;
 	}
 #endif
 
@@ -125,15 +162,26 @@ static int elf_bounds_chk(const uint8_t *hdr, size_t hdr_len, size_t total_len)
 
 	if (eh.e_shentsize != sizeof(elf_shdr_t) || eh.e_shoff >= total_len ||
 	    sh_end > total_len) {
-		return -E2BIG;
+		goto invalid;
 	}
+#ifdef ELF_FLAGS_MASK
+	if ((eh.e_flags & ELF_FLAGS_MASK) != ELF_FLAGS || (eh.e_flags & ELF_FLAGS_FORBID) != 0U) {
+		LOG_WRN("'%s' rejected: ELF flags %#x do not match this firmware (%#x)", name,
+			(unsigned int)eh.e_flags, (unsigned int)ELF_FLAGS);
+		return -ENOEXEC;
+	}
+#endif
 	return 0;
+
+invalid:
+	LOG_WRN("'%s' rejected: not a valid relocatable module", name);
+	return -E2BIG;
 }
 
 /* Bounds check for an image fully held in a memory buffer. */
-static int elf_bounds_ok(const uint8_t *buf, size_t len)
+static int elf_bounds_ok(const char *name, const uint8_t *buf, size_t len)
 {
-	return elf_bounds_chk(buf, len, len);
+	return elf_bounds_chk(name, buf, len, len);
 }
 
 /* Set of extensions this loader verified, with the heap size their signed
@@ -291,13 +339,14 @@ int app_loader_verify_load(const char *name, const uint8_t *buf, size_t len,
 			   struct llext **ext, void **entry)
 {
 	uint8_t got[32];
+	int rc;
 
 	if (psa_crypto_init() != PSA_SUCCESS) {
 		return -EIO;
 	}
-	if (elf_bounds_ok(buf, len) != 0) {
-		LOG_WRN("'%s' rejected: not a valid relocatable module", name);
-		return -E2BIG;
+	rc = elf_bounds_ok(name, buf, len);
+	if (rc != 0) {
+		return rc;
 	}
 	if (sha256(buf, len, got) != 0) {
 		return -EIO;
@@ -318,19 +367,20 @@ int app_loader_verify_load_signed(const char *name, const uint8_t *buf,
 				  void **entry)
 {
 	uint8_t digest[32];
+	int rc;
 
 	if (psa_crypto_init() != PSA_SUCCESS) {
 		return -EIO;
 	}
-	if (elf_bounds_ok(buf, len) != 0) {
-		LOG_WRN("'%s' rejected: not a valid relocatable module", name);
-		return -E2BIG;
+	rc = elf_bounds_ok(name, buf, len);
+	if (rc != 0) {
+		return rc;
 	}
 	if (sha256(buf, len, digest) != 0) {
 		return -EIO;
 	}
 
-	int rc = ecdsa_verify(pubkey, pubkey_len, digest, sig, sig_len);
+	rc = ecdsa_verify(pubkey, pubkey_len, digest, sig, sig_len);
 
 	if (rc != 0) {
 		LOG_WRN("verify failed for '%s' - bad signature, rejected", name);
@@ -350,6 +400,7 @@ int app_loader_verify_load_manifest(const struct app_manifest *mf,
 {
 	uint8_t mf_digest[32];
 	uint8_t mod_digest[32];
+	int rc;
 
 	if (psa_crypto_init() != PSA_SUCCESS) {
 		return -EIO;
@@ -384,9 +435,9 @@ int app_loader_verify_load_manifest(const struct app_manifest *mf,
 			mf->name, (unsigned int)len, mf->module_len);
 		return -EPERM;
 	}
-	if (elf_bounds_ok(buf, len) != 0) {
-		LOG_WRN("'%s' rejected: not a valid relocatable module", mf->name);
-		return -E2BIG;
+	rc = elf_bounds_ok(mf->name, buf, len);
+	if (rc != 0) {
+		return rc;
 	}
 
 	/* 3. The module bytes must be exactly the ones the manifest binds. */
@@ -548,13 +599,14 @@ static int verify_load_copy(const struct app_manifest *mf, const char *path,
 			mf->module_len);
 	} else if (sha256(buf, mf->module_len, mod_digest) != 0) {
 		rc = -EIO;
-	} else if (elf_bounds_ok(buf, mf->module_len) != 0) {
-		LOG_WRN("'%s' rejected: not a valid relocatable module", mf->name);
-		rc = -E2BIG;
-	} else if (memcmp(mod_digest, mf->module_sha256, 32) != 0) {
+	} else {
+		rc = elf_bounds_ok(mf->name, buf, mf->module_len);
+	}
+	if (rc == 0 && memcmp(mod_digest, mf->module_sha256, 32) != 0) {
 		LOG_WRN("'%s' module hash != manifest, rejected", mf->name);
 		rc = -EPERM;
-	} else {
+	}
+	if (rc == 0) {
 		LOG_INF("verify OK for '%s' v%u (manifest authentic, module bound)",
 			mf->name, mf->version);
 		rc = load_checked(mf->name, buf, mf->module_len, true, mf->heap_size, entry_sym,
@@ -575,6 +627,7 @@ int app_loader_verify_load_manifest_file(const struct app_manifest *mf,
 	uint8_t mod_digest[32];
 	uint8_t head[ELF_HDR_MIN];
 	size_t len = 0;
+	int rc;
 
 	if (psa_crypto_init() != PSA_SUCCESS) {
 		return -EIO;
@@ -614,9 +667,9 @@ int app_loader_verify_load_manifest_file(const struct app_manifest *mf,
 			mf->name, (unsigned int)len, mf->module_len);
 		return -EPERM;
 	}
-	if (elf_bounds_chk(head, MIN(len, sizeof(head)), len) != 0) {
-		LOG_WRN("'%s' rejected: not a valid relocatable module", mf->name);
-		return -E2BIG;
+	rc = elf_bounds_chk(mf->name, head, MIN(len, sizeof(head)), len);
+	if (rc != 0) {
+		return rc;
 	}
 	if (memcmp(mod_digest, mf->module_sha256, 32) != 0) {
 		LOG_WRN("'%s' module hash != manifest, rejected", mf->name);
@@ -629,7 +682,7 @@ int app_loader_verify_load_manifest_file(const struct app_manifest *mf,
 	/* 3. Load the extension from the same file. The loader re-opens the
 	 * path, so the bytes it links are not provably the bytes just hashed.
 	 */
-	int rc = fs_load_checked(mf->name, path, mf->heap_size, entry_sym, ext, entry);
+	rc = fs_load_checked(mf->name, path, mf->heap_size, entry_sym, ext, entry);
 
 	if (rc != 0) {
 		return rc;

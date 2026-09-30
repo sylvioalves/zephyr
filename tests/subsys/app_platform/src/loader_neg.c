@@ -5,7 +5,7 @@
  */
 
 /* Additional loader negatives: wrong key, truncated, padded, name mismatch,
- * foreign ABI, foreign ELF class or CPU.
+ * foreign ABI, foreign ELF class, CPU or ELF flags.
  */
 
 #include <zephyr/ztest.h>
@@ -14,6 +14,7 @@
 #include <zephyr/app_platform/app_registry.h>
 #include <zephyr/kernel.h>
 #include <zephyr/fs/fs.h>
+#include <zephyr/sys/byteorder.h>
 #include <string.h>
 
 static const uint8_t mod_bytes[] = {
@@ -194,6 +195,31 @@ ZTEST(loader_neg, test_foreign_class_and_machine_rejected)
 					     "app_main", &ext, &entry), -E2BIG,
 		      "a module for another CPU must be rejected");
 	zassert_is_null(ext);
+}
+
+/* A module built for another floating-point ABI is refused before it is
+ * hashed.
+ */
+ZTEST(loader_neg, test_foreign_elf_flags_rejected)
+{
+#if defined(CONFIG_RISCV) || defined(CONFIG_ARM)
+	const size_t flags_off = IS_ENABLED(CONFIG_64BIT) ? 48 : 36;
+	const uint32_t flip = IS_ENABLED(CONFIG_RISCV)     ? 0x2U
+			      : IS_ENABLED(__ARM_PCS_VFP) ? 0x200U
+							  : 0x400U;
+	const uint8_t expect[32] = {0};
+	struct llext *ext = NULL;
+	void *entry = NULL;
+
+	memcpy(work, mod_bytes, ARRAY_SIZE(mod_bytes));
+	sys_put_le32(sys_get_le32(&work[flags_off]) ^ flip, &work[flags_off]);
+	zassert_equal(app_loader_verify_load("foreign", work, ARRAY_SIZE(mod_bytes), expect,
+					     "app_main", &ext, &entry), -ENOEXEC,
+		      "a module for another float ABI must be rejected");
+	zassert_is_null(ext);
+#else
+	ztest_test_skip();
+#endif
 }
 
 ZTEST_SUITE(loader_neg, NULL, NULL, NULL, NULL, NULL);
