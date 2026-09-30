@@ -56,9 +56,6 @@
 /** Largest signed manifest this firmware accepts. */
 #define APP_MANIFEST_MAX_LEN 256U
 
-/** Interface build identifier length. */
-#define APP_MANIFEST_ABI_ID_LEN 16
-
 /** Raw ECDSA P-256 signature length (r || s). */
 #define APP_MANIFEST_SIG_LEN 64
 
@@ -73,7 +70,7 @@ struct app_manifest {
 	uint32_t module_len;                      /**< expected module size */
 	char     name[APP_MANIFEST_NAME_MAX];     /**< authenticated app name */
 	uint8_t  module_sha256[32];               /**< SHA-256 of the module */
-	uint8_t  abi_id[APP_MANIFEST_ABI_ID_LEN]; /**< interface build identifier, not checked */
+	uint8_t  reserved1[16];                   /**< zero */
 	uint32_t target;                          /**< target the module was built for */
 	uint16_t abi_major;                       /**< application interface major version */
 	uint16_t reserved0;                       /**< zero */

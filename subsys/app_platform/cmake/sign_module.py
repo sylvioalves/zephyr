@@ -50,7 +50,6 @@ def build_manifest(module, args, facts):
     name = args.name.encode("ascii")
     if len(name) >= NAME_MAX:
         sys.exit(f"application name '{args.name}' is longer than {NAME_MAX - 1} bytes")
-    abi_id = bytes.fromhex(facts["abi_id"])
     abi_major = int(args.abi_major if args.abi_major is not None else facts["abi_major"], 0)
     target = int(args.target if args.target is not None else facts["target"], 0)
     body = FIELDS.pack(
@@ -58,7 +57,7 @@ def build_manifest(module, args, facts):
         len(module),
         name,
         hashlib.sha256(module).digest(),
-        abi_id,
+        b"",
         target,
         abi_major,
         0,
