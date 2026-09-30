@@ -43,6 +43,20 @@ static const uint8_t trusted_pubkey[] = {
 #define MOUNT_POINT  CONFIG_APP_PLATFORM_REGISTRY_MOUNT_POINT
 #define SERVER_PORT  8000
 
+/* Runs before every start of a fetched application: the place for its grants.
+ * APP_CAPS covers no resource that needs one.
+ */
+static int configure_app(int id, void *user)
+{
+	ARG_UNUSED(id);
+	ARG_UNUSED(user);
+	return 0;
+}
+
+static const struct app_launch_opts launch_opts = {
+	.configure = configure_app,
+};
+
 static K_SEM_DEFINE(got_ip, 0, 1);
 static struct net_mgmt_event_callback ipv4_cb;
 
@@ -227,7 +241,8 @@ static int autostart_one(const struct app_record *rec, void *user)
 	}
 	rc = app_registry_check(rec, &mf);
 	if (rc == 0) {
-		rc = app_platform_launch_llext(mf.name, ext, (app_entry_t)entry, NULL, APP_CAPS);
+		rc = app_platform_launch_llext_opts(mf.name, ext, (app_entry_t)entry, NULL,
+						    APP_CAPS, &launch_opts);
 	}
 	if (rc < 0) {
 		app_loader_forget(ext);
@@ -301,7 +316,8 @@ static int cmd_fetch(const struct shell *sh, size_t argc, char **argv)
 		return rc;
 	}
 
-	rc = app_platform_launch_llext(mf.name, ext, (app_entry_t)entry, NULL, APP_CAPS);
+	rc = app_platform_launch_llext_opts(mf.name, ext, (app_entry_t)entry, NULL, APP_CAPS,
+					    &launch_opts);
 	if (rc < 0) {
 		shell_error(sh, "launch refused (%d)", rc);
 		app_loader_forget(ext);
