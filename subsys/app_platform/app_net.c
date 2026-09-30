@@ -230,7 +230,6 @@ static void ipv4_evt(struct net_mgmt_event_callback *cb, uint64_t ev,
 
 	switch (ev) {
 	case NET_EVENT_IPV4_ADDR_ADD:
-	case NET_EVENT_IPV4_DHCP_BOUND:
 		printk("net: IP acquired - shared stack ready\n");
 		k_sem_give(&net_ready_sem);
 		break;
@@ -270,7 +269,6 @@ static int wifi_up(void)
 	if (!cb_added) {
 		net_mgmt_init_event_callback(&ipv4_cb, ipv4_evt,
 					     NET_EVENT_IPV4_ADDR_ADD |
-					     NET_EVENT_IPV4_DHCP_BOUND |
 					     NET_EVENT_IPV4_ADDR_DEL);
 		net_mgmt_add_event_callback(&ipv4_cb);
 		net_mgmt_init_event_callback(&wifi_cb, wifi_evt,
@@ -431,6 +429,8 @@ static void bring_link_up(void)
 		link_failed = true;
 		return;
 	}
+
+	k_sem_reset(&net_ready_sem);
 
 	struct net_if *iface = net_if_get_first_wifi();
 
