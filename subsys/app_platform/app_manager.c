@@ -25,9 +25,7 @@
 #include <zephyr/fatal.h>
 #include <zephyr/task_wdt/task_wdt.h>
 #include <zephyr/llext/llext.h>
-#ifdef CONFIG_APP_PLATFORM_LOADER
 #include <zephyr/app_platform/app_loader.h>
-#endif
 
 #include "app_events.h"
 #include "app_grants.h"
@@ -622,7 +620,9 @@ static void run_cleanup(int id, bool full, struct llext *ext)
 #ifdef CONFIG_USERSPACE
 			unmap_module(&apps[id].domain, ext);
 #endif
-			app_loader_forget(ext);
+			if (IS_ENABLED(CONFIG_APP_PLATFORM_LOADER)) {
+				app_loader_forget(ext);
+			}
 			llext_unload(&ext);
 		}
 #else
@@ -1286,7 +1286,9 @@ static int launch(const struct app_def *def, struct llext *ext, int prev)
 			 */
 			unmap_module(&a->domain, ext);
 			app_platform_heap_release(i, slot_domain(a));
-			app_loader_forget(ext);
+			if (IS_ENABLED(CONFIG_APP_PLATFORM_LOADER)) {
+				app_loader_forget(ext);
+			}
 			(void)llext_unload(&ext);
 			a->ext = NULL;
 			a->module_bytes = 0;
