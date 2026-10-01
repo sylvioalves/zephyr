@@ -1,0 +1,11 @@
+common:
+  tags: app_platform
+  harness: ztest
+  timeout: 120
+  platform_allow:
+    - mps2/an385
+    - qemu_cortex_a53
+  integration_platforms:
+    - mps2/an385
+tests:
+  app_platform.throughput: {}
