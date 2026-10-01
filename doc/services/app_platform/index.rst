@@ -580,6 +580,89 @@ command exits non-zero with the device's error when it refuses the module. See
 device: the name, the version, the id of the key that signed it and the
 capabilities it requests and requires.
 
+Building applications outside the tree
+======================================
+
+A module writer does not need the Zephyr tree or the firmware sources. The
+firmware build packs a module development kit with ``west build -t
+app_platform_edk``, enabled by :kconfig:option:`CONFIG_APP_PLATFORM_EDK`, into
+``build/zephyr/app-platform-edk.tar.xz``. The kit holds:
+
+* ``include/``: :zephyr_file:`include/zephyr/app_platform/app_sdk.h`, the
+  generated declarations of the exported functions and the headers they include,
+  and a header defining the few architecture options those headers test. The
+  build finds the headers by preprocessing the SDK header with the module flags
+  and fails when one of them is a kernel, syscall, architecture, driver or
+  devicetree header, so ``kernel.h`` is not part of the kit. Neither is the
+  firmware configuration.
+* ``cmake/``: the module compiler and link flags of the target, taken from the
+  compile command of a module built in the firmware tree without its include
+  paths, its configuration, the definitions of other subsystems and the host
+  paths; a toolchain file; and ``app_edk.cmake``, the helper that builds, checks
+  and signs a module.
+* ``firmware.txt``: what the signer binds a module to, the interface major
+  version and the target fingerprint, with the board, the architecture and the
+  toolchain the firmware was built with: its variant, target triple, compiler
+  version and Zephyr SDK version.
+* ``keys.json``: the public part of the key table, the key ids, their states,
+  ceilings and name prefixes. ``abi/``: the lock file and the symbols a module may
+  import.
+* ``scripts/``: the signer and its Python requirements, Python 3.9 or later
+  with the cryptography and PyYAML packages, and a ``README.txt``.
+
+The kit does not hold the toolchain. The writer gives the path prefix of the
+toolchain tools as ``APP_EDK_CROSS_COMPILE``, or the Zephyr SDK as
+``ZEPHYR_SDK_INSTALL_DIR``, and the helper warns when the compiler version
+differs from the one the kit names. A module project includes the helper before
+``project()``:
+
+.. code-block:: cmake
+
+   cmake_minimum_required(VERSION 3.20.0)
+   include(${APP_EDK_DIR}/cmake/app_edk.cmake)
+   project(hello LANGUAGES C)
+   app_edk_add_module(hello NAME hello VERSION 1 SOURCES hello.c
+                      REQUESTED_CAPS LOG,TIME)
+
+.. code-block:: console
+
+   cmake -S hello -B build -G Ninja -DAPP_EDK_DIR=<kit> \
+         -DAPP_EDK_CROSS_COMPILE=<sdk>/gnu/arm-zephyr-eabi/bin/arm-zephyr-eabi- \
+         -DAPP_SIGNING_KEY=<publisher.pem> -DAPP_SIGNING_KEY_ID=1
+   cmake --build build
+
+The build writes the bundle ``hello.llext`` and ``hello.manifest``, which
+``west app install`` and the loader take. A source including ``kernel.h`` does
+not compile, a module importing a symbol outside the list is not signed, and
+the signer refuses a key the firmware would refuse, as the firmware build does,
+see `Signing keys`_. The development key, key id 0, signs only for a firmware
+built with :kconfig:option:`CONFIG_APP_PLATFORM_DEV_KEY` and only for a writer
+holding its private key.
+
+A module built with the kit loads on the firmware the kit was made from and on
+any later build of it with the same interface major version and target
+fingerprint that still trusts the signing key. Other configuration options,
+drivers, syscalls, tick rates and services do not change the kit: the kits of two
+such builds build the same module, byte for byte. A module that calls a service
+a build leaves out fails to load on the unresolved symbol. A build for another
+SoC or with other code generation options has another fingerprint, a change of
+the interface that breaks modules raises the major version, and a revoked or
+removed key refuses its modules; each needs a new kit or another key.
+
+The kit is a subset of the LLEXT EDK of :ref:`llext`, ``west build -t
+llext-edk``: that one ships every include directory of the firmware, its
+configuration and its syscall headers, for extensions that call the kernel. A
+module of the application platform must not, so its kit holds only the module
+headers, and adds the signer and the firmware facts. Both take the compiler
+flags from the same ``add_llext_target()`` compilation and remove the same host
+paths.
+
+:zephyr_file:`tests/subsys/app_platform_edk` builds two firmwares for one target,
+with other syscall numbers and tick rates, builds a module with the kit of each
+outside the tree and runs both modules in one firmware. The
+:zephyr:code-sample:`app_edk` sample shows the firmware side and a module
+project.
+
 Configuration
 *************
 
@@ -594,6 +677,8 @@ main options are:
 * :kconfig:option:`CONFIG_APP_PLATFORM_KEYS_FILE` - the publisher keys trusted
   to sign them, and :kconfig:option:`CONFIG_APP_PLATFORM_DEV_KEY` - whether the
   development key is trusted too, see `Signing keys`_.
+* :kconfig:option:`CONFIG_APP_PLATFORM_EDK` - the development kit for modules
+  built outside the tree, see `Building applications outside the tree`_.
 * :kconfig:option:`CONFIG_APP_PLATFORM_REGISTRY` - persist which applications
   are installed, and which start at boot.
 * :kconfig:option:`CONFIG_APP_PLATFORM_SERVICES` - the shared, capability-gated
