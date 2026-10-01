@@ -17,6 +17,9 @@
 # build configuration from 'app', but overrides the C compile rules to simply
 # output the resulting properties to text files. The EDK will then read those
 # text files to get the full set of build properties.
+#
+# The dummy target takes the usage requirements of 'app' without linking to it,
+# so generating the EDK does not build 'app'.
 
 unset(CMAKE_C_COMPILER_LAUNCHER)
 unset(CMAKE_C_COMPILER_LAUNCHER CACHE)
@@ -41,4 +44,15 @@ add_library(llext_edk_build_props ${ZEPHYR_BASE}/misc/empty_file.c)
 set_target_properties(llext_edk_build_props PROPERTIES C_COMPILER_LAUNCHER "")
 set_property(TARGET llext_edk_build_props PROPERTY RULE_LAUNCH_COMPILE "")
 set_property(TARGET llext_edk_build_props PROPERTY RULE_LAUNCH_LINK "")
-target_link_libraries(llext_edk_build_props PUBLIC app)
+target_compile_definitions(llext_edk_build_props PRIVATE
+  $<TARGET_PROPERTY:app,INTERFACE_COMPILE_DEFINITIONS>
+)
+target_compile_options(llext_edk_build_props PRIVATE
+  $<TARGET_PROPERTY:app,INTERFACE_COMPILE_OPTIONS>
+)
+target_include_directories(llext_edk_build_props PRIVATE
+  $<TARGET_PROPERTY:app,INTERFACE_INCLUDE_DIRECTORIES>
+)
+target_include_directories(llext_edk_build_props SYSTEM PRIVATE
+  $<TARGET_PROPERTY:app,INTERFACE_SYSTEM_INCLUDE_DIRECTORIES>
+)
