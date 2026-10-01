@@ -4,8 +4,8 @@
  * SPDX-License-Identifier: Apache-2.0
  */
 
-/* The shared networking and MQTT service. The Wi-Fi interface, the network
- * stack and the socket all live here in the platform; each application gets its
+/* The shared networking and MQTT service. The link, the network stack and
+ * the socket all live here in the platform; each application gets its
  * own MQTT session keyed by its group id, so several isolated applications
  * publish under their own identity over one shared stack. A supervisor net
  * thread runs every session's socket I/O. Applications hold no socket and link
@@ -49,6 +49,8 @@
 #define WIFI_CONNECT_TRIES  5
 #define WIFI_RETRY_DELAY_S  3
 #define WIFI_IP_WAIT_S      45
+/* How long to wait for an interface with an address on a non-Wi-Fi link. */
+#define IFACE_WAIT_S        45
 /* Slack on top of the net thread's budget before an application gives up. */
 #define NET_READY_MARGIN_MS 5000
 
@@ -256,6 +258,69 @@ static void wifi_evt(struct net_mgmt_event_callback *cb, uint64_t ev,
 	}
 }
 
+static void link_events_init(void)
+{
+	static bool cb_added;
+
+	if (cb_added) {
+		return;
+	}
+	net_mgmt_init_event_callback(&ipv4_cb, ipv4_evt,
+				     NET_EVENT_IPV4_ADDR_ADD | NET_EVENT_IPV4_ADDR_DEL);
+	net_mgmt_add_event_callback(&ipv4_cb);
+	if (IS_ENABLED(CONFIG_APP_PLATFORM_NET_LINK_WIFI)) {
+		net_mgmt_init_event_callback(&wifi_cb, wifi_evt,
+					     NET_EVENT_WIFI_DISCONNECT_RESULT);
+		net_mgmt_add_event_callback(&wifi_cb);
+	}
+	cb_added = true;
+}
+
+static bool iface_has_ipv4(struct net_if *iface)
+{
+	struct net_if_ipv4 *ipv4 = iface->config.ip.ipv4;
+
+	if (ipv4 == NULL) {
+		return false;
+	}
+	ARRAY_FOR_EACH(ipv4->unicast, i) {
+		if (ipv4->unicast[i].ipv4.is_used) {
+			return true;
+		}
+	}
+	return false;
+}
+
+static void iface_pick(struct net_if *iface, void *user_data)
+{
+	struct net_if **found = user_data;
+
+	if (*found == NULL && net_if_is_up(iface) && iface_has_ipv4(iface)) {
+		*found = iface;
+	}
+}
+
+/* The interface that carries the link: the first Wi-Fi interface, or on a
+ * non-Wi-Fi link the first interface that is up and holds an IPv4 address,
+ * the default one first.
+ */
+static struct net_if *link_iface(void)
+{
+	struct net_if *iface;
+
+	if (IS_ENABLED(CONFIG_APP_PLATFORM_NET_LINK_WIFI)) {
+		return net_if_get_first_wifi();
+	}
+
+	iface = net_if_get_default();
+	if (iface != NULL && net_if_is_up(iface) && iface_has_ipv4(iface)) {
+		return iface;
+	}
+	iface = NULL;
+	net_if_foreach(iface_pick, &iface);
+	return iface;
+}
+
 static int wifi_up(void)
 {
 	struct net_if *iface = net_if_get_first_wifi();
@@ -264,18 +329,7 @@ static int wifi_up(void)
 		return -ENODEV;
 	}
 
-	static bool cb_added;
-
-	if (!cb_added) {
-		net_mgmt_init_event_callback(&ipv4_cb, ipv4_evt,
-					     NET_EVENT_IPV4_ADDR_ADD |
-					     NET_EVENT_IPV4_ADDR_DEL);
-		net_mgmt_add_event_callback(&ipv4_cb);
-		net_mgmt_init_event_callback(&wifi_cb, wifi_evt,
-					     NET_EVENT_WIFI_DISCONNECT_RESULT);
-		net_mgmt_add_event_callback(&wifi_cb);
-		cb_added = true;
-	}
+	link_events_init();
 
 	/* Zero every call: the request carries fields this code does not set
 	 * (BSSID, SAE password, timeout), and a static struct would hand the
@@ -370,6 +424,9 @@ static void mqtt_evt(struct mqtt_client *c, const struct mqtt_evt *e)
 
 static int session_connect(struct session *s)
 {
+	if (!broker_resolved && resolve_broker() != 0) {
+		return -EHOSTUNREACH;
+	}
 	memcpy(&s->broker, &broker_addr, sizeof(broker_addr));
 
 	mqtt_client_init(&s->client);
@@ -415,6 +472,21 @@ static int session_connect(struct session *s)
 	return 0;
 }
 
+static void bring_iface_up(void)
+{
+	link_events_init();
+	k_sem_reset(&net_ready_sem);
+	for (int i = 0; i < IFACE_WAIT_S * 10; i++) {
+		if (link_iface() != NULL) {
+			link_ready = true;
+			return;
+		}
+		(void)k_sem_take(&net_ready_sem, K_MSEC(100));
+	}
+	printk("net: no interface with an address\n");
+	link_failed = true;
+}
+
 /* Bring the shared Wi-Fi link up. This runs only on the supervisor net thread,
  * never on an application thread: the Wi-Fi connect path must execute from a
  * plain kernel thread (as the stand-alone Wi-Fi samples do), not from inside a
@@ -422,6 +494,10 @@ static int session_connect(struct session *s)
  */
 static void bring_link_up(void)
 {
+	if (!IS_ENABLED(CONFIG_APP_PLATFORM_NET_LINK_WIFI)) {
+		bring_iface_up();
+		return;
+	}
 	if (wifi_ssid[0] == '\0') {
 		/* No network configured: stay down until an application asks
 		 * for one through the connect service.
@@ -501,7 +577,7 @@ static void take_link_down(void)
 		}
 		sessions[i].used = false;
 	}
-	if (iface) {
+	if (IS_ENABLED(CONFIG_APP_PLATFORM_NET_LINK_WIFI) && iface != NULL) {
 		(void)net_mgmt(NET_REQUEST_WIFI_DISCONNECT, iface, NULL, 0);
 	}
 	link_ready = false;
@@ -772,7 +848,8 @@ static void net_thread(void *a, void *b, void *c)
 		 */
 		static int64_t rssi_next;
 
-		if (link_ready && k_uptime_get() >= rssi_next) {
+		if (IS_ENABLED(CONFIG_APP_PLATFORM_NET_LINK_WIFI) && link_ready &&
+		    k_uptime_get() >= rssi_next) {
 			rssi_next = k_uptime_get() + 2000;
 			struct net_if *iface = net_if_get_first_wifi();
 			struct wifi_iface_status st = { 0 };
@@ -922,7 +999,7 @@ int z_impl_app_svc_wifi_status(struct app_svc_wifi_status *out)
 	 * would query the driver and can block in this app-thread context, so the
 	 * signal strength comes from the value the net thread caches instead.
 	 */
-	struct net_if *iface = net_if_get_first_wifi();
+	struct net_if *iface = link_iface();
 
 	if (iface != NULL) {
 		struct net_if_ipv4 *ipv4 = iface->config.ip.ipv4;
@@ -945,6 +1022,9 @@ int z_impl_app_svc_wifi_connect(const char *ssid, const char *psk)
 {
 	if (!app_has_cap(APP_CAP_NET)) {
 		return -EPERM;
+	}
+	if (!IS_ENABLED(CONFIG_APP_PLATFORM_NET_LINK_WIFI)) {
+		return -ENOTSUP;
 	}
 	if (ssid[0] == '\0') {
 		return -EINVAL;
@@ -970,6 +1050,9 @@ int z_impl_app_svc_wifi_disconnect(void)
 {
 	if (!app_has_cap(APP_CAP_NET)) {
 		return -EPERM;
+	}
+	if (!IS_ENABLED(CONFIG_APP_PLATFORM_NET_LINK_WIFI)) {
+		return -ENOTSUP;
 	}
 
 	if (app_service_lock(&net_lock, SVC_LOCK_TIMEOUT) != 0) {

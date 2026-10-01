@@ -506,10 +506,12 @@ __syscall int app_svc_rtc_set(uint32_t epoch_sec);
 /**
  * @brief Bring up networking and wait until it is ready. Needs @ref APP_CAP_NET.
  *
- * Lock-serialized: the first caller brings up Wi-Fi and resolves the broker;
- * later callers (from other applications) wait for the same shared link. The
- * Wi-Fi and network stacks live once in the platform, so an application that
- * uses networking links none of that code.
+ * Lock-serialized: the first caller brings up the shared link; later callers
+ * (from other applications) wait for the same link. On a Wi-Fi link the
+ * platform associates and resolves the broker; on a non-Wi-Fi link the link is
+ * ready once an interface is up with an IPv4 address. The network stack lives
+ * once in the platform, so an application that uses networking links none of
+ * that code.
  *
  * @retval 0 when networking is ready, -EPERM without the capability, negative
  *         errno on failure.
@@ -580,6 +582,7 @@ __syscall int app_svc_wifi_status(struct app_svc_wifi_status *out);
  * @param psk Pre-shared key; pass an empty string for an open network.
  * @retval 0 when the new link is ready, -EPERM without the capability, negative
  *         errno on failure.
+ * @retval -ENOTSUP The link of the platform is not Wi-Fi.
  */
 __syscall int app_svc_wifi_connect(const char *ssid, const char *psk);
 
@@ -590,6 +593,7 @@ __syscall int app_svc_wifi_connect(const char *ssid, const char *psk);
  * every networking application.
  *
  * @retval 0 on success, -EPERM without the capability, negative errno otherwise.
+ * @retval -ENOTSUP The link of the platform is not Wi-Fi.
  */
 __syscall int app_svc_wifi_disconnect(void);
 

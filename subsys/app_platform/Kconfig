@@ -457,13 +457,39 @@ config APP_PLATFORM_NET
 	bool "Shared networking and MQTT service"
 	depends on APP_PLATFORM_SERVICES
 	depends on NETWORKING && MQTT_LIB
+	select NET_MGMT
+	select NET_MGMT_EVENT
 	help
-	  Bring up Wi-Fi and the network stack once in the platform and give
+	  Bring up the network link once in the platform and give
 	  each application its own MQTT session, reached through capability-
 	  gated app_svc_net_ready / svc_mqtt_ calls. An application that publishes
 	  over MQTT then links none of the network code.
 
 if APP_PLATFORM_NET
+
+choice APP_PLATFORM_NET_LINK
+	prompt "Link of the net service"
+	default APP_PLATFORM_NET_LINK_WIFI if WIFI
+	default APP_PLATFORM_NET_LINK_IFACE
+
+config APP_PLATFORM_NET_LINK_WIFI
+	bool "Wi-Fi station"
+	depends on WIFI
+	help
+	  The platform associates the first Wi-Fi interface with the
+	  configured network and the link is up once it holds an IPv4
+	  address and the MQTT broker name resolves.
+
+config APP_PLATFORM_NET_LINK_IFACE
+	bool "Any interface with an address"
+	help
+	  The link is up once an interface that is up holds an IPv4 address,
+	  the default interface first, such as Ethernet or loopback. The
+	  platform configures no interface and the Wi-Fi connect and
+	  disconnect services return -ENOTSUP. The MQTT broker name is
+	  resolved when an application opens a session.
+
+endchoice
 
 config APP_PLATFORM_NET_WIFI_SSID
 	string "Wi-Fi SSID"
