@@ -1,0 +1,11 @@
+# SPDX-License-Identifier: Apache-2.0
+#
+# The publisher keys this firmware trusts. The sample generates its publisher
+# private key under keys/ on the first build so that it can sign the module of
+# module/; a product lists only the public key of each publisher, whose private
+# key never reaches the firmware build, and never uses "generate".
+keys:
+  - id: 1
+    key: keys/publisher.pem
+    generate: true
+    caps: [LOG, TIME]

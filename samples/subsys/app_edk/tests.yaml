@@ -1,0 +1,23 @@
+sample:
+  name: Application module development kit
+  description: >
+    Build the development kit of the firmware, build and sign a module with it
+    outside the tree, and run the module.
+common:
+  tags: app_platform
+  platform_allow:
+    - mps2/an385
+    - qemu_cortex_a53
+    - qemu_riscv32/qemu_virt_riscv32/smp
+  integration_platforms:
+    - mps2/an385
+  harness: console
+  harness_config:
+    type: multi_line
+    ordered: true
+    regex:
+      - "app_edk: module 'hello' v1 signed by key 1 verified"
+      - "hello: built outside the tree, run 3"
+      - "app_edk: module ended"
+tests:
+  sample.subsys.app_edk: {}
