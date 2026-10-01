@@ -1,0 +1,26 @@
+common:
+  tags: app_platform
+  harness: ztest
+  sysbuild: true
+  timeout: 120
+  # The test image loads modules built outside the tree with its own module
+  # development kit and with the kit of a second firmware image for the same
+  # target, which has other syscall numbers and another tick rate. The two
+  # scenarios swap the configurations of the two images. Building the test also
+  # checks that the kit refuses a module including kernel.h and one importing a
+  # kernel function.
+  platform_allow:
+    - mps2/an385
+    - qemu_cortex_a53
+    - qemu_riscv32/qemu_virt_riscv32/smp
+  integration_platforms:
+    - mps2/an385
+tests:
+  app_platform.edk.kit_a_in_b:
+    extra_args:
+      - app_platform_edk_EXTRA_CONF_FILE=firmware_b.conf
+      - edk_peer_EXTRA_CONF_FILE=firmware_a.conf
+  app_platform.edk.kit_b_in_a:
+    extra_args:
+      - app_platform_edk_EXTRA_CONF_FILE=firmware_a.conf
+      - edk_peer_EXTRA_CONF_FILE=firmware_b.conf

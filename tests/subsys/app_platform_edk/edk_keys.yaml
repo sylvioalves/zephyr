@@ -1,0 +1,10 @@
+# SPDX-License-Identifier: Apache-2.0
+#
+# The key of the module writer. The private key is generated under keys/ on
+# the first build and is never part of the tree; a product never lists a key
+# with "generate".
+keys:
+  - id: 1
+    key: keys/writer.pem
+    generate: true
+    caps: [LOG, TIME]
