@@ -13,7 +13,10 @@ uploaded without a second port or losing the console.
 
 The application is signed on the build host. Only the public key is compiled
 into the firmware, so the device accepts only an app signed by the matching
-private key. The upload lands two files in the device's storage:
+private key. The sample signs with the development key, generated under
+``keys/`` on the first build and trusted through
+:kconfig:option:`CONFIG_APP_PLATFORM_DEV_KEY`. The upload lands two files in the
+device's storage:
 
 * ``/lfs/<name>.llext.new``     - the module
 * ``/lfs/<name>.manifest.new``  - the signed manifest (name, version, module
@@ -50,8 +53,10 @@ install`` uploads both files over the MCUmgr SMP transport carried by the shell 
    uploaded uploaded.llext (2976 bytes) and uploaded.manifest
    device: installed and launched 'uploaded' v1 (isolated app 0)
 
-The command exits non-zero with the device's error code when the device refuses the app. The
-same steps can be done by hand with any SMP client, followed by the shell command:
+The command exits non-zero with the device's error code when the device refuses the app.
+``west app info -d build`` shows the id of the key that signed the bundle and the capabilities it
+requests and requires. The same steps can be done by hand with any SMP client, followed by the
+shell command:
 
 .. code-block:: console
 
@@ -67,3 +72,26 @@ same steps can be done by hand with any SMP client, followed by the shell comman
 
 A tampered upload is rejected: if the module bytes do not match the signed
 manifest hash, ``store install`` fails and the app is never launched.
+
+Signing with a publisher key
+****************************
+
+The development key proves nothing about who built an app. To trust a publisher key instead,
+list its public key in a key file, disable the development key and give the build the private
+key, kept outside the tree, with its key id:
+
+.. code-block:: yaml
+
+   keys:
+     - id: 1
+       key: acme.pub.pem
+       caps: [LOG, RANDOM]
+
+.. code-block:: console
+
+   west build -b esp32c5_devkitc/esp32c5/hpcore samples/subsys/app_install -- \
+           -DCONFIG_APP_PLATFORM_DEV_KEY=n '-DCONFIG_APP_PLATFORM_KEYS_FILE="/secure/keys.yaml"' \
+           -DAPP_SIGNING_KEY=/secure/acme.pem -DAPP_SIGNING_KEY_ID=1
+
+The build refuses to sign with a key the key file does not list under that id. See
+:ref:`app_platform` for the key file format.

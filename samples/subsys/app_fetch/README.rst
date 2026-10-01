@@ -17,9 +17,12 @@ downloads two files over HTTP into storage::
    http://<server-ip>:8000/<name>.llext     -> /lfs/<name>.llext
    http://<server-ip>:8000/<name>.manifest  -> /lfs/<name>.manifest
 
-then verifies the signed manifest against the public key compiled into the
+then verifies the signed manifest with the key table compiled into the
 firmware, binds the module, records it in the registry, and launches it -
-streamed from flash. A tampered or unsigned download is rejected.
+streamed from flash. A tampered or unsigned download is rejected. The sample
+signs with the development key, generated under ``keys/`` on the first build and
+trusted through :kconfig:option:`CONFIG_APP_PLATFORM_DEV_KEY`; see
+:ref:`app_platform` for signing with a publisher key instead.
 
 Configure Wi-Fi
 ***************
