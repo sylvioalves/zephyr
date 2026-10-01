@@ -21,6 +21,10 @@
 #  - cmake llext-edk file
 #  - cmake llext-edk include-dirs
 #  - west topdir
+#
+# It also includes the content.cmake file generated in the misc/llext_edk
+# directory of the project binary directory, which lists the content added
+# with the zephyr_llext_edk_*() functions.
 
 cmake_minimum_required(VERSION 3.28.0)
 
@@ -191,6 +195,8 @@ else()
   yaml_get(WEST_TOPDIR NAME build_info KEY west topdir)
 endif()
 
+include(${build_flags_dir}/content.cmake)
+
 yaml_get(board_name NAME build_info KEY cmake board name)
 yaml_get(board_qualifiers NAME build_info KEY cmake board qualifiers)
 yaml_get(board_revision NAME build_info KEY cmake board revision)
@@ -268,6 +274,11 @@ if(CONFIG_LLEXT_EDK_USERSPACE_ONLY)
     file(COPY ${PROJECT_BINARY_DIR}/edk/include/generated/ DESTINATION ${llext_edk_inc}/zephyr/include/generated)
 endif()
 
+foreach(file dest IN ZIP_LISTS LLEXT_EDK_FILES LLEXT_EDK_FILES_DESTINATION)
+  file(MAKE_DIRECTORY ${llext_edk}/${dest})
+  file(COPY ${file} DESTINATION ${llext_edk}/${dest})
+endforeach()
+
 #
 # Generate the EDK flags files
 #
@@ -293,6 +304,13 @@ foreach(target ${edk_targets})
     edk_write_var(${target} "LLEXT_BASE_CFLAGS" "${base_flags}")
     edk_write_var(${target} "LLEXT_GENERATED_IMACROS_CFLAGS" "${imacros_gen}")
 endforeach()
+
+if(LLEXT_EDK_CMAKE_MODULES)
+  list(TRANSFORM LLEXT_EDK_CMAKE_MODULES PREPEND "\${CMAKE_CURRENT_LIST_DIR}/"
+       OUTPUT_VARIABLE cmake_modules)
+  edk_write_comment(CMAKE "CMake modules")
+  edk_write_var(CMAKE "LLEXT_CMAKE_MODULES" "${cmake_modules}")
+endif()
 
 if(CONFIG_LLEXT_EDK_FORMAT_TAR_XZ)
   set(llext_edk_format FORMAT gnutar COMPRESSION XZ)

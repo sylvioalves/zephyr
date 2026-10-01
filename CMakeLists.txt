@@ -2409,6 +2409,11 @@ if(CONFIG_LLEXT_EDK)
   # Generate the compiler flag files that will be used by the EDK
   add_subdirectory(misc/llext_edk)
 
+  # Export the content added with the zephyr_llext_edk_*() functions
+  set(llext_edk_content_file ${PROJECT_BINARY_DIR}/misc/llext_edk/content.cmake)
+  cmake_language(EVAL CODE "cmake_language(DEFER DIRECTORY [[${CMAKE_SOURCE_DIR}]]
+                 CALL zephyr_llext_edk_flush [[${llext_edk_content_file}]])")
+
   add_custom_command(
     OUTPUT ${llext_edk_file}
     # Regenerate syscalls in case CONFIG_LLEXT_EDK_USERSPACE_ONLY
@@ -2428,6 +2433,7 @@ if(CONFIG_LLEXT_EDK)
         -DSYSBUILD=${SYSBUILD}
         -P ${ZEPHYR_BASE}/cmake/llext-edk.cmake
     DEPENDS zephyr_interface zephyr_generated_headers ${syscalls_json} build_info_yaml_saved llext_edk_build_props
+            ${llext_edk_content_file} $<TARGET_PROPERTY:llext-edk,LLEXT_EDK_DEPENDS>
     COMMAND_EXPAND_LISTS
   )
   add_custom_target(llext-edk DEPENDS ${llext_edk_file})
