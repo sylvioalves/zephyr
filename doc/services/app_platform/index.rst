@@ -583,23 +583,28 @@ capabilities it requests and requires.
 Building applications outside the tree
 ======================================
 
-A module writer does not need the Zephyr tree or the firmware sources. The
-firmware build packs a module development kit with ``west build -t
-app_platform_edk``, enabled by :kconfig:option:`CONFIG_APP_PLATFORM_EDK`, into
-``build/zephyr/app-platform-edk.tar.xz``. The kit holds:
+A module writer does not need the Zephyr tree or the firmware sources. With
+:kconfig:option:`CONFIG_APP_PLATFORM_EDK`, the :ref:`LLEXT EDK <llext_build_edk>`
+of the firmware, built with ``west build -t llext-edk`` into
+``build/zephyr/app-platform-edk.tar.xz``, is the module development kit: the
+platform selects :kconfig:option:`CONFIG_LLEXT_EDK_HEADERS_SELECTED` and adds
+its own files to the EDK. The kit holds:
 
 * ``include/``: :zephyr_file:`include/zephyr/app_platform/app_sdk.h`, the
   generated declarations of the exported functions and the headers they include,
-  and a header defining the few architecture options those headers test. The
-  build finds the headers by preprocessing the SDK header with the module flags
-  and fails when one of them is a kernel, syscall, architecture, driver or
-  devicetree header, so ``kernel.h`` is not part of the kit. Neither is the
-  firmware configuration.
-* ``cmake/``: the module compiler and link flags of the target, taken from the
-  compile command of a module built in the firmware tree without its include
-  paths, its configuration, the definitions of other subsystems and the host
-  paths; a toolchain file; and ``app_edk.cmake``, the helper that builds, checks
-  and signs a module.
+  and, in place of the firmware configuration header, a header defining the few
+  architecture options those headers test. The build also preprocesses the SDK
+  header with the flags of a module built in the firmware tree and fails when it
+  includes a kernel, syscall, architecture, driver or devicetree header, so
+  ``kernel.h`` is not part of the kit. Neither is the firmware configuration
+  header.
+* ``cmake.cflags`` and ``Makefile.cflags``: the compiler flags of the target,
+  those of the LLEXT EDK.
+* ``cmake/``: the toolchain of the target, the definitions of the C library and
+  of the platform a module is compiled with in place of those of the firmware
+  build, the module link flags, a toolchain file, and ``app_edk.cmake``, the
+  helper that builds, checks and signs a module, which ``cmake.cflags`` also
+  lists in ``LLEXT_CMAKE_MODULES``.
 * ``firmware.txt``: what the signer binds a module to, the interface major
   version and the target fingerprint, with the board, the architecture and the
   toolchain the firmware was built with: its variant, target triple, compiler
@@ -642,20 +647,20 @@ holding its private key.
 A module built with the kit loads on the firmware the kit was made from and on
 any later build of it with the same interface major version and target
 fingerprint that still trusts the signing key. Other configuration options,
-drivers, syscalls, tick rates and services do not change the kit: the kits of two
-such builds build the same module, byte for byte. A module that calls a service
-a build leaves out fails to load on the unresolved symbol. A build for another
-SoC or with other code generation options has another fingerprint, a change of
-the interface that breaks modules raises the major version, and a revoked or
-removed key refuses its modules; each needs a new kit or another key.
+drivers, syscalls, tick rates and services do not change the modules the kit
+builds: the kits of two such builds build the same module, byte for byte. A
+module that calls a service a build leaves out fails to load on the unresolved
+symbol. A build for another SoC or with other code generation options has another
+fingerprint, a change of the interface that breaks modules raises the major
+version, and a revoked or removed key refuses its modules; each needs a new kit
+or another key.
 
-The kit is a subset of the LLEXT EDK of :ref:`llext`, ``west build -t
-llext-edk``: that one ships every include directory of the firmware, its
+The default LLEXT EDK ships every include directory of the firmware, its
 configuration and its syscall headers, for extensions that call the kernel. A
 module of the application platform must not, so its kit holds only the module
-headers, and adds the signer and the firmware facts. Both take the compiler
-flags from the same ``add_llext_target()`` compilation and remove the same host
-paths.
+headers, and adds the signer and the firmware facts. A module built with the kit
+is the same, byte for byte, as one built in the firmware tree from the same
+source with ``app_platform_add_module()``.
 
 :zephyr_file:`tests/subsys/app_platform_edk` builds two firmwares for one target,
 with other syscall numbers and tick rates, builds a module with the kit of each
