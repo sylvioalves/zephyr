@@ -20,8 +20,8 @@ The firmware side of this sample:
   capabilities the key may grant and the application names it may sign, through
   :kconfig:option:`CONFIG_APP_PLATFORM_KEYS_FILE`, and does not accept the
   development key;
-* packs its kit with the ``app_platform_edk`` build target,
-  :kconfig:option:`CONFIG_APP_PLATFORM_EDK`;
+* packs its kit with the ``llext-edk`` build target, the LLEXT EDK with the
+  application module files of :kconfig:option:`CONFIG_APP_PLATFORM_EDK`;
 * verifies the bundle of the module, ``hello.llext`` and ``hello.manifest``,
   against the key table, loads it and runs it.
 
@@ -53,7 +53,7 @@ its kit:
 .. code-block:: console
 
    west build -b mps2/an385 samples/subsys/app_edk -d build
-   west build -d build -t app_platform_edk
+   west build -d build -t llext-edk
 
 The kit is :file:`build/zephyr/app-platform-edk.tar.xz`. Extract it anywhere,
 and build the module project with it, the toolchain the kit names in its
