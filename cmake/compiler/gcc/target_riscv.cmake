@@ -229,3 +229,8 @@ set(LLEXT_APPEND_FLAGS
   -mno-relax
   -msmall-data-limit=0
   )
+
+list(APPEND LLEXT_EDK_REMOVE_FLAGS
+  --sysroot=.*
+  -fmacro-prefix-map=.*
+)
