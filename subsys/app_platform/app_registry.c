@@ -528,7 +528,7 @@ static bool installed_cannot_load(const char *name)
 	    len < sizeof(mf.mf.magic)) {
 		return false;
 	}
-	if (mf.mf.magic == APP_MANIFEST_MAGIC_V3) {
+	if (app_manifest_retired_format(mf.mf.magic) != 0U) {
 		return true;
 	}
 	return mf.mf.magic == APP_MANIFEST_MAGIC && len >= sizeof(mf.mf) && !loads_here(&mf.mf);

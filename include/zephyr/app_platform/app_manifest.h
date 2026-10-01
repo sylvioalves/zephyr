@@ -36,8 +36,9 @@
  * as the fields it knows, up to @ref APP_MANIFEST_MAX_LEN, and ignores the
  * bytes past them, so a later format can append fields without breaking an
  * older firmware. Fields are appended only; a change to an existing field takes
- * a new magic. A manifest of the previous fixed-layout format is refused and
- * the application has to be installed again.
+ * a new magic. A manifest of a retired format, magic 'A' 'M' 'F' followed by a
+ * digit below the current format, is refused and the application has to be
+ * installed again.
  *
  * All fields have explicit widths, are little-endian and are packed without
  * padding, so the bytes signed on the build host are the bytes verified on the
@@ -50,11 +51,30 @@
 /** Manifest magic: 'A' 'M' 'F' '4', little-endian. */
 #define APP_MANIFEST_MAGIC 0x34464d41U
 
-/** Magic of the retired fixed-layout format 3 manifest, which is refused. */
-#define APP_MANIFEST_MAGIC_V3 0x33464d41U
+/** Manifest magic without its format digit: 'A' 'M' 'F', little-endian. */
+#define APP_MANIFEST_MAGIC_PREFIX 0x00464d41U
 
 /** Manifest format this firmware writes and the oldest it accepts. */
 #define APP_MANIFEST_FORMAT 4U
+
+/**
+ * @brief Format number of a retired manifest.
+ *
+ * @param magic First four bytes of a manifest, little-endian.
+ *
+ * @return The format number when @p magic is 'A' 'M' 'F' followed by a digit
+ *         from 1 to one below @ref APP_MANIFEST_FORMAT, 0 otherwise.
+ */
+static inline uint32_t app_manifest_retired_format(uint32_t magic)
+{
+	uint32_t digit = magic >> 24;
+
+	if ((magic & 0x00ffffffU) != APP_MANIFEST_MAGIC_PREFIX || digit < (uint32_t)'1' ||
+	    digit >= (uint32_t)'0' + APP_MANIFEST_FORMAT) {
+		return 0U;
+	}
+	return digit - (uint32_t)'0';
+}
 
 /** Largest signed manifest this firmware accepts. */
 #define APP_MANIFEST_MAX_LEN 256U

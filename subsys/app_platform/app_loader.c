@@ -533,8 +533,9 @@ static int manifest_verify(const struct app_manifest *mf, size_t mf_len, const u
 {
 	uint8_t digest[32];
 
-	if (mf_len >= sizeof(mf->magic) && mf->magic == APP_MANIFEST_MAGIC_V3) {
-		LOG_WRN("manifest format 3 is no longer accepted, reinstall the application");
+	if (mf_len >= sizeof(mf->magic) && app_manifest_retired_format(mf->magic) != 0U) {
+		LOG_WRN("manifest format %u is no longer accepted, reinstall the application",
+			app_manifest_retired_format(mf->magic));
 		return -ENOTSUP;
 	}
 	if (mf_len < sizeof(*mf) || mf_len > APP_MANIFEST_MAX_LEN ||

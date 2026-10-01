@@ -420,9 +420,9 @@ manifest shorter than the fields the firmware knows, or presented with another
 length than its ``hdr_len``, is refused with ``-EBADMSG``, and so is one that
 requires a capability it does not request. The loader records the capabilities
 of a verified module, and the launch grants them within the launcher's ceiling,
-see `Capabilities and grants`_. A manifest of the previous fixed-layout format,
-magic ``AMF3``, is refused with ``-ENOTSUP`` and a log line asking for the
-application to be installed again.
+see `Capabilities and grants`_. A manifest of a retired format, magic ``AMF1``
+to ``AMF3``, is refused with ``-ENOTSUP`` and a log line that names the format
+and asks for the application to be installed again.
 
 Module interface
 ================

@@ -118,7 +118,7 @@ int app_loader_verify_load_signed(const char *name, const uint8_t *buf,
  * @retval -EPERM if the signature or module binding does not check.
  * @retval -EBADMSG if the manifest is malformed, its length is not accepted or
  *         it requires a capability it does not request.
- * @retval -ENOTSUP if the manifest has the previous format; reinstall the application.
+ * @retval -ENOTSUP if the manifest has a retired format; reinstall the application.
  * @retval -ENOEXEC if the manifest names another interface major version, or the
  *         module was built for another floating-point ABI or instruction set.
  * @retval -ENOENT if the entry symbol is not found.
@@ -159,7 +159,7 @@ int app_loader_verify_load_manifest(const struct app_manifest *mf, size_t mf_len
  * @retval -EPERM if the signature or module binding does not check.
  * @retval -EBADMSG if the manifest is malformed, its length is not accepted or
  *         it requires a capability it does not request.
- * @retval -ENOTSUP if the manifest has the previous format; reinstall the application.
+ * @retval -ENOTSUP if the manifest has a retired format; reinstall the application.
  * @retval -ENOEXEC if the manifest names another interface major version, or the
  *         module was built for another floating-point ABI or instruction set.
  * @retval -ENOENT if the entry symbol is not found.
