@@ -123,7 +123,9 @@ ZTEST(module_caps, test_module_without_manifest_holds_ceiling)
 	struct llext *ext = NULL;
 	app_caps_t requested;
 	app_caps_t required;
+	app_caps_t key_caps;
 	app_caps_t caps = 0U;
+	uint32_t key_id;
 	void *entry = NULL;
 
 	memcpy(&mf, caps_manifest, sizeof(mf));
@@ -132,6 +134,7 @@ ZTEST(module_caps, test_module_without_manifest_holds_ceiling)
 					     mf.module_sha256, "app_main", &ext, &entry),
 		      0);
 	zassert_equal(app_loader_manifest_caps(ext, &requested, &required), -ENOENT);
+	zassert_equal(app_loader_key(ext, &key_id, &key_caps), -ENOENT);
 	zassert_equal(held_caps("hashed", ext, entry, APP_CAP_LOG | APP_CAP_GPIO, &caps), 0);
 	zassert_equal(caps, APP_CAP_LOG | APP_CAP_GPIO, "held %#llx", (unsigned long long)caps);
 }

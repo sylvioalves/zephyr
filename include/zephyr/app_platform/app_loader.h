@@ -169,8 +169,8 @@ size_t app_loader_heap_size(const struct llext *ext);
  * @brief Capabilities the signed manifest of a verified extension declares.
  *
  * The platform launch path grants the application the requested capabilities
- * that the launcher allows, and refuses the launch when a required one is not
- * allowed, see @ref app_platform_launch_llext.
+ * that both the launcher and the signing key allow, and refuses the launch when
+ * a required one is not allowed, see @ref app_platform_launch_llext.
  *
  * @param ext Extension to query.
  * @param[out] requested Receives the capabilities the application asks for.
@@ -180,6 +180,18 @@ size_t app_loader_heap_size(const struct llext *ext);
  */
 int app_loader_manifest_caps(const struct llext *ext, app_caps_t *requested,
 			     app_caps_t *required);
+
+/**
+ * @brief Key that signed the manifest of a verified extension.
+ *
+ * @param ext Extension to query.
+ * @param[out] key_id Receives the id of the signing key, 0 for the development
+ *             key.
+ * @param[out] key_caps Receives the capability ceiling of the signing key.
+ * @retval 0 on success.
+ * @retval -ENOENT @p ext is not verified, or was verified without a manifest.
+ */
+int app_loader_key(const struct llext *ext, uint32_t *key_id, app_caps_t *key_caps);
 
 /**
  * @brief Drop an extension from the verified set.

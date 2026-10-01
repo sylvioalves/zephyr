@@ -229,9 +229,10 @@ static int elf_bounds_ok(const char *name, const uint8_t *buf, size_t len)
 }
 
 /* Set of extensions this loader verified, with the heap size and capabilities
- * their signed manifest declares. The launch path checks membership so an
- * unverified extension cannot be run even if a caller hands one in. Sized to the
- * number of concurrent applications the platform supports.
+ * their signed manifest declares and the key that signed it. The launch path
+ * checks membership so an unverified extension cannot be run even if a caller
+ * hands one in. Sized to the number of concurrent applications the platform
+ * supports.
  */
 #define VERIFIED_MAX CONFIG_APP_PLATFORM_MAX_APPS
 
@@ -241,12 +242,15 @@ struct verified_ext {
 	bool manifest;
 	uint64_t requested_caps;
 	uint64_t required_caps;
+	uint32_t key_id;
+	app_caps_t key_caps;
 };
 
 static struct verified_ext verified[VERIFIED_MAX];
 static K_MUTEX_DEFINE(verified_lock);
 
-static void verified_add(const struct llext *ext, const struct app_manifest *mf)
+static void verified_add(const struct llext *ext, const struct app_manifest *mf,
+			 const struct trusted_key *key)
 {
 	bool placed = false;
 
@@ -259,6 +263,8 @@ static void verified_add(const struct llext *ext, const struct app_manifest *mf)
 				verified[i].manifest = true;
 				verified[i].requested_caps = mf->requested_caps;
 				verified[i].required_caps = mf->required_caps;
+				verified[i].key_id = key->id;
+				verified[i].key_caps = key->caps;
 			}
 			placed = true;
 			break;
@@ -330,6 +336,28 @@ int app_loader_manifest_caps(const struct llext *ext, app_caps_t *requested,
 	return rc;
 }
 
+int app_loader_key(const struct llext *ext, uint32_t *key_id, app_caps_t *key_caps)
+{
+	int rc = -ENOENT;
+
+	if (ext == NULL) {
+		return -ENOENT;
+	}
+	k_mutex_lock(&verified_lock, K_FOREVER);
+	for (int i = 0; i < VERIFIED_MAX; i++) {
+		if (verified[i].ext == ext) {
+			if (verified[i].manifest) {
+				*key_id = verified[i].key_id;
+				*key_caps = verified[i].key_caps;
+				rc = 0;
+			}
+			break;
+		}
+	}
+	k_mutex_unlock(&verified_lock);
+	return rc;
+}
+
 void app_loader_forget(const struct llext *ext)
 {
 	k_mutex_lock(&verified_lock, K_FOREVER);
@@ -346,10 +374,12 @@ void app_loader_forget(const struct llext *ext)
  * freshly loaded extension. A module whose footprint exceeds the budget is
  * unloaded and rejected, so one module cannot exhaust the shared loadable-
  * extension heap. On success the extension is recorded as verified, with what
- * its manifest @p mf declares, or nothing when it has none.
+ * its manifest @p mf declares and the @p key that signed it, or nothing when it
+ * has none.
  */
 static int finish_load(const char *name, struct llext *loaded, const struct app_manifest *mf,
-		       const char *entry_sym, struct llext **ext, void **entry)
+		       const struct trusted_key *key, const char *entry_sym, struct llext **ext,
+		       void **entry)
 {
 	/* The lookup hands back a const pointer into the extension's export
 	 * table; the entry is called, not written, so casting the constness
@@ -373,7 +403,7 @@ static int finish_load(const char *name, struct llext *loaded, const struct app_
 	}
 
 	/* Reached only after the caller's signature/hash check passed. */
-	verified_add(loaded, mf);
+	verified_add(loaded, mf, key);
 
 	*ext = loaded;
 	*entry = fn;
@@ -477,8 +507,8 @@ static int imports_chk(const char *name, struct llext_loader *ldr, size_t len)
 }
 
 static int load_checked(const char *name, const uint8_t *buf, size_t len, bool copy,
-			const struct app_manifest *mf, const char *entry_sym, struct llext **ext,
-			void **entry)
+			const struct app_manifest *mf, const struct trusted_key *key,
+			const char *entry_sym, struct llext **ext, void **entry)
 {
 	struct llext_buf_loader bl = LLEXT_BUF_LOADER(buf, len);
 
@@ -508,7 +538,7 @@ static int load_checked(const char *name, const uint8_t *buf, size_t len, bool c
 		return rc;
 	}
 
-	return finish_load(name, loaded, mf, entry_sym, ext, entry);
+	return finish_load(name, loaded, mf, key, entry_sym, ext, entry);
 }
 
 int app_loader_verify_load(const char *name, const uint8_t *buf, size_t len,
@@ -534,7 +564,7 @@ int app_loader_verify_load(const char *name, const uint8_t *buf, size_t len,
 	}
 	LOG_INF("verify OK for '%s' (sha-256 matches)", name);
 
-	return load_checked(name, buf, len, false, NULL, entry_sym, ext, entry);
+	return load_checked(name, buf, len, false, NULL, NULL, entry_sym, ext, entry);
 }
 
 /* Check the layout of a manifest of @p mf_len bytes, authenticate it with the
@@ -543,9 +573,9 @@ int app_loader_verify_load(const char *name, const uint8_t *buf, size_t len,
  * the name and version it carries.
  */
 static int manifest_verify(const struct app_manifest *mf, size_t mf_len, const uint8_t *sig,
-			   size_t sig_len)
+			   size_t sig_len, const struct trusted_key **signer)
 {
-	const struct trusted_key *key;
+	const struct trusted_key *key = NULL;
 	uint8_t digest[32];
 
 	if (mf_len >= sizeof(mf->magic) && app_manifest_retired_format(mf->magic) != 0U) {
@@ -600,6 +630,7 @@ static int manifest_verify(const struct app_manifest *mf, size_t mf_len, const u
 			mf->target, APP_PLATFORM_TARGET);
 		return -ENOEXEC;
 	}
+	*signer = key;
 	return 0;
 }
 
@@ -608,6 +639,7 @@ int app_loader_verify_load_manifest(const struct app_manifest *mf, size_t mf_len
 				    size_t len, const char *entry_sym, struct llext **ext,
 				    void **entry)
 {
+	const struct trusted_key *key = NULL;
 	uint8_t mod_digest[32];
 	int rc;
 
@@ -618,7 +650,7 @@ int app_loader_verify_load_manifest(const struct app_manifest *mf, size_t mf_len
 	/* 1. A trusted key must have signed this manifest, and this firmware
 	 * must run what it describes.
 	 */
-	rc = manifest_verify(mf, mf_len, sig, sig_len);
+	rc = manifest_verify(mf, mf_len, sig, sig_len, &key);
 	if (rc != 0) {
 		return rc;
 	}
@@ -646,7 +678,7 @@ int app_loader_verify_load_manifest(const struct app_manifest *mf, size_t mf_len
 	LOG_INF("verify OK for '%s' v%u (manifest authentic, module bound)",
 		mf->name, mf->version);
 
-	return load_checked(mf->name, buf, len, false, mf, entry_sym, ext, entry);
+	return load_checked(mf->name, buf, len, false, mf, key, entry_sym, ext, entry);
 }
 
 /* Streaming SHA-256 over a file: hashes the whole file in small chunks without
@@ -716,8 +748,8 @@ static int sha256_file(const char *path, uint8_t out[32], size_t *out_len,
 }
 
 static int fs_load_checked(const char *name, const char *path, size_t len,
-			   const struct app_manifest *mf, const char *entry_sym, struct llext **ext,
-			   void **entry)
+			   const struct app_manifest *mf, const struct trusted_key *key,
+			   const char *entry_sym, struct llext **ext, void **entry)
 {
 	struct llext_fs_loader fl = LLEXT_FS_LOADER(path);
 	struct llext_load_param parm = LLEXT_LOAD_PARAM_DEFAULT;
@@ -746,7 +778,7 @@ static int fs_load_checked(const char *name, const char *path, size_t len,
 		return rc;
 	}
 
-	return finish_load(name, loaded, mf, entry_sym, ext, entry);
+	return finish_load(name, loaded, mf, key, entry_sym, ext, entry);
 }
 
 /* Read exactly @p len bytes from @p path; a longer or shorter file fails. */
@@ -778,8 +810,9 @@ static int read_file_exact(const char *path, uint8_t *buf, size_t len)
 /* Verify and link one private copy of the module, so the bytes that are
  * linked are the bytes that were hashed.
  */
-static int verify_load_copy(const struct app_manifest *mf, const char *path,
-			    const char *entry_sym, struct llext **ext, void **entry)
+static int verify_load_copy(const struct app_manifest *mf, const struct trusted_key *key,
+			    const char *path, const char *entry_sym, struct llext **ext,
+			    void **entry)
 {
 	uint8_t mod_digest[32];
 	uint8_t *buf;
@@ -813,7 +846,8 @@ static int verify_load_copy(const struct app_manifest *mf, const char *path,
 	if (rc == 0) {
 		LOG_INF("verify OK for '%s' v%u (manifest authentic, module bound)",
 			mf->name, mf->version);
-		rc = load_checked(mf->name, buf, mf->module_len, true, mf, entry_sym, ext, entry);
+		rc = load_checked(mf->name, buf, mf->module_len, true, mf, key, entry_sym, ext,
+				  entry);
 	}
 
 	k_free(buf);
@@ -824,6 +858,7 @@ int app_loader_verify_load_manifest_file(const struct app_manifest *mf, size_t m
 					 const uint8_t *sig, size_t sig_len, const char *path,
 					 const char *entry_sym, struct llext **ext, void **entry)
 {
+	const struct trusted_key *key = NULL;
 	uint8_t mod_digest[32];
 	uint8_t head[ELF_HDR_MIN];
 	size_t len = 0;
@@ -834,13 +869,13 @@ int app_loader_verify_load_manifest_file(const struct app_manifest *mf, size_t m
 	}
 
 	/* 1. Authenticate the manifest (and thus the name and version). */
-	rc = manifest_verify(mf, mf_len, sig, sig_len);
+	rc = manifest_verify(mf, mf_len, sig, sig_len, &key);
 	if (rc != 0) {
 		return rc;
 	}
 
 	if (IS_ENABLED(CONFIG_APP_PLATFORM_LOADER_FILE_IN_RAM)) {
-		return verify_load_copy(mf, path, entry_sym, ext, entry);
+		return verify_load_copy(mf, key, path, entry_sym, ext, entry);
 	}
 
 	/* 2. Stream the module from flash: hash it and capture its header,
@@ -870,7 +905,7 @@ int app_loader_verify_load_manifest_file(const struct app_manifest *mf, size_t m
 	/* 3. Load the extension from the same file. The loader re-opens the
 	 * path, so the bytes it links are not provably the bytes just hashed.
 	 */
-	rc = fs_load_checked(mf->name, path, len, mf, entry_sym, ext, entry);
+	rc = fs_load_checked(mf->name, path, len, mf, key, entry_sym, ext, entry);
 
 	if (rc != 0) {
 		return rc;

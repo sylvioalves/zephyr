@@ -1344,24 +1344,44 @@ static int module_caps(const char *name, const struct llext *ext, app_caps_t cei
 {
 	app_caps_t requested;
 	app_caps_t required;
+	app_caps_t key_caps;
 	app_caps_t missing;
+	app_caps_t key_missing;
+	uint32_t key_id;
 
-	if (app_loader_manifest_caps(ext, &requested, &required) != 0) {
+	if (app_loader_manifest_caps(ext, &requested, &required) != 0 ||
+	    app_loader_key(ext, &key_id, &key_caps) != 0) {
 		*caps = ceiling;
 		return 0;
 	}
 	missing = required & ~ceiling;
 	if (missing != 0U) {
-		LOG_ERR("refusing to launch '%s': required capabilities 0x%08x%08x not allowed",
+		LOG_ERR("refusing to launch '%s': required capabilities 0x%08x%08x not allowed "
+			"by the launcher",
 			name, (uint32_t)(missing >> 32), (uint32_t)missing);
+	}
+	key_missing = required & ~key_caps;
+	if (key_missing != 0U) {
+		LOG_ERR("refusing to launch '%s': required capabilities 0x%08x%08x not allowed "
+			"by signing key %u",
+			name, (uint32_t)(key_missing >> 32), (uint32_t)key_missing, key_id);
+	}
+	if ((missing | key_missing) != 0U) {
 		return -EPERM;
 	}
 	missing = requested & ~ceiling;
 	if (missing != 0U) {
-		LOG_WRN("'%s': requested capabilities 0x%08x%08x not allowed, dropped", name,
-			(uint32_t)(missing >> 32), (uint32_t)missing);
+		LOG_WRN("'%s': requested capabilities 0x%08x%08x not allowed by the launcher, "
+			"dropped",
+			name, (uint32_t)(missing >> 32), (uint32_t)missing);
 	}
-	*caps = requested & ceiling;
+	key_missing = requested & ~key_caps;
+	if (key_missing != 0U) {
+		LOG_WRN("'%s': requested capabilities 0x%08x%08x not allowed by signing key %u, "
+			"dropped",
+			name, (uint32_t)(key_missing >> 32), (uint32_t)key_missing, key_id);
+	}
+	*caps = requested & ceiling & key_caps;
 	return 0;
 }
 #endif

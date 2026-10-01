@@ -141,12 +141,13 @@ int app_platform_launch(const struct app_def *def);
  * @ref app_loader_heap_size.
  *
  * @p ceiling is the most the launcher allows the application. A module loaded
- * with a signed manifest holds the capabilities the manifest requests that
- * @p ceiling allows, see @ref app_loader_manifest_caps; requested ones outside
- * @p ceiling are dropped and logged, and when a capability the manifest
- * requires is outside @p ceiling the launch is refused. A module loaded without
- * a manifest, whose integrity rests on a hash or signature the firmware
- * supplied, holds @p ceiling.
+ * with a signed manifest holds the capabilities the manifest requests that both
+ * @p ceiling and the ceiling of the signing key allow, see
+ * @ref app_loader_manifest_caps and @ref app_loader_key; requested ones outside
+ * either ceiling are dropped and logged, and when a capability the manifest
+ * requires is outside either ceiling the launch is refused. A module loaded
+ * without a manifest, whose integrity rests on a hash the firmware supplied,
+ * holds @p ceiling.
  *
  * @param name Application name.
  * @param ext  Loaded extension (see @ref app_platform_load).
@@ -155,7 +156,7 @@ int app_platform_launch(const struct app_def *def);
  * @param ceiling Capabilities the launcher allows the application.
  * @retval >=0 the application's group id, or negative errno on failure.
  * @retval -EPERM The extension was not verified, or its manifest requires a
- *         capability outside @p ceiling.
+ *         capability outside @p ceiling or the ceiling of its signing key.
  * @retval -EEXIST An application with this name is already running.
  * @retval -E2BIG The heap size is above
  *         @kconfig{CONFIG_APP_PLATFORM_APP_HEAP_MAX_BYTES}.
