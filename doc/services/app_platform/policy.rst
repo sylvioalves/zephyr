@@ -55,17 +55,24 @@ per-instance grants (``app_platform_grant_*``) and bounds the mask:
 * The signed manifest carries the application's identity (name, version,
   module hash and interface version) and the capabilities it requests and
   requires, decided by the signer. A module launched with a manifest holds the
-  requested capabilities within the ceiling the launcher passes. Requested ones
-  outside the ceiling are dropped and logged; a required one outside it refuses
-  the launch with ``-EPERM``, so the device policy can narrow what an application
-  gets but never widen it past its request.
-* A module loaded without a manifest, verified against a hash or a key the
-  firmware supplies, and a built-in application hold the launcher's mask as
-  given. These paths trust the firmware that supplied the hash, the key or the
-  code, which therefore decides the capabilities alone.
+  requested capabilities within both the ceiling the launcher passes and the
+  ceiling of its signing key in the firmware key table. Requested ones outside
+  either ceiling are dropped and logged; a required one outside either refuses
+  the launch with ``-EPERM``. The device policy and the key can narrow what an
+  application gets but never widen it past its request, and a publisher cannot
+  grant itself a capability its key does not carry.
+* A module loaded without a manifest, verified against a hash the firmware
+  supplies, and a built-in application hold the launcher's mask as given. These
+  paths trust the firmware that supplied the hash or the code, which therefore
+  decides the capabilities alone.
 
-An autostart that is refused, for a required capability or another reason, is
-logged and recorded for the firmware to query, see :ref:`app_platform`.
+A key also bounds the names it signs, by a prefix, so publishers that share a
+device cannot sign each other's applications. A revoked or unlisted key signs
+nothing.
+
+An autostart that is refused, for a required capability, a revoked or unknown
+signing key or another reason, is logged and recorded for the firmware to
+query, see :ref:`app_platform`.
 
 .. _app_platform_abi_stability:
 

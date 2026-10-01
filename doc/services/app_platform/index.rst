@@ -77,15 +77,19 @@ The capabilities an application holds depend on how it is launched:
 
 * A built-in application holds :c:member:`app_def.caps`.
 * A module loaded with a signed manifest holds the capabilities the manifest
-  requests within the ceiling the launcher passes to
-  :c:func:`app_platform_launch_llext`. A requested capability outside the
-  ceiling is dropped with a log line naming its bits. When a capability the
-  manifest requires is outside the ceiling, the launch is refused with
-  ``-EPERM`` and a log line naming the missing bits.
-* A module loaded without a manifest, by :c:func:`app_loader_verify_load` or
-  :c:func:`app_loader_verify_load_signed`, holds the whole ceiling. These paths
-  trust the firmware that supplied the expected hash or the key, and carry no
-  request of their own.
+  requests within both the ceiling the launcher passes to
+  :c:func:`app_platform_launch_llext` and the ceiling of the key that signed
+  the manifest, see `Signing keys`_::
+
+     held = requested & launcher ceiling & key ceiling
+
+  A requested capability outside either ceiling is dropped with a log line
+  naming its bits and the ceiling. When a capability the manifest requires is
+  outside either ceiling, the launch is refused with ``-EPERM`` and a log line
+  naming the missing bits and the ceiling that cut them.
+* A module loaded without a manifest, by :c:func:`app_loader_verify_load`,
+  holds the whole launcher ceiling. This path trusts the firmware that supplied
+  the expected hash, and carries no request of its own.
 
 :c:func:`app_platform_status` reports the capabilities an application holds.
 
@@ -291,10 +295,11 @@ Loading and verification
 ========================
 
 Verification is two steps. The ECDSA P-256 signature authenticates the manifest,
-and the module is accepted only if its SHA-256 matches the hash inside that
-authenticated manifest. A valid signature therefore cannot be moved onto
-different bytes or relabelled, and the registry refuses to install a version
-older than the one already recorded.
+checked with the key the manifest names from the key table compiled into the
+firmware, see `Signing keys`_, and the module is accepted only if its SHA-256
+matches the hash inside that authenticated manifest. A valid signature therefore
+cannot be moved onto different bytes or relabelled, and the registry refuses to
+install a version older than the one already recorded.
 
 That refusal has one exception, for a firmware rollback. After the firmware
 reverts to an older interface major version, the installed version of an
@@ -308,11 +313,19 @@ one. :c:func:`app_registry_install_versioned` knows nothing of the new image and
 makes no exception. When the firmware moves forward again, the newer version is
 installed as usual.
 
+An installed image signed with a key that is now revoked or no longer listed
+does not count as one this firmware cannot load: it no longer runs, but its
+version still bounds what may replace it, so revoking a key cannot be used to
+replay an older image signed with another key. The publisher signs a new
+version, at least the installed one, with a valid key; uninstalling the
+application, a local operator action, clears the bound.
+
 :c:func:`app_registry_autostart_all` logs an error naming each application whose
 launch at boot is refused and the reason, such as a required capability outside
 the ceiling (``-EPERM``), another interface major version or target
-(``-ENOEXEC``) or a retired manifest format that needs the application to be
-installed again (``-ENOTSUP``). The result is kept in RAM, not in the registry
+(``-ENOEXEC``), a retired manifest format that needs the application to be
+installed again (``-ENOTSUP``), a signing key this firmware does not trust
+(``-ENXIO``) or a revoked one (``-ECANCELED``). The result is kept in RAM, not in the registry
 file, and :c:func:`app_registry_autostart_result` returns it, so the firmware can
 report or act on a refused application.
 
@@ -399,7 +412,7 @@ requested.
      - per-application heap in bytes, 0 for none
    * - 108
      - ``uint32 key_id``
-     - signing key, 0 for the default key
+     - signing key in the key table, 0 for the development key
    * - 112
      - ``uint64 requested_caps``
      - capabilities the application asks for
@@ -423,6 +436,78 @@ of a verified module, and the launch grants them within the launcher's ceiling,
 see `Capabilities and grants`_. A manifest of a retired format, magic ``AMF1``
 to ``AMF3``, is refused with ``-ENOTSUP`` and a log line that names the format
 and asks for the application to be installed again.
+
+Signing keys
+============
+
+The keys trusted to sign manifests are compiled into the firmware. Each has a
+32-bit key id, which a manifest names in ``key_id``, a P-256 public key, a
+capability ceiling, a prefix that the names of the applications it signs must
+start with, and a revocation state. The loader checks the signature with the
+key the manifest names and refuses:
+
+* a key id the table does not hold with ``-ENXIO``,
+* a revoked key with ``-ECANCELED``,
+* a signature the named key did not make with ``-EPERM``,
+* an application name that does not start with the prefix of the key with
+  ``-EPERM``.
+
+:c:func:`app_loader_key` returns the id and the ceiling of the key that signed a
+loaded module.
+
+The publisher keys are listed in the YAML file named by
+:kconfig:option:`CONFIG_APP_PLATFORM_KEYS_FILE`, relative to the application
+source directory, which the build reads at configure time:
+
+.. code-block:: yaml
+
+   keys:
+     - id: 1                    # non-zero, unique
+       key: keys/acme.pub.pem   # PEM public key, or the hex SEC1 point
+       caps: [LOG, TIME, NET]   # capability ceiling: names, a number or ALL
+       prefix: acme_            # names this key may sign, "" for any
+     - id: 2
+       revoked: true            # signs nothing; the key may be left out
+
+A key path is relative to the list. A PEM file may hold the public key or, on a
+development machine, the private key, whose public part is taken. The build
+fails on a duplicate key id, a public key listed twice, a key that is not a
+P-256 key, an unknown capability name or field, and on key id 0. An entry may
+set ``generate: true`` to create a missing private key file; it is meant for
+test lists, never for a product.
+
+Key id 0 is the development key, trusted with every capability and any name
+only while :kconfig:option:`CONFIG_APP_PLATFORM_DEV_KEY` is enabled, and the
+firmware logs a warning at boot when it is. Its private key,
+:kconfig:option:`CONFIG_APP_PLATFORM_DEV_KEY_FILE`, by default
+``keys/app_signing_key.pem`` under the application source directory, is
+generated unprotected on the first build and never committed, so it proves
+nothing about who built a module. The samples and tests enable it; a product
+disables it and lists its publisher keys.
+
+To revoke a key, mark its entry ``revoked: true`` and keep the entry, so its key
+id is never handed to another key, then update the firmware. Applications
+signed with it are then refused at load and at boot, see
+`Loading and verification`_.
+
+The signing script ``sign_module.cmake`` signs with the development key under
+``KEY_DIR`` unless it is given a private key kept outside the tree, as
+``APP_SIGNING_KEY`` and ``APP_SIGNING_KEY_ID``. Given to the firmware build, on
+the command line or in the environment, the two are recorded for every module
+the build signs:
+
+.. code-block:: console
+
+   west build -b <board> <app> -- -DCONFIG_APP_PLATFORM_DEV_KEY=n \
+           '-DCONFIG_APP_PLATFORM_KEYS_FILE="/secure/keys.yaml"' \
+           -DAPP_SIGNING_KEY=/secure/acme.pem -DAPP_SIGNING_KEY_ID=1
+
+The firmware build writes its key table to ``build/zephyr/app_platform_keys.json``
+and the signer refuses to sign with a key id the table does not hold, a revoked
+key, the development key when it is disabled, a private key that does not match
+the public key listed under its id, a name outside the prefix of the key and a
+required capability outside its ceiling, and warns about requested capabilities
+outside the ceiling, which are not granted.
 
 Module interface
 ================
@@ -491,6 +576,10 @@ command exits non-zero with the device's error when it refuses the module. See
 
    west app install -d build -p /dev/ttyUSB0
 
+``west app info -d build`` prints the signed manifest of the bundle without a
+device: the name, the version, the id of the key that signed it and the
+capabilities it requests and requires.
+
 Configuration
 *************
 
@@ -502,6 +591,9 @@ main options are:
   Each reserves a thread stack at build time.
 * :kconfig:option:`CONFIG_APP_PLATFORM_LOADER` - load and verify signed llext
   modules.
+* :kconfig:option:`CONFIG_APP_PLATFORM_KEYS_FILE` - the publisher keys trusted
+  to sign them, and :kconfig:option:`CONFIG_APP_PLATFORM_DEV_KEY` - whether the
+  development key is trusted too, see `Signing keys`_.
 * :kconfig:option:`CONFIG_APP_PLATFORM_REGISTRY` - persist which applications
   are installed, and which start at boot.
 * :kconfig:option:`CONFIG_APP_PLATFORM_SERVICES` - the shared, capability-gated
