@@ -367,6 +367,27 @@ __syscall int app_svc_sensor_info(int idx, struct app_svc_sensor_info *out);
 __syscall int app_svc_sensor_read(int idx, int32_t *milli_value);
 
 /**
+ * @brief Read several samples of a sensor in one call. Needs
+ *        @ref APP_CAP_SENSOR.
+ *
+ * Takes @p n consecutive readings of the kind at @p idx, as @ref
+ * app_svc_sensor_read would, while holding the device once, and writes them to
+ * @p milli_values in order. Nothing is written when a reading fails.
+ *
+ * @param idx Index below @ref app_svc_sensor_count.
+ * @param milli_values Receives @p n readings.
+ * @param n Number of readings, from 1 to
+ *          @kconfig{CONFIG_APP_PLATFORM_SENSOR_READ_N_MAX}.
+ *
+ * @retval n Success.
+ * @retval -EPERM The application does not hold @ref APP_CAP_SENSOR.
+ * @retval -EINVAL @p idx or @p n is out of range.
+ * @retval -ENODEV The kind is announced but no device backs it here.
+ * @retval -EBUSY The device stayed busy with another reader.
+ */
+__syscall int app_svc_sensor_read_n(int idx, int32_t *milli_values, size_t n);
+
+/**
  * @brief Read the SoC unique device id. Needs @ref APP_CAP_TIME.
  *
  * Grouped under the time/identity capability. Stateless.

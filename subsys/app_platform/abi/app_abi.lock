@@ -298,3 +298,4 @@ field app_ble_chrc.readable offset 17 size 1
 field app_ble_chrc.writable offset 18 size 1
 field app_ble_chrc.notifiable offset 19 size 1
 func gpio_set_mask 1 svc int (uint32_t, uint32_t)
+func sensor_read_n 1 svc int (int, int32_t *, size_t)

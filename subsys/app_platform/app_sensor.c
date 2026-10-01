@@ -124,7 +124,24 @@ int z_impl_app_svc_sensor_info(int idx, struct app_svc_sensor_info *out)
 	return 0;
 }
 
-int z_impl_app_svc_sensor_read(int idx, int32_t *milli_value)
+#if HAVE_DIE_TEMP
+static int read_one(int32_t *milli_value)
+{
+	struct sensor_value val;
+	int rc = sensor_sample_fetch(die_temp);
+
+	if (rc == 0) {
+		rc = sensor_channel_get(die_temp, SENSOR_CHAN_DIE_TEMP, &val);
+	}
+	if (rc == 0) {
+		*milli_value = val.val1 * 1000 + val.val2 / 1000;
+	}
+	return rc;
+}
+#endif
+
+/* Take @p n readings of the kind at @p idx under one hold of the device. */
+static int read_samples(int idx, int32_t *milli_values, size_t n)
 {
 	if (!app_has_cap(APP_CAP_SENSOR)) {
 		return -EPERM;
@@ -136,28 +153,45 @@ int z_impl_app_svc_sensor_read(int idx, int32_t *milli_value)
 		return -ENODEV;
 	}
 #if HAVE_DIE_TEMP
+	int rc = 0;
+
 	if (!device_is_ready(die_temp)) {
 		return -ENODEV;
 	}
 	if (app_service_lock(&sensor_lock, SVC_LOCK_TIMEOUT) != 0) {
 		return -EBUSY;
 	}
-
-	int rc = sensor_sample_fetch(die_temp);
-
-	if (rc == 0) {
-		struct sensor_value val;
-
-		rc = sensor_channel_get(die_temp, SENSOR_CHAN_DIE_TEMP, &val);
-		if (rc == 0) {
-			*milli_value = val.val1 * 1000 + val.val2 / 1000;
-		}
+	for (size_t i = 0; i < n && rc == 0; i++) {
+		rc = read_one(&milli_values[i]);
 	}
 	app_service_unlock(&sensor_lock);
 	return rc;
 #else
+	ARG_UNUSED(milli_values);
+	ARG_UNUSED(n);
 	return -ENODEV;
 #endif
+}
+
+int z_impl_app_svc_sensor_read(int idx, int32_t *milli_value)
+{
+	return read_samples(idx, milli_value, 1U);
+}
+
+int z_impl_app_svc_sensor_read_n(int idx, int32_t *milli_values, size_t n)
+{
+	int32_t v[CONFIG_APP_PLATFORM_SENSOR_READ_N_MAX];
+	int rc;
+
+	if (n == 0U || n > ARRAY_SIZE(v)) {
+		return -EINVAL;
+	}
+	rc = read_samples(idx, v, n);
+	if (rc != 0) {
+		return rc;
+	}
+	memcpy(milli_values, v, n * sizeof(*milli_values));
+	return (int)n;
 }
 
 #ifdef CONFIG_USERSPACE
@@ -195,5 +229,15 @@ static inline int z_vrfy_app_svc_sensor_read(int idx, int32_t *milli_value)
 	return rc;
 }
 #include <zephyr/syscalls/app_svc_sensor_read_mrsh.c>
+
+static inline int z_vrfy_app_svc_sensor_read_n(int idx, int32_t *milli_values, size_t n)
+{
+	if (n == 0U || n > CONFIG_APP_PLATFORM_SENSOR_READ_N_MAX) {
+		return -EINVAL;
+	}
+	K_OOPS(K_SYSCALL_MEMORY_ARRAY_WRITE(milli_values, n, sizeof(*milli_values)));
+	return z_impl_app_svc_sensor_read_n(idx, milli_values, n);
+}
+#include <zephyr/syscalls/app_svc_sensor_read_n_mrsh.c>
 
 #endif /* CONFIG_USERSPACE */
