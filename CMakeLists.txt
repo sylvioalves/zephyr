@@ -2431,6 +2431,8 @@ if(CONFIG_LLEXT_EDK)
       ${SYSCALL_SPLIT_TIMEOUT_ARG}
     COMMAND ${CMAKE_COMMAND}
         -DSYSBUILD=${SYSBUILD}
+        -DLLEXT_EDK_C_COMPILER=${CMAKE_C_COMPILER}
+        -DLLEXT_EDK_AUTOCONF_H=${AUTOCONF_H}
         -P ${ZEPHYR_BASE}/cmake/llext-edk.cmake
     DEPENDS zephyr_interface zephyr_generated_headers ${syscalls_json} build_info_yaml_saved llext_edk_build_props
             ${llext_edk_content_file} $<TARGET_PROPERTY:llext-edk,LLEXT_EDK_DEPENDS>

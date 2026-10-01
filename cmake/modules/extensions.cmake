@@ -7501,11 +7501,68 @@ function(zephyr_llext_edk_add_files)
   set_property(GLOBAL APPEND PROPERTY LLEXT_EDK_DEPENDS ${EDK_DEPENDS})
 endfunction()
 
+#[=======================================================================[.rst:
+.. cmake:signature:: zephyr_llext_edk_include([DIRECTORIES <dir>...] [HEADERS <header>...])
+
+   Select the headers of the EDK when :kconfig:option:`CONFIG_LLEXT_EDK_HEADERS_SELECTED` is
+   enabled. The EDK then holds the selected include directories, the selected headers and the
+   headers they include from the include directories of the application, instead of every header
+   of these directories. Relative paths are relative to the current source directory.
+
+   ``DIRECTORIES <dir>...``
+     Include directories copied into the EDK with all their headers and added to the include
+     path of extensions.
+
+   ``HEADERS <header>...``
+     Headers copied into the EDK with the headers they include, found by preprocessing them with
+     the compiler flags of the EDK. The include directories they are found in are added to the
+     include path of extensions.
+
+.. cmake:signature:: zephyr_llext_edk_config_header(<file> [DEPENDS <dep>...])
+
+   Ship ``<file>`` in the EDK in place of the :file:`autoconf.h` configuration header of the
+   application, which extensions include with ``-imacros``. Relative paths are relative to the
+   current source directory.
+
+   ``DEPENDS <dep>...``
+     Files or targets the EDK depends on in addition to ``<file>``, such as the target which
+     generates it.
+#]=======================================================================]
+function(zephyr_llext_edk_include)
+  cmake_parse_arguments(PARSE_ARGV 0 EDK "" "" "DIRECTORIES;HEADERS")
+  zephyr_check_arguments_required(zephyr_llext_edk_include EDK DIRECTORIES HEADERS)
+
+  foreach(dir IN LISTS EDK_DIRECTORIES)
+    cmake_path(ABSOLUTE_PATH dir BASE_DIRECTORY ${CMAKE_CURRENT_SOURCE_DIR} NORMALIZE)
+    set_property(GLOBAL APPEND PROPERTY LLEXT_EDK_INCLUDE_DIRECTORIES ${dir})
+  endforeach()
+  foreach(header IN LISTS EDK_HEADERS)
+    cmake_path(ABSOLUTE_PATH header BASE_DIRECTORY ${CMAKE_CURRENT_SOURCE_DIR} NORMALIZE)
+    set_property(GLOBAL APPEND PROPERTY LLEXT_EDK_INCLUDE_HEADERS ${header})
+    set_property(GLOBAL APPEND PROPERTY LLEXT_EDK_DEPENDS ${header})
+  endforeach()
+endfunction()
+
+function(zephyr_llext_edk_config_header file)
+  cmake_parse_arguments(PARSE_ARGV 1 EDK "" "" "DEPENDS")
+  zephyr_check_no_arguments(zephyr_llext_edk_config_header ${EDK_UNPARSED_ARGUMENTS})
+
+  cmake_path(ABSOLUTE_PATH file BASE_DIRECTORY ${CMAKE_CURRENT_SOURCE_DIR} NORMALIZE)
+  get_property(current GLOBAL PROPERTY LLEXT_EDK_CONFIG_HEADER)
+  if(current AND NOT current STREQUAL file)
+    message(FATAL_ERROR "zephyr_llext_edk_config_header: the EDK configuration header "
+                        "is already ${current}")
+  endif()
+  set_property(GLOBAL PROPERTY LLEXT_EDK_CONFIG_HEADER ${file})
+  set_property(GLOBAL APPEND PROPERTY LLEXT_EDK_DEPENDS ${file} ${EDK_DEPENDS})
+endfunction()
+
 # Writes the EDK content added with the zephyr_llext_edk_*() functions to
 # <content_file> and adds its dependencies to the llext-edk target.
 function(zephyr_llext_edk_flush content_file)
   set(content)
-  foreach(prop FILES FILES_DESTINATION CMAKE_MODULES)
+  foreach(prop FILES FILES_DESTINATION CMAKE_MODULES INCLUDE_DIRECTORIES INCLUDE_HEADERS
+               CONFIG_HEADER)
     get_property(value GLOBAL PROPERTY LLEXT_EDK_${prop})
     string(APPEND content "set(LLEXT_EDK_${prop} [==[${value}]==])\n")
   endforeach()

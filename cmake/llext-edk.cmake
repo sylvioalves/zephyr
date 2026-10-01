@@ -146,6 +146,81 @@ function(edk_write_var target var_name var_value)
     endif()
 endfunction()
 
+# Usage:
+#   edk_selected_headers(<dirs> <flags> <headers_out>)
+#
+# Set <headers_out> to the headers selected with zephyr_llext_edk_include() and
+# the headers they include, found by preprocessing them with <flags> and the
+# include directories <dirs>.
+function(edk_selected_headers dirs flags headers_out)
+  foreach(dir ${LLEXT_EDK_INCLUDE_DIRECTORIES})
+    if(NOT IS_DIRECTORY ${dir})
+      message(FATAL_ERROR "EDK include directory ${dir} does not exist")
+    endif()
+  endforeach()
+
+  set(source ${build_flags_dir}/selected_headers.c)
+  set(content "")
+  foreach(header ${LLEXT_EDK_INCLUDE_HEADERS})
+    set(found FALSE)
+    foreach(dir ${dirs})
+      cmake_path(IS_PREFIX dir ${header} NORMALIZE inside)
+      if(inside)
+        set(found TRUE)
+        break()
+      endif()
+    endforeach()
+    if(NOT found)
+      message(FATAL_ERROR "EDK header ${header} is not in an include directory")
+    endif()
+    string(APPEND content "#include \"${header}\"\n")
+  endforeach()
+  file(WRITE ${source} "${content}")
+
+  list(TRANSFORM dirs PREPEND "-I" OUTPUT_VARIABLE inc_flags)
+  execute_process(
+        COMMAND ${LLEXT_EDK_C_COMPILER} ${flags} ${inc_flags} -M ${source}
+        RESULT_VARIABLE result
+        OUTPUT_VARIABLE deps
+        ERROR_VARIABLE error
+    )
+  if(NOT result EQUAL 0)
+    message(FATAL_ERROR "The EDK headers do not build with the EDK flags:\n${error}")
+  endif()
+
+  string(REPLACE "\\\n" " " deps "${deps}")
+  separate_arguments(deps UNIX_COMMAND "${deps}")
+  list(POP_FRONT deps)
+  set(headers)
+  foreach(dep ${deps})
+    cmake_path(NORMAL_PATH dep)
+    if(NOT dep STREQUAL source)
+      list(APPEND headers ${dep})
+    endif()
+  endforeach()
+  set(${headers_out} ${headers} PARENT_SCOPE)
+endfunction()
+
+# Usage:
+#   edk_copy_headers(<dir> <dest> <headers> <copied_out>)
+#
+# Copy the <headers> that are in the include directory <dir> to <dest>, and set
+# <copied_out> to TRUE if any was copied.
+function(edk_copy_headers dir dest headers copied_out)
+  set(copied FALSE)
+  foreach(header ${headers})
+    cmake_path(IS_PREFIX dir ${header} NORMALIZE inside)
+    if(inside)
+      cmake_path(RELATIVE_PATH header BASE_DIRECTORY ${dir} OUTPUT_VARIABLE rel)
+      cmake_path(GET rel PARENT_PATH rel_parent)
+      file(MAKE_DIRECTORY ${dest}/${rel_parent})
+      file(COPY ${header} DESTINATION ${dest}/${rel_parent})
+      set(copied TRUE)
+    endif()
+  endforeach()
+  set(${copied_out} ${copied} PARENT_SCOPE)
+endfunction()
+
 
 
 # read in computed build configuration
@@ -211,6 +286,64 @@ set(llext_edk_inc ${llext_edk}/include)
 zephyr_string(SANITIZE TOUPPER var_prefix ${llext_edk_name})
 set(install_dir_var "${var_prefix}_INSTALL_DIR")
 
+if(LLEXT_EDK_CONFIG_HEADER)
+  set(replaced FALSE)
+  foreach(flag ${llext_edk_cflags})
+    string(REPLACE "${LLEXT_EDK_AUTOCONF_H}" "${LLEXT_EDK_CONFIG_HEADER}" new_flag "${flag}")
+    if(NOT new_flag STREQUAL flag)
+      set(replaced TRUE)
+    endif()
+    list(APPEND edk_cflags ${new_flag})
+  endforeach()
+  if(NOT replaced)
+    message(FATAL_ERROR "${LLEXT_EDK_AUTOCONF_H} is not in the EDK flags")
+  endif()
+else()
+  set(edk_cflags ${llext_edk_cflags})
+endif()
+
+if(CONFIG_LLEXT_EDK_HEADERS_SELECTED)
+  if(NOT LLEXT_EDK_INCLUDE_DIRECTORIES AND NOT LLEXT_EDK_INCLUDE_HEADERS)
+    message(FATAL_ERROR
+            "CONFIG_LLEXT_EDK_HEADERS_SELECTED is set, but no header was selected with "
+            "zephyr_llext_edk_include()")
+  endif()
+  list(APPEND llext_edk_c_incs ${LLEXT_EDK_INCLUDE_DIRECTORIES})
+  list(REMOVE_DUPLICATES llext_edk_c_incs)
+  set(edk_inc_dirs)
+  foreach(dir ${llext_edk_c_incs})
+    if(EXISTS ${dir})
+      list(APPEND edk_inc_dirs ${dir})
+    endif()
+  endforeach()
+  edk_selected_headers("${edk_inc_dirs}" "${edk_cflags}" selected_headers)
+
+  foreach(dir ${edk_inc_dirs})
+    relative_dir(${dir} dest bindir)
+    if(dir IN_LIST LLEXT_EDK_INCLUDE_DIRECTORIES)
+      cmake_path(GET dest PARENT_PATH dest_p)
+      file(MAKE_DIRECTORY ${dest_p})
+      file(COPY ${dir} DESTINATION ${dest_p} FILES_MATCHING PATTERN "*.h")
+    else()
+      edk_copy_headers(${dir} ${dest} "${selected_headers}" copied)
+      if(NOT copied)
+        continue()
+      endif()
+    endif()
+
+    cmake_path(RELATIVE_PATH dest BASE_DIRECTORY ${llext_edk} OUTPUT_VARIABLE dest_rel)
+    if(bindir)
+      list(APPEND gen_inc_flags "@DASHI@${dest_rel}")
+    else()
+      list(APPEND inc_flags "@DASHI@${dest_rel}")
+    endif()
+    list(APPEND all_inc_flags "@DASHI@${dest_rel}")
+  endforeach()
+
+  # The include directories are not copied whole below
+  set(llext_edk_c_incs)
+endif()
+
 set(make_relative FALSE)
 foreach(flag ${llext_edk_cflags})
     # Detect all combinations of 'imacros' flag:
@@ -269,9 +402,28 @@ endforeach()
 
 list(APPEND all_flags ${base_flags} ${imacros_gen} ${all_inc_flags})
 
-if(CONFIG_LLEXT_EDK_USERSPACE_ONLY)
+if(CONFIG_LLEXT_EDK_USERSPACE_ONLY AND NOT CONFIG_LLEXT_EDK_HEADERS_SELECTED)
     # Copy syscall headers from edk directory, as they were regenerated there.
     file(COPY ${PROJECT_BINARY_DIR}/edk/include/generated/ DESTINATION ${llext_edk_inc}/zephyr/include/generated)
+endif()
+
+if(CONFIG_LLEXT_EDK_USERSPACE_ONLY AND CONFIG_LLEXT_EDK_HEADERS_SELECTED)
+  # Replace the syscall headers of the EDK with those regenerated in the edk directory
+  set(regen_dir ${PROJECT_BINARY_DIR}/edk/include/generated)
+  file(GLOB_RECURSE regen_headers RELATIVE ${regen_dir} ${regen_dir}/*)
+  foreach(header ${regen_headers})
+    if(EXISTS ${llext_edk_inc}/zephyr/include/generated/${header})
+      file(COPY_FILE ${regen_dir}/${header} ${llext_edk_inc}/zephyr/include/generated/${header})
+    endif()
+  endforeach()
+endif()
+
+if(LLEXT_EDK_CONFIG_HEADER)
+  cmake_path(GET LLEXT_EDK_AUTOCONF_H PARENT_PATH autoconf_dir)
+  cmake_path(GET LLEXT_EDK_AUTOCONF_H FILENAME autoconf_name)
+  relative_dir(${autoconf_dir} dest bindir)
+  file(MAKE_DIRECTORY ${dest})
+  file(COPY_FILE ${LLEXT_EDK_CONFIG_HEADER} ${dest}/${autoconf_name})
 endif()
 
 foreach(file dest IN ZIP_LISTS LLEXT_EDK_FILES LLEXT_EDK_FILES_DESTINATION)
