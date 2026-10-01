@@ -4,44 +4,36 @@
 #
 # SPDX-License-Identifier: Apache-2.0
 
-"""Pack the development kit of application modules for one firmware.
+"""Generate the application module files of the LLEXT EDK of one firmware.
 
-The kit holds what a module is built, checked and signed with on a host that
-has neither the Zephyr tree nor the firmware build:
+The LLEXT EDK of a firmware with the application module profile holds what a
+module is built, checked and signed with on a host that has neither the Zephyr
+tree nor the firmware build. This script writes the files of the profile that
+depend on the firmware build:
 
-- the headers a module includes, the module SDK header app_sdk.h and every
-  header it includes from the tree or the build, found by preprocessing it with
-  the module compiler flags; the kit refuses to hold a kernel, syscall,
-  devicetree or driver header,
-- a configuration header with the few architecture options those headers test,
-  in place of the firmware configuration,
-- the module compiler and link flags: those the firmware build compiles an
-  application module with, without the include paths, the firmware
-  configuration, the definitions of other subsystems and the host paths,
+- a configuration header with the few architecture options the module headers
+  test, which the EDK holds in place of the firmware configuration,
 - the toolchain the firmware was built with: its variant, target triple,
-  compiler version and Zephyr SDK version, but not the toolchain itself,
-- the interface lock file, the symbols a module may import, the firmware facts
-  the signer puts in a manifest, and the public part of the table of trusted
-  keys,
-- the signer, the CMake helper that builds, checks and signs a module, and a
-  README.
+  compiler version and Zephyr SDK version, but not the toolchain itself, the
+  definitions of the C library and of the platform a module is compiled with
+  in place of those of the firmware build, and the module link flags, as a
+  CMake file,
+- the firmware facts the signer puts in a manifest, the symbols a module may
+  import and the public part of the table of trusted keys.
 
-The compiler flags are taken from the compile command of a probe module built
-with add_llext_target(), which applies the LLEXT lists of flags to remove and to
-append, and are filtered further by the LLEXT EDK list of flags to remove.
+It also checks that the module SDK header app_sdk.h, preprocessed with the
+compiler flags of a probe module built with add_llext_target(), includes no
+kernel, syscall, devicetree or driver header and no header from outside the
+tree or the build: the EDK holds these headers.
 """
 
 import argparse
-import io
 import json
-import os
 import re
 import shlex
 import shutil
 import subprocess
 import sys
-import tarfile
-import tempfile
 from pathlib import Path
 
 CONFIG_H = "app_platform_edk_config.h"
@@ -104,14 +96,12 @@ def under(path, root):
 
 
 def module_flags(args):
-    """Return the kit flags, a path into the kit given as (option, kind, path),
-    the include options of the firmware build and the -imacros files to copy
-    into the kit.
+    """Return the module flags, a header path given as (option, kind, path),
+    and the include options of the firmware build.
     """
     removed = [re.compile(r) for r in args.remove_flag]
     flags = []
     incs = []
-    imacros = []
     tokens = iter(probe_command(args))
     for flag in tokens:
         if flag in FLAGS_WITH_ARG:
@@ -129,7 +119,6 @@ def module_flags(args):
                 if rel is None:
                     fail(f"-imacros {value} is outside the module headers")
                 flags.append(("-imacros", "include", str(rel)))
-                imacros.append(rel)
             continue
         if flag.startswith("-D"):
             if DEFINE_KEEP.fullmatch(flag):
@@ -138,7 +127,7 @@ def module_flags(args):
         if FLAGS_DROPPED.fullmatch(flag) or any(r.fullmatch(flag) for r in removed):
             continue
         flags.append(flag)
-    return flags, incs, imacros
+    return flags, incs
 
 
 def resolve(flags, include_dir, config_h):
@@ -150,10 +139,6 @@ def resolve(flags, include_dir, config_h):
         else:
             out.append(flag)
     return out
-
-
-def kit_flags(flags):
-    return [*flags, ("-I", "include", "")]
 
 
 def dependencies(args, flags, cwd):
@@ -173,15 +158,15 @@ def config_header(autoconf):
         m = re.match(r"#define (\w+) ", line)
         if m and CONFIG_KEEP.fullmatch(m.group(1)):
             lines.append(line)
+    lines += ["", "#define APP_PLATFORM_MODULE 1"]
     return "\n".join(lines) + "\n"
 
 
-def collect_headers(args, kit, flags, incs, toolchain_root, work):
-    """Copy the headers the SDK header includes into the kit include dir."""
+def check_headers(args, flags, incs, config_h, toolchain_root):
+    """Check the headers the SDK header includes."""
     roots = [Path(args.zephyr_base) / "include", Path(args.binary_dir) / "include/generated"]
-    config_h = Path(work) / CONFIG_H
-    copied = {}
-    for dep in dependencies(args, resolve(flags, roots[0], config_h) + incs, work):
+    deps = dependencies(args, resolve(flags, roots[0], config_h) + incs, config_h.parent)
+    for dep in deps:
         if dep.resolve() == config_h.resolve():
             continue
         if under(dep, toolchain_root) is not None:
@@ -191,37 +176,6 @@ def collect_headers(args, kit, flags, incs, toolchain_root, work):
             fail(f"{dep} is included by the module SDK header but is outside the kit")
         if FORBIDDEN_HEADERS.search(rel.as_posix()):
             fail(f"the module SDK header includes {rel.as_posix()}, which a module must not see")
-        if rel in copied and copied[rel] != dep.resolve():
-            fail(f"{rel.as_posix()} is both {copied[rel]} and {dep}")
-        copied[rel] = dep.resolve()
-
-    for rel, src in copied.items():
-        dst = kit / "include" / rel
-        dst.parent.mkdir(parents=True, exist_ok=True)
-        shutil.copyfile(src, dst)
-    return sorted(copied)
-
-
-def check_kit_headers(args, kit, flags, toolchain_root, work):
-    """Build the probe against the kit alone."""
-    include = kit / "include"
-    deps = dependencies(args, resolve(kit_flags(flags), include, include / CONFIG_H), work)
-    for dep in deps:
-        if under(dep, include) is None and under(dep, toolchain_root) is None:
-            fail(f"the kit headers include {dep} from outside the kit")
-
-
-def cmake_value(flags, kit_var):
-    out = []
-    for flag in flags:
-        if isinstance(flag, tuple):
-            option, kind, rel = flag
-            path = CONFIG_H if kind == "config" else rel
-            flag = option + ("${" + kit_var + "}/include/" + path).rstrip("/")
-        else:
-            flag = flag.replace("\\", "\\\\").replace('"', '\\"').replace("$", "\\$")
-        out.append(flag)
-    return ";".join(out)
 
 
 def toolchain_facts(args):
@@ -236,7 +190,11 @@ def toolchain_facts(args):
     return facts
 
 
-def write_cmake_target(kit, facts, flags, link_flags):
+def cmake_list(flags):
+    return ";".join(f.replace("\\", "\\\\").replace('"', '\\"').replace("$", "\\$") for f in flags)
+
+
+def write_cmake_target(out, facts, defines, link_flags):
     names = {
         "board": "APP_EDK_BOARD",
         "arch": "APP_EDK_ARCH",
@@ -251,12 +209,12 @@ def write_cmake_target(kit, facts, flags, link_flags):
     }
     lines = ["# Generated by gen_app_edk.py: the firmware target of this kit.", ""]
     lines += [f'set({var} "{facts.get(key, "")}")' for key, var in names.items()]
-    lines.append(f'set(APP_EDK_CFLAGS "{cmake_value(kit_flags(flags), "APP_EDK_DIR")}")')
-    lines.append(f'set(APP_EDK_LINK_FLAGS "{cmake_value(link_flags, "APP_EDK_DIR")}")')
-    (kit / "cmake/app_edk_target.cmake").write_text("\n".join(lines) + "\n", encoding="utf-8")
+    lines.append(f'set(APP_EDK_DEFINES "{cmake_list(defines)}")')
+    lines.append(f'set(APP_EDK_LINK_FLAGS "{cmake_list(link_flags)}")')
+    (out / "cmake/app_edk_target.cmake").write_text("\n".join(lines) + "\n", encoding="utf-8")
 
 
-def write_facts(args, kit, facts):
+def write_facts(args, out, facts):
     """The firmware facts for the signer, with paths into the kit."""
     keep = ("abi_major", "target", "target_desc")
     fw = {}
@@ -269,51 +227,23 @@ def write_facts(args, kit, facts):
         fail(f"{args.abi_file} lacks {', '.join(missing)}")
     fw["imports"] = "abi/app_imports.txt"
     fw["keys"] = "keys.json"
-    fw["caps"] = "include/zephyr/app_platform/app_caps.h"
+    fw["caps"] = "include/zephyr/include/zephyr/app_platform/app_caps.h"
     for key in ("board", "arch", "llext_type", "toolchain_variant", "triple", "compiler"):
         fw[key] = facts.get(key, "")
     fw["compiler_version"] = facts.get("compiler_version", "")
     fw["sdk_version"] = facts.get("sdk_version", "")
     text = "".join(f"{k}={v}\n" for k, v in fw.items())
-    (kit / "firmware.txt").write_text(text, encoding="utf-8")
+    (out / "firmware.txt").write_text(text, encoding="utf-8")
 
 
-def write_keys(args, kit):
+def write_keys(args, out):
     fields = {"id", "state", "caps", "prefix", "pubkey"}
     keys = json.loads(Path(args.keys).read_text(encoding="utf-8"))["keys"]
     for key in keys:
         if set(key) - fields:
             fail(f"{args.keys} holds fields other than {', '.join(sorted(fields))}")
     text = json.dumps({"keys": keys}, indent=1) + "\n"
-    (kit / "keys.json").write_text(text, encoding="ascii")
-
-
-def check_no_host_paths(args, kit):
-    paths = {str(Path(p).resolve()) for p in (args.zephyr_base, args.binary_dir)}
-    for path in sorted(kit.rglob("*")):
-        if path.is_file():
-            text = path.read_text(encoding="utf-8", errors="replace")
-            for p in paths:
-                if p in text:
-                    fail(f"{path.relative_to(kit)} names the build host path {p}")
-
-
-def archive(kit, out, name):
-    def reset(info):
-        info.uid = info.gid = 0
-        info.uname = info.gname = ""
-        if info.isdir() or os.access(kit.parent / info.name, os.X_OK):
-            info.mode = 0o755
-        else:
-            info.mode = 0o644
-        return info
-
-    data = io.BytesIO()
-    with tarfile.open(fileobj=data, mode="w:xz", format=tarfile.PAX_FORMAT) as tar:
-        for path in [kit, *sorted(kit.rglob("*"))]:
-            arcname = name if path == kit else f"{name}/{path.relative_to(kit).as_posix()}"
-            tar.add(path, arcname=arcname, recursive=False, filter=reset)
-    Path(out).write_bytes(data.getvalue())
+    (out / "keys.json").write_text(text, encoding="ascii")
 
 
 def main():
@@ -322,8 +252,7 @@ def main():
         formatter_class=argparse.RawDescriptionHelpFormatter,
         allow_abbrev=False,
     )
-    parser.add_argument("--out", required=True, help="kit archive (.tar.xz)")
-    parser.add_argument("--name", required=True, help="top directory of the kit")
+    parser.add_argument("--out-dir", required=True, help="directory of the generated files")
     parser.add_argument("--cc", required=True, help="C compiler of the firmware")
     parser.add_argument("--sdk-dir", help="Zephyr SDK the compiler belongs to")
     parser.add_argument("--compile-commands", required=True, help="compile_commands.json")
@@ -336,51 +265,26 @@ def main():
     parser.add_argument("--abi-file", required=True, help="firmware facts for the signer")
     parser.add_argument("--imports", required=True, help="symbols a module may import")
     parser.add_argument("--keys", required=True, help="table of trusted keys (JSON)")
-    parser.add_argument("--lock", required=True, help="interface lock file")
-    parser.add_argument("--scripts", nargs="+", required=True, help="signer scripts")
-    parser.add_argument("--templates", nargs="+", required=True, help="kit files")
     parser.add_argument("--fact", action="append", default=[], help="key=value")
     args = parser.parse_args()
 
     toolchain_root = Path(args.cc).resolve().parent.parent
     facts = toolchain_facts(args)
 
-    with tempfile.TemporaryDirectory(prefix="app_edk_") as tmp:
-        work = Path(tmp) / "work"
-        kit = Path(tmp) / args.name
-        work.mkdir()
-        for sub in ("include", "abi", "cmake", "scripts"):
-            (kit / sub).mkdir(parents=True)
+    out = Path(args.out_dir)
+    for sub in ("abi", "cmake"):
+        (out / sub).mkdir(parents=True, exist_ok=True)
 
-        config = config_header(args.autoconf)
-        (work / CONFIG_H).write_text(config, encoding="utf-8")
-        (kit / "include" / CONFIG_H).write_text(config, encoding="utf-8")
+    config_h = out / CONFIG_H
+    config_h.write_text(config_header(args.autoconf), encoding="utf-8")
+    flags, incs = module_flags(args)
+    check_headers(args, flags, incs, config_h, toolchain_root)
 
-        flags, incs, imacros = module_flags(args)
-        headers = collect_headers(args, kit, flags, incs, toolchain_root, work)
-        for rel in imacros:
-            if rel not in headers:
-                dst = kit / "include" / rel
-                dst.parent.mkdir(parents=True, exist_ok=True)
-                shutil.copyfile(Path(args.zephyr_base) / "include" / rel, dst)
-        check_kit_headers(args, kit, flags, toolchain_root, work)
-
-        write_cmake_target(kit, facts, flags, args.link_flag)
-        write_facts(args, kit, facts)
-        write_keys(args, kit)
-        shutil.copyfile(args.lock, kit / "abi/app_abi.lock")
-        shutil.copyfile(args.imports, kit / "abi/app_imports.txt")
-        for script in args.scripts:
-            dst = kit / "scripts" / Path(script).name
-            shutil.copyfile(script, dst)
-            if dst.suffix == ".py":
-                dst.chmod(0o755)
-        for template in args.templates:
-            sub = "cmake" if template.endswith(".cmake") else "."
-            shutil.copyfile(template, kit / sub / Path(template).name)
-
-        check_no_host_paths(args, kit)
-        archive(kit, args.out, args.name)
+    defines = [f for f in flags if isinstance(f, str) and f.startswith("-D")]
+    write_cmake_target(out, facts, defines, args.link_flag)
+    write_facts(args, out, facts)
+    write_keys(args, out)
+    shutil.copyfile(args.imports, out / "abi/app_imports.txt")
 
 
 if __name__ == "__main__":

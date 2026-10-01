@@ -254,18 +254,24 @@ config APP_PLATFORM_DEV_KEY_FILE
 
 config APP_PLATFORM_EDK
 	bool "Application module development kit"
-	depends on APP_PLATFORM_LOADER
+	depends on APP_PLATFORM_LOADER && LLEXT_EDK
 	default y
+	select LLEXT_EDK_HEADERS_SELECTED
 	help
-	  Add the app_platform_edk build target, which packs into
-	  zephyr/app-platform-edk.tar.xz what an application module is
+	  Make the LLEXT EDK, built with the llext-edk target into
+	  zephyr/app-platform-edk.tar.xz, the kit an application module is
 	  built, checked and signed with outside the tree: the module SDK
-	  headers without kernel headers, the module compiler flags of this
-	  target, the interface lock, the importable symbols, the firmware
-	  facts and public key table the signer uses, the signer and a CMake
-	  helper. A module built with the kit loads on this firmware and on
-	  later builds with the same interface major version and target
-	  fingerprint. The toolchain is not part of the kit.
+	  header and the headers it includes, without kernel headers, the
+	  target options of the firmware in place of its configuration, the
+	  module compiler flags of this target, the interface lock, the
+	  importable symbols, the firmware facts and public key table the
+	  signer uses, the signer and a CMake helper. A module built with the
+	  kit loads on this firmware and on later builds with the same
+	  interface major version and target fingerprint. The toolchain is
+	  not part of the kit.
+
+config LLEXT_EDK_NAME
+	default "app-platform-edk" if APP_PLATFORM_EDK
 
 config LLEXT_EXPORT_SYMBOL_GROUP_APP_ABI
 	bool "Export the application module interface"

@@ -16,11 +16,13 @@
 #                    [SIGNING_KEY <private key> SIGNING_KEY_ID <key id>]
 #                    [SKIP_KEY_CHECK])
 #
-# compiles the sources with the flags and headers of the kit, links them into
-# <target>.llext, refuses a module importing a symbol outside abi/app_imports.txt
-# and signs a manifest for it, <target>.manifest, the manifest followed by its
-# signature. <target>.manifest.inc and <target>.sig.inc hold the same as C byte
-# literals. The capabilities are numbers or names such as LOG,TIME.
+# compiles the sources with the flags and headers of the kit, with the
+# definitions of APP_EDK_DEFINES in place of those of the firmware, links them
+# into <target>.llext, refuses a module importing a symbol outside
+# abi/app_imports.txt and signs a manifest for it, <target>.manifest, the
+# manifest followed by its signature. <target>.manifest.inc and
+# <target>.sig.inc hold the same as C byte literals. The capabilities are
+# numbers or names such as LOG,TIME.
 #
 # The signing key is the P-256 private key the firmware key table lists under
 # the key id, SIGNING_KEY and SIGNING_KEY_ID, or else APP_SIGNING_KEY and
@@ -34,6 +36,7 @@ if(NOT DEFINED CMAKE_TOOLCHAIN_FILE)
   set(CMAKE_TOOLCHAIN_FILE ${APP_EDK_DIR}/cmake/toolchain.cmake)
 endif()
 include(${APP_EDK_DIR}/cmake/app_edk_target.cmake)
+include(${APP_EDK_DIR}/cmake.cflags)
 
 function(app_edk_add_module target)
   cmake_parse_arguments(PARSE_ARGV 1 MOD "SKIP_KEY_CHECK"
@@ -65,9 +68,16 @@ function(app_edk_add_module target)
   endif()
   find_package(Python3 3.9 REQUIRED COMPONENTS Interpreter)
 
+  set(cflags)
+  foreach(flag IN LISTS LLEXT_CFLAGS)
+    if(NOT flag MATCHES "^-D")
+      list(APPEND cflags ${flag})
+    endif()
+  endforeach()
+
   set(objects ${target}_objects)
   add_library(${objects} OBJECT ${MOD_SOURCES})
-  target_compile_options(${objects} PRIVATE ${APP_EDK_CFLAGS})
+  target_compile_options(${objects} PRIVATE ${APP_EDK_DEFINES} ${cflags})
 
   set(out ${CMAKE_CURRENT_BINARY_DIR}/${target})
   if(APP_EDK_LLEXT_TYPE STREQUAL "relocatable")

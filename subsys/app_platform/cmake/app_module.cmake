@@ -41,7 +41,7 @@ function(app_platform_edk_project target)
     COMMAND ${CMAKE_COMMAND} -E chdir ${dir} ${CMAKE_COMMAND} -E tar xf ${APP_PLATFORM_EDK_FILE}
     COMMAND ${no_tree} ${CMAKE_COMMAND} -S ${EDK_SOURCE_DIR} -B ${dir}/build
       -G ${CMAKE_GENERATOR}
-      -DAPP_EDK_DIR=${dir}/app-platform-edk
+      -DAPP_EDK_DIR=${dir}/${CONFIG_LLEXT_EDK_NAME}
       -DAPP_EDK_CROSS_COMPILE=${CROSS_COMPILE}
       -DPython3_EXECUTABLE=${PYTHON_EXECUTABLE}
       ${EDK_CMAKE_ARGS}
@@ -50,4 +50,5 @@ function(app_platform_edk_project target)
     VERBATIM
   )
   add_custom_target(${target} DEPENDS ${outputs})
+  add_dependencies(${target} llext-edk)
 endfunction()

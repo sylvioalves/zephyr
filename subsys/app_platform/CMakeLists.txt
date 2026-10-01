@@ -190,16 +190,28 @@ ${signing_key_facts}")
   add_dependencies(app_platform_abi app_platform_exports)
   add_dependencies(${ZEPHYR_CURRENT_LIBRARY} app_platform_abi)
 
-  # The module development kit: west build -t app_platform_edk. The module
-  # compiler flags are taken from the compile command of a probe module, which
-  # the build never links, without the host paths the LLEXT EDK also removes.
+  # The application module profile of the LLEXT EDK, west build -t llext-edk:
+  # the module SDK header and the headers it includes, the target options of
+  # the firmware in place of its configuration, the interface lock, the
+  # importable symbols, the firmware facts and public key table the signer
+  # uses, the signer and the CMake helper. A probe module, which the build never
+  # links, checks that the SDK header includes no kernel or syscall header.
   if(CONFIG_APP_PLATFORM_EDK)
-    set(APP_PLATFORM_EDK_FILE ${ZEPHYR_BINARY_DIR}/app-platform-edk.tar.xz CACHE INTERNAL "")
+    if(CONFIG_LLEXT_EDK_FORMAT_ZIP)
+      set(edk_extension zip)
+    elseif(CONFIG_LLEXT_EDK_FORMAT_TAR_ZSTD)
+      set(edk_extension tar.Z)
+    else()
+      set(edk_extension tar.xz)
+    endif()
+    set(APP_PLATFORM_EDK_FILE ${ZEPHYR_BINARY_DIR}/${CONFIG_LLEXT_EDK_NAME}.${edk_extension}
+      CACHE INTERNAL "")
     set(edk_dir ${CMAKE_CURRENT_SOURCE_DIR}/edk)
-    set(edk_scripts ${CMAKE_CURRENT_SOURCE_DIR}/cmake/sign_module.py ${keys_script}
-      ${edk_dir}/requirements.txt)
-    set(edk_templates ${edk_dir}/README.txt ${edk_dir}/app_edk.cmake ${edk_dir}/toolchain.cmake)
+    set(edk_gen ${CMAKE_CURRENT_BINARY_DIR}/edk)
     set(edk_script ${CMAKE_CURRENT_SOURCE_DIR}/cmake/gen_app_edk.py)
+    set(edk_config_h ${edk_gen}/app_platform_edk_config.h)
+    set(edk_outputs ${edk_config_h} ${edk_gen}/firmware.txt ${edk_gen}/keys.json
+      ${edk_gen}/abi/app_imports.txt ${edk_gen}/cmake/app_edk_target.cmake)
 
     app_platform_add_module(app_platform_edk_probe
       OUTPUT ${CMAKE_CURRENT_BINARY_DIR}/app_platform_edk_probe.llext
@@ -229,10 +241,9 @@ ${signing_key_facts}")
     endif()
 
     add_custom_command(
-      OUTPUT ${APP_PLATFORM_EDK_FILE}
+      OUTPUT ${edk_outputs}
       COMMAND ${PYTHON_EXECUTABLE} ${edk_script}
-        --out ${APP_PLATFORM_EDK_FILE}
-        --name app-platform-edk
+        --out-dir ${edk_gen}
         --cc ${CMAKE_C_COMPILER}
         --compile-commands ${CMAKE_BINARY_DIR}/compile_commands.json
         --probe ${edk_dir}/probe.c
@@ -242,9 +253,6 @@ ${signing_key_facts}")
         --abi-file ${APP_PLATFORM_ABI_FILE}
         --imports ${abi_allowed_txt}
         --keys ${keys_json}
-        --lock ${abi_lock}
-        --scripts ${edk_scripts}
-        --templates ${edk_templates}
         --fact=board=${edk_board}
         --fact=arch=${ARCH}
         --fact=llext_type=${llext_type}
@@ -253,11 +261,23 @@ ${signing_key_facts}")
         --fact=compiler_version=${CMAKE_C_COMPILER_VERSION}
         --fact=sdk_version=${SDK_VERSION}
         ${edk_args}
-      DEPENDS ${edk_script} ${edk_scripts} ${edk_templates} ${edk_dir}/probe.c ${abi_lock}
-        ${abi_outputs} ${keys_json} ${APP_PLATFORM_ABI_FILE} ${AUTOCONF_H} app_platform_abi
+      DEPENDS ${edk_script} ${edk_dir}/probe.c ${abi_outputs} ${keys_json}
+        ${APP_PLATFORM_ABI_FILE} ${AUTOCONF_H} app_platform_abi
       COMMAND_EXPAND_LISTS
     )
-    add_custom_target(app_platform_edk DEPENDS ${APP_PLATFORM_EDK_FILE})
+    add_custom_target(app_platform_edk_files DEPENDS ${edk_outputs})
+
+    zephyr_llext_edk_include(HEADERS ${ZEPHYR_BASE}/include/zephyr/app_platform/app_sdk.h)
+    zephyr_llext_edk_config_header(${edk_config_h} DEPENDS app_platform_edk_files)
+    zephyr_llext_edk_add_files(
+      FILES ${edk_dir}/README.txt ${edk_gen}/firmware.txt ${edk_gen}/keys.json)
+    zephyr_llext_edk_add_files(DESTINATION abi FILES ${abi_lock} ${edk_gen}/abi/app_imports.txt)
+    zephyr_llext_edk_add_files(DESTINATION cmake FILES ${edk_dir}/app_edk.cmake CMAKE_MODULE)
+    zephyr_llext_edk_add_files(DESTINATION cmake
+      FILES ${edk_dir}/toolchain.cmake ${edk_gen}/cmake/app_edk_target.cmake)
+    zephyr_llext_edk_add_files(DESTINATION scripts
+      FILES ${CMAKE_CURRENT_SOURCE_DIR}/cmake/sign_module.py ${keys_script}
+        ${edk_dir}/requirements.txt)
   endif()
 endif()
 

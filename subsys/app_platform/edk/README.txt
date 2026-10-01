@@ -19,10 +19,13 @@ abi/app_abi.lock   The interface the firmware exports to modules.
 abi/app_imports.txt
                    The only symbols a module may import.
 include/           The module SDK header <zephyr/app_platform/app_sdk.h> and
-                   the headers it includes. Kernel and syscall headers are not
-                   part of the kit.
+                   the headers it includes, and the target options of the
+                   firmware in place of its configuration header. Kernel and
+                   syscall headers are not part of the kit.
+cmake.cflags       The compiler flags of the firmware target, for CMake
+Makefile.cflags    and for make (see the LLEXT EDK documentation).
 cmake/             app_edk.cmake, the CMake helper; toolchain.cmake; the
-                   compiler flags of the firmware target.
+                   toolchain and link flags of the firmware target.
 scripts/           The signer and its Python requirements.
 
 Requirements
