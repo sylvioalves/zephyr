@@ -13,8 +13,10 @@ include/zephyr/app_platform/app_manifest.h: a header of magic, length and
 format, then the fields, packed and little-endian.
 
 The firmware facts come from the file the firmware build writes
-(app_platform_abi.txt), one key=value per line. A module that imports a symbol
-outside the list of importable symbols it names is not signed.
+(app_platform_abi.txt), or the one of a module development kit, one key=value
+per line; a relative path in it is taken from the directory of the file. A
+module that imports a symbol outside the list of importable symbols it names is
+not signed.
 
 The manifest is signed with --key under --key-id, or with the key the firmware
 build was given (APP_SIGNING_KEY and APP_SIGNING_KEY_ID), or else with the
@@ -44,45 +46,51 @@ HEADER = struct.Struct("<IHH")
 FIELDS = struct.Struct("<II32s32s16sIHHIIQQI28s")
 MANIFEST_LEN = HEADER.size + FIELDS.size
 MAX_LEN = 256
-CAPS_H = Path(__file__).resolve().parents[3] / "include/zephyr/app_platform/app_caps.h"
+CAPS_H = "include/zephyr/app_platform/app_caps.h"
 
 
-def cap_bits():
+def cap_bits(caps_h):
     return {
         m.group(1): int(m.group(2))
         for m in re.finditer(
             r"#define\s+APP_CAP_(\w+)\s+APP_CAP_BIT\((\d+)\)",
-            CAPS_H.read_text(encoding="utf-8"),
+            Path(caps_h).read_text(encoding="utf-8"),
         )
     }
 
 
-def cap_names(caps):
-    bits = sorted(cap_bits().items(), key=lambda b: b[1])
+def cap_names(caps, caps_h):
+    bits = sorted(cap_bits(caps_h).items(), key=lambda b: b[1])
     return ",".join(name for name, bit in bits if caps >> bit & 1) or "none"
 
 
-def parse_caps(value):
+def parse_caps(value, caps_h):
     """Capabilities as a number or as comma-separated names from app_caps.h."""
     value = value.strip()
     if not value or value[0].isdigit():
         return int(value or "0", 0)
-    bits = cap_bits()
+    bits = cap_bits(caps_h)
     caps = 0
     for name in value.split(","):
         name = name.strip().upper().removeprefix("APP_CAP_")
         if name not in bits:
-            raise argparse.ArgumentTypeError(f"unknown capability '{name}'")
+            sys.exit(f"unknown capability '{name}'")
         caps |= 1 << bits[name]
     return caps
 
 
 def read_abi_file(path):
     facts = {}
+    base = Path(path).resolve().parent
     for line in Path(path).read_text(encoding="utf-8").splitlines():
         key, sep, value = line.partition("=")
         if sep:
             facts[key.strip()] = value.strip()
+    for key in ("imports", "keys", "caps", "signing_key"):
+        if facts.get(key):
+            facts[key] = str(base / facts[key])
+    if not facts.get("caps"):
+        facts["caps"] = str(Path(__file__).resolve().parents[3] / CAPS_H)
     return facts
 
 
@@ -115,10 +123,8 @@ def build_manifest(module, args, facts, key_id):
     return mf[:length]
 
 
-def forbidden_imports(module_path, facts):
-    out = subprocess.run(
-        [facts["nm"], "-u", module_path], capture_output=True, text=True, check=True
-    ).stdout
+def forbidden_imports(module_path, facts, nm):
+    out = subprocess.run([nm, "-u", module_path], capture_output=True, text=True, check=True).stdout
     imported = {line.split()[-1] for line in out.splitlines() if line.strip()}
     allowed = set(Path(facts["imports"]).read_text(encoding="utf-8").split())
     return sorted(imported - allowed)
@@ -151,8 +157,9 @@ def load_key(key_path):
     return key
 
 
-def check_key(key, key_path, key_id, args, keys_path):
+def check_key(key, key_path, key_id, args, facts):
     """Refuse a key the firmware would refuse; warn of capabilities it would drop."""
+    keys_path = facts["keys"]
     keys = json.loads(Path(keys_path).read_text(encoding="utf-8"))["keys"]
     entry = next((k for k in keys if k["id"] == key_id), None)
     where = f"key id {key_id}"
@@ -172,12 +179,15 @@ def check_key(key, key_path, key_id, args, keys_path):
         sys.exit(f"{where} signs only names starting with '{entry['prefix']}', not '{args.name}'")
     missing = args.required_caps & ~entry["caps"]
     if missing:
-        sys.exit(f"required capabilities {cap_names(missing)} are outside the ceiling of {where}")
+        sys.exit(
+            f"required capabilities {cap_names(missing, facts['caps'])} are outside the "
+            f"ceiling of {where}"
+        )
     dropped = args.requested_caps & ~entry["caps"]
     if dropped:
         print(
-            f"warning: requested capabilities {cap_names(dropped)} are outside the ceiling of "
-            f"{where} and are not granted",
+            f"warning: requested capabilities {cap_names(dropped, facts['caps'])} are outside "
+            f"the ceiling of {where} and are not granted",
             file=sys.stderr,
         )
 
@@ -199,19 +209,18 @@ def main():
     parser.add_argument("--key", help="private key of a listed signing key")
     parser.add_argument("--dev-key", help="development private key, generated when missing")
     parser.add_argument("--abi-file", required=True, help="firmware facts")
+    parser.add_argument("--nm", help="nm tool of the toolchain, overrides the firmware's")
     parser.add_argument("--name", required=True, help="application name")
     parser.add_argument("--version", type=int, required=True, help="application version")
     parser.add_argument("--heap-size", type=lambda v: int(v, 0), default=0)
     parser.add_argument(
         "--requested-caps",
-        type=parse_caps,
         required=True,
         help="capabilities the application asks for, a number or names such as LOG,TIME",
     )
     parser.add_argument(
         "--required-caps",
-        type=parse_caps,
-        default=0,
+        default="0",
         help="capabilities it cannot run without, a subset of the requested ones",
     )
     parser.add_argument(
@@ -240,20 +249,24 @@ def main():
     parser.add_argument("--out-manifest", help="manifest followed by its signature")
     args = parser.parse_args()
 
+    facts = read_abi_file(args.abi_file)
+    args.requested_caps = parse_caps(args.requested_caps, facts["caps"])
+    args.required_caps = parse_caps(args.required_caps, facts["caps"])
     for caps in (args.requested_caps, args.required_caps):
         if not 0 <= caps < 1 << 64:
             sys.exit("capabilities must fit 64 bits")
     if args.required_caps & ~args.requested_caps:
         sys.exit("required capabilities must be a subset of the requested ones")
 
-    facts = read_abi_file(args.abi_file)
     if not args.skip_import_check:
-        forbidden = forbidden_imports(args.module, facts)
+        nm = args.nm or facts.get("nm")
+        if not nm:
+            sys.exit("no nm tool to list the module imports: give --nm")
+        forbidden = forbidden_imports(args.module, facts, nm)
         if forbidden:
             sys.exit(
                 f"{args.module} imports symbols a module may not use: {', '.join(forbidden)}\n"
-                "A module may import only the functions in subsys/app_platform/abi/app_abi.txt "
-                "and subsys/app_platform/abi/app_imports.txt."
+                f"A module may import only the symbols listed in {facts['imports']}."
             )
 
     key_path, key_id = signing_key(args, facts)
@@ -261,7 +274,7 @@ def main():
         sys.exit("the key id must fit 32 bits")
     key = load_key(key_path)
     if not args.skip_key_check and facts.get("keys"):
-        check_key(key, key_path, key_id, args, facts["keys"])
+        check_key(key, key_path, key_id, args, facts)
 
     module = Path(args.module).read_bytes()
     mf = build_manifest(module, args, facts, key_id)
