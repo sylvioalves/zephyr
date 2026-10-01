@@ -110,6 +110,8 @@ def module_flags(args):
         option = next((o for o in FLAGS_WITH_PATH if flag.startswith(o)), None)
         if option is not None:
             value = flag[len(option) :] or next(tokens)
+            if option == "-include":
+                continue
             if option != "-imacros":
                 incs += [option, value]
             elif Path(value).resolve() == Path(args.autoconf).resolve():
@@ -165,7 +167,11 @@ def config_header(autoconf):
 def check_headers(args, flags, incs, config_h, toolchain_root):
     """Check the headers the SDK header includes."""
     roots = [Path(args.zephyr_base) / "include", Path(args.binary_dir) / "include/generated"]
-    deps = dependencies(args, resolve(flags, roots[0], config_h) + incs, config_h.parent)
+    kit_incs = []
+    for option, value in zip(incs[::2], incs[1::2], strict=True):
+        if any(under(value, root) is not None for root in roots):
+            kit_incs += [option, value]
+    deps = dependencies(args, resolve(flags, roots[0], config_h) + kit_incs, config_h.parent)
     for dep in deps:
         if dep.resolve() == config_h.resolve():
             continue

@@ -17,7 +17,8 @@
 #                    [SKIP_KEY_CHECK])
 #
 # compiles the sources with the flags and headers of the kit, with the
-# definitions of APP_EDK_DEFINES in place of those of the firmware, links them
+# definitions of APP_EDK_DEFINES in place of those of the firmware and without
+# the headers the firmware forces into every file with -include, links them
 # into <target>.llext, refuses a module importing a symbol outside
 # abi/app_imports.txt and signs a manifest for it, <target>.manifest, the
 # manifest followed by its signature. <target>.manifest.inc and
@@ -69,8 +70,13 @@ function(app_edk_add_module target)
   find_package(Python3 3.9 REQUIRED COMPONENTS Interpreter)
 
   set(cflags)
+  set(skip_next FALSE)
   foreach(flag IN LISTS LLEXT_CFLAGS)
-    if(NOT flag MATCHES "^-D")
+    if(skip_next)
+      set(skip_next FALSE)
+    elseif(flag STREQUAL "-include")
+      set(skip_next TRUE)
+    elseif(NOT flag MATCHES "^-D" AND NOT flag MATCHES "^-include.")
       list(APPEND cflags ${flag})
     endif()
   endforeach()
