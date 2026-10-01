@@ -2,7 +2,7 @@
 #
 # SPDX-License-Identifier: Apache-2.0
 
-'''west "app" command: install a signed application on a running device.'''
+'''west "app" command: inspect a signed application and install it on a device.'''
 
 import argparse
 import base64
@@ -31,7 +31,7 @@ except ImportError as e:
 MANIFEST_HDR_FMT = '<IHH'
 MANIFEST_FIELDS_FMT = '<II32s32s16sIHHIIQQI'
 MANIFEST_MAGIC = 0x34464D41
-MANIFEST_MAGIC_V3 = 0x33464D41
+MANIFEST_MAGIC_PREFIX = 0x00464D41
 MANIFEST_FORMAT = 4
 MANIFEST_MIN_LEN = 160
 MANIFEST_MAX_LEN = 256
@@ -54,6 +54,55 @@ REQUEST_TIMEOUT = 5.0
 INSTALL_TIMEOUT = 60.0
 
 ANSI_ESCAPE = re.compile(r'\x1b\[[0-9;]*[A-Za-z]')
+
+CAPS_H = Path(__file__).resolve().parents[2] / 'include/zephyr/app_platform/app_caps.h'
+
+
+def retired_format(blob):
+    '''The format number of a manifest of a retired format, 'A' 'M' 'F' and a
+    digit below the current format, or 0.'''
+    if len(blob) < 4:
+        return 0
+    (magic,) = struct.unpack_from('<I', blob)
+    digit = magic >> 24
+    if (
+        magic & 0xFFFFFF != MANIFEST_MAGIC_PREFIX
+        or not ord('1') <= digit < ord('0') + MANIFEST_FORMAT
+    ):
+        return 0
+    return digit - ord('0')
+
+
+def caps_names(caps, caps_h=CAPS_H):
+    '''Capability names without the APP_CAP_ prefix, comma-separated, for the
+    bits set in caps; a bit app_caps.h does not name is shown as bitN.'''
+    bits = {}
+    if caps_h.is_file():
+        for m in re.finditer(
+            r'#define\s+APP_CAP_(\w+)\s+APP_CAP_BIT\((\d+)\)', caps_h.read_text(encoding='utf-8')
+        ):
+            bits[int(m.group(2))] = m.group(1)
+    names = [bits.get(bit, f'bit{bit}') for bit in range(64) if caps >> bit & 1]
+    return ','.join(names) if names else 'none'
+
+
+def describe(manifest, caps_h=CAPS_H):
+    '''The fields of a parsed manifest as lines of text.'''
+    key_id = manifest['key_id']
+    key = f'{key_id} (development key)' if key_id == 0 else str(key_id)
+    return [
+        f'name:           {manifest["name"]}',
+        f'version:        {manifest["version"]}',
+        f'module length:  {manifest["module_len"]}',
+        f'signing key id: {key}',
+        f'requested caps: {caps_names(manifest["requested_caps"], caps_h)} '
+        f'(0x{manifest["requested_caps"]:x})',
+        f'required caps:  {caps_names(manifest["required_caps"], caps_h)} '
+        f'(0x{manifest["required_caps"]:x})',
+        f'heap size:      {manifest["heap_size"]}',
+        f'abi major:      {manifest["abi_major"]}',
+        f'target:         0x{manifest["target"]:08x}',
+    ]
 
 
 def parse_manifest(blob):
@@ -209,6 +258,10 @@ class App(WestCommand):
             dedent('''
             Manage app_platform applications on a running device.
 
+            The "info" subcommand prints the signed manifest of a bundle: the
+            application name and version, the id of the key that signed it,
+            and the capabilities it requests and requires.
+
             The "install" subcommand uploads a signed application bundle
             (<name>.llext and <name>.manifest) over the SMP transport of the
             device's serial shell into its storage, then runs
@@ -226,6 +279,30 @@ class App(WestCommand):
             formatter_class=argparse.RawDescriptionHelpFormatter,
         )
         subparsers = parser.add_subparsers(dest='subcommand', metavar='<subcommand>', required=True)
+
+        info = subparsers.add_parser(
+            'info',
+            help='show the signed manifest of an application bundle',
+            formatter_class=argparse.RawDescriptionHelpFormatter,
+            description=dedent('''
+            Show the signed manifest of an application bundle.
+
+            The bundle is searched for below the build directory: a
+            <name>.manifest holding the signed manifest followed by its
+            signature, next to the <name>.llext module it covers.
+
+            ''')
+            + FIND_BUILD_DIR_DESCRIPTION,
+        )
+        info.add_argument(
+            '-d',
+            '--build-dir',
+            metavar='DIR',
+            help='build directory, or any directory holding a bundle',
+        )
+        info.add_argument(
+            '-n', '--name', help='application to show when the directory holds several'
+        )
 
         install = subparsers.add_parser(
             'install',
@@ -262,6 +339,9 @@ class App(WestCommand):
         return parser
 
     def do_run(self, args, unknown_args):
+        if args.subcommand == 'info':
+            self.info(args)
+            return
         if MISSING_REQUIREMENT is not None:
             self.die(
                 f'missing Python module "{MISSING_REQUIREMENT}"; install scripts/requirements.txt'
@@ -290,8 +370,9 @@ class App(WestCommand):
         blob = mf_path.read_bytes()
         manifest = parse_manifest(blob)
         if manifest is None:
-            if blob[:4] == struct.pack('<I', MANIFEST_MAGIC_V3):
-                self.wrn(f'{mf_path}: manifest of the previous format; rebuild it, skipped')
+            fmt = retired_format(blob)
+            if fmt != 0:
+                self.wrn(f'{mf_path}: manifest format {fmt} is retired; rebuild it, skipped')
             return None
         if manifest['module_len'] != llext_path.stat().st_size:
             self.wrn(
@@ -301,15 +382,27 @@ class App(WestCommand):
             return None
         return manifest
 
-    def install(self, args):
+    def bundle_dir(self, args):
         directory = Path(find_build_dir(args.build_dir))
         if not directory.is_dir():
             self.die(f'{directory} is not a directory')
+        return directory
 
-        manifest, llext_path, mf_path = self.find_bundle(directory, args.name)
+    def info(self, args):
+        manifest, llext_path, mf_path = self.find_bundle(self.bundle_dir(args), args.name)
+        self.inf(f'{mf_path}:')
+        for line in describe(manifest):
+            self.inf(f'  {line}')
+
+    def install(self, args):
+        manifest, llext_path, mf_path = self.find_bundle(self.bundle_dir(args), args.name)
         name = manifest['name']
         mount = args.mount_point.rstrip('/')
-        self.inf(f'installing "{name}" v{manifest["version"]} from {llext_path.parent}')
+        self.inf(
+            f'installing "{name}" v{manifest["version"]} from {llext_path.parent}, '
+            f'signed with key {manifest["key_id"]}, '
+            f'requesting {caps_names(manifest["requested_caps"])}'
+        )
 
         try:
             smp = SmpSerial(args.port, args.baud)
