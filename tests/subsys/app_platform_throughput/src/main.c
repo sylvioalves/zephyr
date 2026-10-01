@@ -92,3 +92,4 @@ static void *throughput_setup(void)
 }
 
 ZTEST_SUITE(net, NULL, throughput_setup, NULL, NULL, NULL);
+ZTEST_SUITE(bulk, NULL, throughput_setup, NULL, NULL, NULL);

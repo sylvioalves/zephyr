@@ -1,0 +1,53 @@
+/*
+ * Copyright (c) 2026 Espressif Systems (Shanghai) Co., Ltd.
+ *
+ * SPDX-License-Identifier: Apache-2.0
+ */
+
+/* Thirty-two GPIO lines on two emulated ports, the last one active low, and an
+ * emulated die-temperature sensor.
+ */
+
+#include <zephyr/dt-bindings/gpio/gpio.h>
+
+/ {
+	aliases {
+		die-temp0 = &bulk_sensor;
+	};
+
+	bulk_gpio_a: bulk_gpio_a {
+		compatible = "zephyr,gpio-emul";
+		gpio-controller;
+		#gpio-cells = <2>;
+		ngpios = <24>;
+		status = "okay";
+	};
+
+	bulk_gpio_b: bulk_gpio_b {
+		compatible = "zephyr,gpio-emul";
+		gpio-controller;
+		#gpio-cells = <2>;
+		ngpios = <8>;
+		status = "okay";
+	};
+
+	bulk_sensor: bulk_sensor {
+		compatible = "zephyr,generic-emul-sensor";
+		status = "okay";
+	};
+
+	app_platform {
+		compatible = "zephyr,app-platform";
+		gpios = <&bulk_gpio_a 0 0>, <&bulk_gpio_a 1 0>, <&bulk_gpio_a 2 0>,
+			<&bulk_gpio_a 3 0>, <&bulk_gpio_a 4 0>, <&bulk_gpio_a 5 0>,
+			<&bulk_gpio_a 6 0>, <&bulk_gpio_a 7 0>, <&bulk_gpio_a 8 0>,
+			<&bulk_gpio_a 9 0>, <&bulk_gpio_a 10 0>, <&bulk_gpio_a 11 0>,
+			<&bulk_gpio_a 12 0>, <&bulk_gpio_a 13 0>, <&bulk_gpio_a 14 0>,
+			<&bulk_gpio_a 15 0>, <&bulk_gpio_a 16 0>, <&bulk_gpio_a 17 0>,
+			<&bulk_gpio_a 18 0>, <&bulk_gpio_a 19 0>, <&bulk_gpio_a 20 0>,
+			<&bulk_gpio_a 21 0>, <&bulk_gpio_a 22 0>, <&bulk_gpio_a 23 0>,
+			<&bulk_gpio_b 0 0>, <&bulk_gpio_b 1 0>, <&bulk_gpio_b 2 0>,
+			<&bulk_gpio_b 3 0>, <&bulk_gpio_b 4 0>, <&bulk_gpio_b 5 0>,
+			<&bulk_gpio_b 6 0>, <&bulk_gpio_b 7 GPIO_ACTIVE_LOW>;
+	};
+};
