@@ -236,6 +236,46 @@ available in the Zephyr build system:
    The ``LLEXT_EDK`` prefix in the variable names may be changed with the
    :kconfig:option:`CONFIG_LLEXT_EDK_NAME` option.
 
+EDK content
+-----------
+
+By default, the EDK holds every header of the include directories the application is compiled
+with, and the :file:`autoconf.h` configuration header of the application. A subsystem or an
+application can change and extend this content with the following CMake functions:
+
+:cmake:command:`zephyr_llext_edk_include`
+    Selects include directories and headers. When
+    :kconfig:option:`CONFIG_LLEXT_EDK_HEADERS_SELECTED` is enabled, the EDK holds only the selected
+    include directories, the selected headers and the headers these include from the include
+    directories of the application, which are found by preprocessing the selected headers with the
+    EDK compile flags. Headers that are not part of the EDK cannot be included by extensions.
+
+:cmake:command:`zephyr_llext_edk_config_header`
+    Ships a header in place of :file:`autoconf.h`, for example one that holds only the
+    configuration options the selected headers use.
+
+:cmake:command:`zephyr_llext_edk_add_files`
+    Adds files and directories to the EDK, such as scripts or data files used to build or package
+    extensions.
+
+A file added with the ``CMAKE_MODULE`` option of ``zephyr_llext_edk_add_files()`` is a CMake module
+for extension projects, such as one defining helper functions. The paths of these modules are
+listed in the ``LLEXT_CMAKE_MODULES`` variable of :file:`cmake.cflags`, which is only defined when
+there is at least one module. An extension project includes them after :file:`cmake.cflags`:
+
+.. code-block:: cmake
+
+   include(${LLEXT_EDK_INSTALL_DIR}/cmake.cflags)
+   foreach(module IN LISTS LLEXT_CMAKE_MODULES)
+     include(${module})
+   endforeach()
+
+The ``llext-edk`` target depends on the generated headers of the build, but not on the application
+itself, so an application can also build extensions with its own EDK and embed them, as
+:zephyr_file:`tests/misc/llext-edk/profile` does. Headers that are only generated when the
+application is linked are part of the EDK only if the application was linked before the EDK was
+generated.
+
 .. _llext_kconfig_edk:
 
 LLEXT EDK Kconfig options
@@ -251,6 +291,11 @@ The LLEXT EDK can be configured using the following Kconfig options:
     If set, the EDK will include headers that do not contain code to route
     syscalls to the kernel. This is useful when building extensions that will
     run exclusively in user mode.
+
+:kconfig:option:`CONFIG_LLEXT_EDK_HEADERS_SELECTED`
+    If set, the EDK will include only the headers selected with
+    ``zephyr_llext_edk_include()`` and the headers they include, instead of
+    every header of the application include directories.
 
 EDK Sample
 ----------
