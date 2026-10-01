@@ -4,7 +4,7 @@
  * SPDX-License-Identifier: Apache-2.0
  */
 
-/* Additional loader negatives: wrong key, truncated, padded, name mismatch,
+/* Additional loader negatives: unknown key, truncated, padded, name mismatch,
  * foreign ABI or target, foreign ELF class, CPU or ELF flags, forbidden imports
  * and the manifest format.
  */
@@ -29,9 +29,6 @@ static const uint8_t mod_manifest[] = {
 };
 static const uint8_t mod_sig[] = {
 #include "test_mod.sig.inc"
-};
-static const uint8_t mod_pubkey[] = {
-#include "test_mod.pubkey.inc"
 };
 static const uint8_t badabi_manifest[] = {
 #include "test_mod.badabi.manifest.inc"
@@ -69,28 +66,24 @@ static const uint8_t forbidden_sig[] = {
 
 #define MANIFEST_RETIRED_LEN 124U
 
-static int load_key(const struct app_manifest *mf, const uint8_t *key,
-		    size_t key_len, uint8_t *buf, size_t len, struct llext **ext)
+static int load_signed(const struct app_manifest *mf, uint8_t *buf, size_t len, struct llext **ext)
 {
 	void *entry = NULL;
 
 	return app_loader_verify_load_manifest(mf, sizeof(*mf), mod_sig, ARRAY_SIZE(mod_sig), buf,
-					       len, key, key_len, "app_main", ext,
-					       &entry);
+					       len, "app_main", ext, &entry);
 }
 
-ZTEST(loader_neg, test_wrong_key_rejected)
+ZTEST(loader_neg, test_unknown_key_rejected)
 {
 	struct app_manifest mf;
 	struct llext *ext = NULL;
-	uint8_t key[65];
 
 	memcpy(&mf, mod_manifest, sizeof(mf));
 	memcpy(module_work, mod_bytes, ARRAY_SIZE(mod_bytes));
-	memcpy(key, mod_pubkey, sizeof(key));
-	key[10] ^= 0x55; /* a different (invalid or foreign) public point */
-	zassert_equal(load_key(&mf, key, sizeof(key), module_work, ARRAY_SIZE(mod_bytes),
-			       &ext), -EPERM, "wrong key must be rejected");
+	mf.key_id = 0xa5a5a5a5U;
+	zassert_equal(load_signed(&mf, module_work, ARRAY_SIZE(mod_bytes), &ext), -ENXIO,
+		      "a key this firmware does not hold must be rejected");
 	zassert_is_null(ext);
 }
 
@@ -102,8 +95,7 @@ ZTEST(loader_neg, test_truncated_module_rejected)
 	memcpy(&mf, mod_manifest, sizeof(mf));
 	memcpy(module_work, mod_bytes, ARRAY_SIZE(mod_bytes));
 	/* Manifest untouched, module cut short: length binds first. */
-	int rc = load_key(&mf, mod_pubkey, ARRAY_SIZE(mod_pubkey), module_work,
-			  ARRAY_SIZE(mod_bytes) / 2, &ext);
+	int rc = load_signed(&mf, module_work, ARRAY_SIZE(mod_bytes) / 2, &ext);
 
 	zassert_equal(rc, -EPERM, "truncated module must be rejected (%d)", rc);
 	zassert_is_null(ext);
@@ -117,8 +109,7 @@ ZTEST(loader_neg, test_padded_module_rejected)
 	memcpy(&mf, mod_manifest, sizeof(mf));
 	memcpy(module_work, mod_bytes, ARRAY_SIZE(mod_bytes));
 	memset(module_work + ARRAY_SIZE(mod_bytes), 0x90, 256);
-	int rc = load_key(&mf, mod_pubkey, ARRAY_SIZE(mod_pubkey), module_work,
-			  ARRAY_SIZE(mod_bytes) + 256, &ext);
+	int rc = load_signed(&mf, module_work, ARRAY_SIZE(mod_bytes) + 256, &ext);
 
 	zassert_equal(rc, -EPERM, "padded module must be rejected (%d)", rc);
 	zassert_is_null(ext);
@@ -132,8 +123,7 @@ ZTEST(loader_neg, test_name_mismatch_rejected)
 	memcpy(&mf, mod_manifest, sizeof(mf));
 	memcpy(module_work, mod_bytes, ARRAY_SIZE(mod_bytes));
 	strncpy(mf.name, "impostor", sizeof(mf.name) - 1);
-	int rc = load_key(&mf, mod_pubkey, ARRAY_SIZE(mod_pubkey), module_work,
-			  ARRAY_SIZE(mod_bytes), &ext);
+	int rc = load_signed(&mf, module_work, ARRAY_SIZE(mod_bytes), &ext);
 
 	zassert_equal(rc, -EPERM, "renamed manifest must be rejected (%d)", rc);
 	zassert_is_null(ext);
@@ -147,8 +137,7 @@ ZTEST(loader_neg, test_version_field_tamper_rejected)
 	memcpy(&mf, mod_manifest, sizeof(mf));
 	memcpy(module_work, mod_bytes, ARRAY_SIZE(mod_bytes));
 	mf.version += 1; /* bump the version without re-signing */
-	int rc = load_key(&mf, mod_pubkey, ARRAY_SIZE(mod_pubkey), module_work,
-			  ARRAY_SIZE(mod_bytes), &ext);
+	int rc = load_signed(&mf, module_work, ARRAY_SIZE(mod_bytes), &ext);
 
 	zassert_equal(rc, -EPERM, "version tamper must be rejected (%d)", rc);
 	zassert_is_null(ext);
@@ -162,8 +151,7 @@ ZTEST(loader_neg, test_heap_size_tamper_rejected)
 	memcpy(&mf, mod_manifest, sizeof(mf));
 	memcpy(module_work, mod_bytes, ARRAY_SIZE(mod_bytes));
 	mf.heap_size += 4096U; /* enlarge the heap without re-signing */
-	int rc = load_key(&mf, mod_pubkey, ARRAY_SIZE(mod_pubkey), module_work,
-			  ARRAY_SIZE(mod_bytes), &ext);
+	int rc = load_signed(&mf, module_work, ARRAY_SIZE(mod_bytes), &ext);
 
 	zassert_equal(rc, -EPERM, "heap size tamper must be rejected (%d)", rc);
 	zassert_is_null(ext);
@@ -179,8 +167,7 @@ ZTEST(loader_neg, test_foreign_abi_rejected)
 	memcpy(module_work, mod_bytes, ARRAY_SIZE(mod_bytes));
 	int rc = app_loader_verify_load_manifest(&mf, sizeof(mf), badabi_sig,
 						 ARRAY_SIZE(badabi_sig), module_work,
-						 ARRAY_SIZE(mod_bytes), mod_pubkey,
-						 ARRAY_SIZE(mod_pubkey), "app_main", &ext, &entry);
+						 ARRAY_SIZE(mod_bytes), "app_main", &ext, &entry);
 
 	zassert_equal(rc, -ENOEXEC, "foreign ABI must be rejected (%d)", rc);
 	zassert_is_null(ext);
@@ -197,9 +184,8 @@ ZTEST(loader_neg, test_file_foreign_abi_rejected)
 	zassert_equal(app_registry_store_blob("abiapp", mod_bytes, ARRAY_SIZE(mod_bytes)), 0);
 	zassert_equal(app_registry_blob_path("abiapp", path, sizeof(path)), 0);
 	int rc = app_loader_verify_load_manifest_file(&mf, sizeof(mf), badabi_sig,
-						      ARRAY_SIZE(badabi_sig), path, mod_pubkey,
-						      ARRAY_SIZE(mod_pubkey), "app_main", &ext,
-						      &entry);
+						      ARRAY_SIZE(badabi_sig), path, "app_main",
+						      &ext, &entry);
 
 	(void)fs_unlink(path);
 	zassert_equal(rc, -ENOEXEC, "foreign ABI must be rejected (%d)", rc);
@@ -220,8 +206,7 @@ ZTEST(loader_neg, test_foreign_target_rejected)
 	memcpy(module_work, mod_bytes, ARRAY_SIZE(mod_bytes));
 	int rc = app_loader_verify_load_manifest(&mf, sizeof(mf), target_sig,
 						 ARRAY_SIZE(target_sig), module_work,
-						 ARRAY_SIZE(mod_bytes), mod_pubkey,
-						 ARRAY_SIZE(mod_pubkey), "app_main", &ext, &entry);
+						 ARRAY_SIZE(mod_bytes), "app_main", &ext, &entry);
 
 	zassert_equal(rc, -ENOEXEC, "foreign target must be rejected (%d)", rc);
 	zassert_is_null(ext);
@@ -246,8 +231,7 @@ ZTEST(loader_neg, test_forbidden_import_rejected)
 	memcpy(module_work, forbidden_bytes, ARRAY_SIZE(forbidden_bytes));
 	rc = app_loader_verify_load_manifest(&mf, sizeof(mf), forbidden_sig,
 					     ARRAY_SIZE(forbidden_sig), module_work,
-					     ARRAY_SIZE(forbidden_bytes), mod_pubkey,
-					     ARRAY_SIZE(mod_pubkey), "app_main", &ext, &entry);
+					     ARRAY_SIZE(forbidden_bytes), "app_main", &ext, &entry);
 	zassert_equal(rc, -EACCES, "forbidden import must be rejected (%d)", rc);
 	zassert_is_null(ext);
 
@@ -255,8 +239,8 @@ ZTEST(loader_neg, test_forbidden_import_rejected)
 					      ARRAY_SIZE(forbidden_bytes)), 0);
 	zassert_equal(app_registry_blob_path("forbidden", path, sizeof(path)), 0);
 	rc = app_loader_verify_load_manifest_file(&mf, sizeof(mf), forbidden_sig,
-						  ARRAY_SIZE(forbidden_sig), path, mod_pubkey,
-						  ARRAY_SIZE(mod_pubkey), "app_main", &ext, &entry);
+						  ARRAY_SIZE(forbidden_sig), path, "app_main", &ext,
+						  &entry);
 	(void)fs_unlink(path);
 	zassert_equal(rc, -EACCES, "forbidden import must be rejected from a file (%d)", rc);
 	zassert_is_null(ext);
@@ -320,8 +304,8 @@ static int load_mf(const union app_manifest_buf *mb, size_t mf_len, const uint8_
 
 	memcpy(module_work, mod_bytes, ARRAY_SIZE(mod_bytes));
 	return app_loader_verify_load_manifest(&mb->mf, mf_len, sig, APP_MANIFEST_SIG_LEN,
-					       module_work, ARRAY_SIZE(mod_bytes), mod_pubkey,
-					       ARRAY_SIZE(mod_pubkey), "app_main", ext, &entry);
+					       module_work, ARRAY_SIZE(mod_bytes), "app_main", ext,
+					       &entry);
 }
 
 static int load_mf_file(const char *name, const union app_manifest_buf *mb, size_t mf_len,
@@ -343,8 +327,7 @@ static int load_mf_file(const char *name, const union app_manifest_buf *mb, size
 	zassert_mem_equal(got.raw, mb->raw, mf_len, "stored manifest changed");
 	zassert_equal(app_registry_blob_path(name, path, sizeof(path)), 0);
 	rc = app_loader_verify_load_manifest_file(&got.mf, got_len, got_sig, sizeof(got_sig), path,
-						  mod_pubkey, ARRAY_SIZE(mod_pubkey), "app_main",
-						  ext, &entry);
+						  "app_main", ext, &entry);
 	(void)app_registry_install(name, false);
 	zassert_equal(app_registry_uninstall(name), 0);
 	return rc;

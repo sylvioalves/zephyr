@@ -33,9 +33,6 @@ static const uint8_t mod_manifest[] = {
 static const uint8_t mod_sig[] = {
 #include "test_mod.sig.inc"
 };
-static const uint8_t mod_pubkey[] = {
-#include "test_mod.pubkey.inc"
-};
 static const uint8_t absent_bytes[] __aligned(8) = {
 #include "absent_mod.inc"
 };
@@ -51,8 +48,8 @@ ZTEST(module_abi, test_kernel_services)
 	memcpy(module_work, mod_bytes, sizeof(mod_bytes));
 	memcpy(&mf, mod_manifest, sizeof(mf));
 	zassert_equal(app_loader_verify_load_manifest(&mf, sizeof(mf), mod_sig, sizeof(mod_sig),
-						      module_work, sizeof(mod_bytes), mod_pubkey,
-						      sizeof(mod_pubkey), "app_main", &ext, &entry),
+						      module_work, sizeof(mod_bytes), "app_main",
+						      &ext, &entry),
 		      0);
 
 	module_watch(mf.name);
@@ -72,8 +69,8 @@ ZTEST(module_abi, test_64bit_division)
 	memcpy(module_work, mod_bytes, sizeof(mod_bytes));
 	memcpy(&mf, mod_manifest, sizeof(mf));
 	zassert_equal(app_loader_verify_load_manifest(&mf, sizeof(mf), mod_sig, sizeof(mod_sig),
-						      module_work, sizeof(mod_bytes), mod_pubkey,
-						      sizeof(mod_pubkey), "app_main", &ext, &entry),
+						      module_work, sizeof(mod_bytes), "app_main",
+						      &ext, &entry),
 		      0);
 
 	module_watch(mf.name);

@@ -5,8 +5,8 @@ find_package(Zephyr REQUIRED HINTS $ENV{ZEPHYR_BASE})
 project(app_fetch)
 
 # Identity bound into the manifest of the reference app the server hosts. The
-# host signs the served app with the same key; the device verifies against the
-# embedded public key.
+# host signs the served app with the development key; the device verifies it
+# against the trusted key table compiled into the firmware.
 set(APP_NAME    "weather")
 set(APP_VERSION 1)
 set(APP_REQUESTED_CAPS LOG,RANDOM)
@@ -19,7 +19,6 @@ set(bin ${PROJECT_BINARY_DIR}/llext/fetch_app.llext)
 set(inc ${ZEPHYR_BINARY_DIR}/include/generated/fetch_app.inc)
 set(mf  ${ZEPHYR_BINARY_DIR}/include/generated/fetch_app.manifest.inc)
 set(sig ${ZEPHYR_BINARY_DIR}/include/generated/fetch_app.sig.inc)
-set(pub ${ZEPHYR_BINARY_DIR}/include/generated/fetch_app.pubkey.inc)
 set(serve_dir ${PROJECT_BINARY_DIR}/serve)
 set(served_ext ${serve_dir}/${APP_NAME}.llext)
 set(served_mf ${serve_dir}/${APP_NAME}.manifest)
@@ -29,11 +28,10 @@ llext_include_directories(fetch_ext ${ZEPHYR_BINARY_DIR}/include/generated)
 generate_inc_file_for_target(app ${bin} ${inc})
 
 # Sign a manifest binding the served app's name, version and module hash. The
-# device embeds only the public key. The app and its signed manifest are also
-# written to the serve directory for the HTTP server to host. The private key
-# is generated once and never compiled in.
+# app and its signed manifest are also written to the serve directory for the
+# HTTP server to host. The private key is generated once and never compiled in.
 add_custom_command(
-  OUTPUT  ${mf} ${sig} ${pub} ${served_ext} ${served_mf}
+  OUTPUT  ${mf} ${sig} ${served_ext} ${served_mf}
   COMMAND ${CMAKE_COMMAND} -E make_directory ${serve_dir}
   COMMAND ${CMAKE_COMMAND} -E copy ${bin} ${served_ext}
   COMMAND ${CMAKE_COMMAND}
@@ -46,12 +44,11 @@ add_custom_command(
     -DABI_FILE=${APP_PLATFORM_ABI_FILE}
     -DOUT_MF_INC=${mf}
     -DOUT_SIG_INC=${sig}
-    -DOUT_PUB_INC=${pub}
     -DOUT_MANIFEST=${served_mf}
     -DPYTHON_EXECUTABLE=${PYTHON_EXECUTABLE}
     -P ${ZEPHYR_BASE}/subsys/app_platform/cmake/sign_module.cmake
   DEPENDS ${bin} ${APP_PLATFORM_ABI_FILE}
 )
-add_custom_target(fetch_sign DEPENDS ${mf} ${sig} ${pub})
+add_custom_target(fetch_sign DEPENDS ${mf} ${sig})
 add_dependencies(fetch_sign app_platform_abi)
 add_dependencies(app fetch_sign)

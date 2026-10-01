@@ -126,6 +126,32 @@ if(CONFIG_APP_PLATFORM_LOADER)
   string(SHA256 target "${target_desc}")
   string(SUBSTRING ${target} 0 8 target)
 
+  # The keys trusted to sign modules: the development key when enabled and the
+  # publisher keys of the key list, as C initializers for the loader and as
+  # JSON for the signer.
+  set(keys_script ${CMAKE_CURRENT_SOURCE_DIR}/cmake/gen_app_keys.py)
+  set(keys_json ${ZEPHYR_BINARY_DIR}/app_platform_keys.json)
+  set(keys_args --caps ${abi_caps_h} --out-inc ${abi_gen_dir}/app_keys.inc
+    --out-json ${keys_json})
+  if(NOT "${CONFIG_APP_PLATFORM_KEYS_FILE}" STREQUAL "")
+    get_filename_component(keys_file ${CONFIG_APP_PLATFORM_KEYS_FILE} ABSOLUTE
+      BASE_DIR ${APPLICATION_SOURCE_DIR})
+    list(APPEND keys_args --keys ${keys_file})
+  endif()
+  if(CONFIG_APP_PLATFORM_DEV_KEY)
+    get_filename_component(dev_key ${CONFIG_APP_PLATFORM_DEV_KEY_FILE} ABSOLUTE
+      BASE_DIR ${APPLICATION_SOURCE_DIR})
+    list(APPEND keys_args --dev-key ${dev_key})
+  endif()
+  execute_process(
+    COMMAND ${PYTHON_EXECUTABLE} ${keys_script} ${keys_args}
+    OUTPUT_VARIABLE keys_deps
+    RESULT_VARIABLE rc)
+  if(NOT rc EQUAL 0)
+    message(FATAL_ERROR "could not build the table of trusted signing keys")
+  endif()
+  set_property(DIRECTORY APPEND PROPERTY CMAKE_CONFIGURE_DEPENDS ${keys_script} ${keys_deps})
+
   file(GENERATE OUTPUT ${APP_PLATFORM_ABI_FILE} CONTENT
     "abi_major=${abi_major}
 target=0x${target}

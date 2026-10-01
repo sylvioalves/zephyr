@@ -12,7 +12,7 @@ target_sources(app PRIVATE src/main.c src/renumber_probe.c)
 set(producer_dir ${CMAKE_BINARY_DIR}/../app_abi_producer/zephyr/include/generated)
 set(copy_dir ${ZEPHYR_BINARY_DIR}/include/generated/producer)
 foreach(name renumber_mod.inc renumber_mod.manifest.inc renumber_mod.sig.inc
-             renumber_mod.pubkey.inc renumber_facts.h)
+             renumber_facts.h)
   list(APPEND producer_files ${producer_dir}/${name})
   list(APPEND copied_files ${copy_dir}/${name})
 endforeach()

@@ -34,9 +34,6 @@ static const uint8_t mod_manifest[] = {
 static const uint8_t mod_sig[] = {
 #include "test_mod.sig.inc"
 };
-static const uint8_t mod_pubkey[] = {
-#include "test_mod.pubkey.inc"
-};
 
 static struct app_manifest manifest_copy(void)
 {
@@ -59,9 +56,8 @@ static int load_with(const struct app_manifest *mf, const uint8_t *sig,
 {
 	void *entry = NULL;
 
-	return app_loader_verify_load_manifest(mf, sizeof(*mf), sig, sig_len, buf, len,
-					       mod_pubkey, ARRAY_SIZE(mod_pubkey),
-					       "app_main", ext, &entry);
+	return app_loader_verify_load_manifest(mf, sizeof(*mf), sig, sig_len, buf, len, "app_main",
+					       ext, &entry);
 }
 
 /* ---- registry ---- */
@@ -384,8 +380,7 @@ static int load_file_with(const uint8_t *bytes, size_t len, struct llext **ext)
 	zassert_equal(app_registry_store_blob("fileapp", bytes, len), 0);
 	zassert_equal(app_registry_blob_path("fileapp", path, sizeof(path)), 0);
 	rc = app_loader_verify_load_manifest_file(&mf, sizeof(mf), mod_sig, ARRAY_SIZE(mod_sig),
-						  path, mod_pubkey, ARRAY_SIZE(mod_pubkey),
-						  "app_main", ext, &entry);
+						  path, "app_main", ext, &entry);
 	(void)fs_unlink(path);
 	return rc;
 }
@@ -581,9 +576,7 @@ ZTEST(lifecycle, test_restart_refused_for_loaded_app)
 	void *entry = NULL;
 
 	zassert_equal(app_loader_verify_load_manifest(&mf, sizeof(mf), mod_sig, ARRAY_SIZE(mod_sig),
-						      module_work, len, mod_pubkey,
-						      ARRAY_SIZE(mod_pubkey), "app_main", &ext,
-						      &entry),
+						      module_work, len, "app_main", &ext, &entry),
 		      0);
 
 	module_watch(mf.name);
@@ -773,8 +766,8 @@ ZTEST(lifecycle, test_launch_stopped_module)
 
 		zassert_equal(app_loader_verify_load_manifest(&mf, sizeof(mf), mod_sig,
 							      ARRAY_SIZE(mod_sig), module_work, len,
-							      mod_pubkey, ARRAY_SIZE(mod_pubkey),
-							      "app_main", &ext, &entry), 0);
+							      "app_main", &ext, &entry),
+			      0);
 		module_watch(mf.name);
 		id = app_platform_launch_llext_opts(mf.name, ext, (app_entry_t)entry, NULL,
 						    APP_CAP_LOG, &opts);

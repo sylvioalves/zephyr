@@ -29,9 +29,6 @@ static const uint8_t mod_manifest[] = {
 static const uint8_t mod_sig[] = {
 #include "producer/renumber_mod.sig.inc"
 };
-static const uint8_t mod_pubkey[] = {
-#include "producer/renumber_mod.pubkey.inc"
-};
 
 static uint8_t work[8192] __aligned(8);
 
@@ -89,8 +86,8 @@ ZTEST(app_abi_renumber, test_foreign_module_runs)
 	memcpy(work, mod_bytes, sizeof(mod_bytes));
 	memcpy(&mf, mod_manifest, sizeof(mf));
 	zassert_equal(app_loader_verify_load_manifest(&mf, sizeof(mf), mod_sig, sizeof(mod_sig),
-						      work, sizeof(mod_bytes), mod_pubkey,
-						      sizeof(mod_pubkey), "app_main", &ext, &entry),
+						      work, sizeof(mod_bytes), "app_main", &ext,
+						      &entry),
 		      0);
 
 	id = app_platform_launch_llext(mf.name, ext, (app_entry_t)entry, NULL,

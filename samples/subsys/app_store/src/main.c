@@ -27,7 +27,7 @@
 #include <errno.h>
 
 /* The "downloaded" release: module bytes, the signed manifest binding name,
- * version and hash, its signature, and the trusted public key.
+ * version and hash, and its signature.
  */
 static uint8_t module_buf[] = {
 #include "blink_app.inc"
@@ -37,9 +37,6 @@ static const uint8_t module_manifest[] = {
 };
 static const uint8_t module_sig[] = {
 #include "blink_app.sig.inc"
-};
-static const uint8_t module_pubkey[] = {
-#include "blink_app.pubkey.inc"
 };
 
 /* The most a loaded application may hold; its manifest requests its own. */
@@ -54,9 +51,7 @@ static int install_and_run(const struct app_manifest *mf, size_t mf_len, const u
 	printk("app-store: installing '%s' v%u (%zu bytes)\n", mf->name,
 	       mf->version, len);
 
-	int rc = app_loader_verify_load_manifest(mf, mf_len, sig, APP_MANIFEST_SIG_LEN,
-						 buf, len, module_pubkey,
-						 ARRAY_SIZE(module_pubkey),
+	int rc = app_loader_verify_load_manifest(mf, mf_len, sig, APP_MANIFEST_SIG_LEN, buf, len,
 						 "app_main", &ext, &entry);
 
 	if (rc != 0) {

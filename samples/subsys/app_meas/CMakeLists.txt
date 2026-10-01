@@ -11,7 +11,6 @@ function(add_sized_module name pad)
   set(inc ${ZEPHYR_BINARY_DIR}/include/generated/${name}.inc)
   set(mf  ${ZEPHYR_BINARY_DIR}/include/generated/${name}.manifest.inc)
   set(sig ${ZEPHYR_BINARY_DIR}/include/generated/${name}.sig.inc)
-  set(pub ${ZEPHYR_BINARY_DIR}/include/generated/${name}.pubkey.inc)
 
   app_platform_add_module(${name}_ext OUTPUT ${bin}
     SOURCES ${PROJECT_SOURCE_DIR}/module/src/pad_app.c)
@@ -20,7 +19,7 @@ function(add_sized_module name pad)
   generate_inc_file_for_target(app ${bin} ${inc})
 
   add_custom_command(
-    OUTPUT  ${mf} ${sig} ${pub}
+    OUTPUT  ${mf} ${sig}
     COMMAND ${CMAKE_COMMAND}
       -DMODULE_BIN=${bin}
       -DKEY_DIR=${CMAKE_CURRENT_SOURCE_DIR}/keys
@@ -31,12 +30,11 @@ function(add_sized_module name pad)
       -DABI_FILE=${APP_PLATFORM_ABI_FILE}
       -DOUT_MF_INC=${mf}
       -DOUT_SIG_INC=${sig}
-      -DOUT_PUB_INC=${pub}
       -DPYTHON_EXECUTABLE=${PYTHON_EXECUTABLE}
       -P ${ZEPHYR_BASE}/subsys/app_platform/cmake/sign_module.cmake
     DEPENDS ${bin} ${APP_PLATFORM_ABI_FILE}
   )
-  add_custom_target(${name}_sign DEPENDS ${mf} ${sig} ${pub})
+  add_custom_target(${name}_sign DEPENDS ${mf} ${sig})
   add_dependencies(${name}_sign app_platform_abi)
   add_dependencies(app ${name}_sign)
 

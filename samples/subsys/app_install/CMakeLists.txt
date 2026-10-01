@@ -5,8 +5,8 @@ find_package(Zephyr REQUIRED HINTS $ENV{ZEPHYR_BASE})
 project(app_install)
 
 # Identity bound into the manifest of the bundled reference app. Uploaded apps
-# are signed on the host with the same key and verified against the public key
-# embedded from this build.
+# are signed on the host with the same key and verified against the trusted key
+# table compiled into this build.
 set(APP_NAME    "uploaded")
 set(APP_VERSION 1)
 set(APP_REQUESTED_CAPS LOG,RANDOM)
@@ -19,7 +19,6 @@ set(bin ${PROJECT_BINARY_DIR}/llext/install_app.llext)
 set(inc ${ZEPHYR_BINARY_DIR}/include/generated/install_app.inc)
 set(mf  ${ZEPHYR_BINARY_DIR}/include/generated/install_app.manifest.inc)
 set(sig ${ZEPHYR_BINARY_DIR}/include/generated/install_app.sig.inc)
-set(pub ${ZEPHYR_BINARY_DIR}/include/generated/install_app.pubkey.inc)
 set(bundle_dir ${PROJECT_BINARY_DIR}/bundle)
 set(bundle_ext ${bundle_dir}/${APP_NAME}.llext)
 set(bundle_mf  ${bundle_dir}/${APP_NAME}.manifest)
@@ -29,12 +28,12 @@ llext_include_directories(install_ext ${ZEPHYR_BINARY_DIR}/include/generated)
 generate_inc_file_for_target(app ${bin} ${inc})
 
 # Sign a manifest binding the name, version and module hash; embed the
-# manifest, signature and trusted public key. The same key signs apps uploaded
+# manifest and signature. The same key signs apps uploaded
 # from the host. The module and its signed manifest are also written to the
 # bundle directory, which "west app install" uploads. The private key is
 # generated once and never compiled in.
 add_custom_command(
-  OUTPUT  ${mf} ${sig} ${pub} ${bundle_ext} ${bundle_mf}
+  OUTPUT  ${mf} ${sig} ${bundle_ext} ${bundle_mf}
   COMMAND ${CMAKE_COMMAND} -E make_directory ${bundle_dir}
   COMMAND ${CMAKE_COMMAND} -E copy ${bin} ${bundle_ext}
   COMMAND ${CMAKE_COMMAND}
@@ -47,12 +46,11 @@ add_custom_command(
     -DABI_FILE=${APP_PLATFORM_ABI_FILE}
     -DOUT_MF_INC=${mf}
     -DOUT_SIG_INC=${sig}
-    -DOUT_PUB_INC=${pub}
     -DOUT_MANIFEST=${bundle_mf}
     -DPYTHON_EXECUTABLE=${PYTHON_EXECUTABLE}
     -P ${ZEPHYR_BASE}/subsys/app_platform/cmake/sign_module.cmake
   DEPENDS ${bin} ${APP_PLATFORM_ABI_FILE}
 )
-add_custom_target(install_sign DEPENDS ${mf} ${sig} ${pub} ${bundle_ext} ${bundle_mf})
+add_custom_target(install_sign DEPENDS ${mf} ${sig} ${bundle_ext} ${bundle_mf})
 add_dependencies(install_sign app_platform_abi)
 add_dependencies(app install_sign)

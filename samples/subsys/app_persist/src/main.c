@@ -46,9 +46,6 @@ static const uint8_t persist_manifest[] = {
 static const uint8_t persist_sig[] = {
 #include "persist.sig.inc"
 };
-static const uint8_t persist_pubkey[] = {
-#include "persist.pubkey.inc"
-};
 
 /* The most a loaded application may hold; its manifest requests its own. */
 #define APP_CAPS_CEILING (APP_CAP_LOG | APP_CAP_TIME | APP_CAP_RANDOM)
@@ -66,9 +63,7 @@ static bool find_record(const char *name, struct app_record *out)
 static int load_from_flash(const struct app_manifest *mf, size_t mf_len, const uint8_t *sig,
 			   const char *path, struct llext **ext, void **entry)
 {
-	return app_loader_verify_load_manifest_file(mf, mf_len, sig, APP_MANIFEST_SIG_LEN,
-						    path, persist_pubkey,
-						    ARRAY_SIZE(persist_pubkey),
+	return app_loader_verify_load_manifest_file(mf, mf_len, sig, APP_MANIFEST_SIG_LEN, path,
 						    "app_main", ext, entry);
 }
 
@@ -85,6 +80,10 @@ static const char *refusal_reason(int rc)
 		return "malformed manifest or not the installed image";
 	case -EACCES:
 		return "older than its record or imports a forbidden symbol";
+	case -ENXIO:
+		return "signed with a key this firmware does not trust";
+	case -ECANCELED:
+		return "signed with a revoked key";
 	default:
 		return "cannot be read or verified";
 	}

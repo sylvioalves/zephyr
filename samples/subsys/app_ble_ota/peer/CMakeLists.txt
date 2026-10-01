@@ -51,12 +51,11 @@ target_sources(app PRIVATE src/main.c)
 set(o_inc ${ZEPHYR_BINARY_DIR}/include/generated/ota_app.inc)
 set(o_mf  ${ZEPHYR_BINARY_DIR}/include/generated/ota_app.manifest.inc)
 set(o_sig ${ZEPHYR_BINARY_DIR}/include/generated/ota_app.sig.inc)
-set(o_pub ${ZEPHYR_BINARY_DIR}/include/generated/ota_app.pubkey.inc)
 
 generate_inc_file_for_target(app ${OTA_MODULE} ${o_inc})
 
 add_custom_command(
-  OUTPUT  ${o_mf} ${o_sig} ${o_pub}
+  OUTPUT  ${o_mf} ${o_sig}
   COMMAND ${CMAKE_COMMAND}
     -DMODULE_BIN=${OTA_MODULE}
     -DKEY_DIR=${CMAKE_CURRENT_SOURCE_DIR}/../keys
@@ -67,10 +66,9 @@ add_custom_command(
     -DABI_FILE=${OTA_ABI}
     -DOUT_MF_INC=${o_mf}
     -DOUT_SIG_INC=${o_sig}
-    -DOUT_PUB_INC=${o_pub}
     -DPYTHON_EXECUTABLE=${PYTHON_EXECUTABLE}
     -P ${ZEPHYR_BASE}/subsys/app_platform/cmake/sign_module.cmake
   DEPENDS ${OTA_MODULE} ${OTA_ABI}
 )
-add_custom_target(ota_sign DEPENDS ${o_mf} ${o_sig} ${o_pub})
+add_custom_target(ota_sign DEPENDS ${o_mf} ${o_sig})
 add_dependencies(app ota_sign)

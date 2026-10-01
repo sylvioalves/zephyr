@@ -219,6 +219,39 @@ config APP_PLATFORM_LOADER_MAX_MODULE_BYTES
 	  exhaust the shared loadable-extension heap and starve the platform or
 	  the other applications. 0 disables the check.
 
+config APP_PLATFORM_KEYS_FILE
+	string "Publisher key list"
+	depends on APP_PLATFORM_LOADER
+	help
+	  YAML file listing the public keys trusted to sign application
+	  modules, each with its key id, capability ceiling, allowed
+	  application name prefix and revocation state. A relative path is
+	  taken from the application source directory. The build compiles
+	  the list into the firmware, and a manifest signed with a key the
+	  list does not hold is refused. Empty for no publisher key.
+
+config APP_PLATFORM_DEV_KEY
+	bool "Accept modules signed with the development key"
+	depends on APP_PLATFORM_LOADER
+	help
+	  Trust the development key, key id 0, with every capability and any
+	  application name. Its private key is generated unprotected next to
+	  the application sources on the first build, so a signature made
+	  with it says nothing about who built a module. Samples and tests
+	  enable it; it must be disabled in products, which list their
+	  publisher keys in APP_PLATFORM_KEYS_FILE instead. The firmware logs
+	  a warning at boot while it is enabled.
+
+config APP_PLATFORM_DEV_KEY_FILE
+	string "Development private key"
+	depends on APP_PLATFORM_DEV_KEY
+	default "keys/app_signing_key.pem"
+	help
+	  PEM file holding the development private key, generated when
+	  missing. A relative path is taken from the application source
+	  directory. The signing script uses the same file when it is given
+	  no other key.
+
 config LLEXT_EXPORT_SYMBOL_GROUP_APP_ABI
 	bool "Export the application module interface"
 	depends on LLEXT

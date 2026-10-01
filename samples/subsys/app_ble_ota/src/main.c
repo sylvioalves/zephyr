@@ -29,10 +29,6 @@
 #include <zephyr/fs/fs.h>
 #include <string.h>
 
-static const uint8_t trusted_pubkey[] = {
-#include "ota_app.pubkey.inc"
-};
-
 static const uint8_t fetcher_app[] = {
 #include "fetcher_app.inc"
 };
@@ -71,10 +67,7 @@ static int install_fetched(const char *name)
 	struct llext *ext = NULL;
 	void *entry = NULL;
 	int64_t t0 = k_uptime_get();
-	int rc = app_loader_verify_load_manifest_file(mf, mf_len, sig,
-						      APP_MANIFEST_SIG_LEN, path,
-						      trusted_pubkey,
-						      ARRAY_SIZE(trusted_pubkey),
+	int rc = app_loader_verify_load_manifest_file(mf, mf_len, sig, APP_MANIFEST_SIG_LEN, path,
 						      "app_main", &ext, &entry);
 
 	if (rc != 0) {

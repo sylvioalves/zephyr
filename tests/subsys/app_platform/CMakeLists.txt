@@ -23,7 +23,6 @@ set(bin ${PROJECT_BINARY_DIR}/llext/test_mod.llext)
 set(inc ${ZEPHYR_BINARY_DIR}/include/generated/test_mod.inc)
 set(mf  ${ZEPHYR_BINARY_DIR}/include/generated/test_mod.manifest.inc)
 set(sig ${ZEPHYR_BINARY_DIR}/include/generated/test_mod.sig.inc)
-set(pub ${ZEPHYR_BINARY_DIR}/include/generated/test_mod.pubkey.inc)
 
 app_platform_add_module(test_ext OUTPUT ${bin} SOURCES ${ext_src})
 llext_include_directories(test_ext ${ZEPHYR_BINARY_DIR}/include/generated)
@@ -37,7 +36,7 @@ app_platform_add_module(absent_ext OUTPUT ${absent_bin}
 generate_inc_file_for_target(app ${absent_bin} ${absent_inc})
 
 add_custom_command(
-  OUTPUT  ${mf} ${sig} ${pub}
+  OUTPUT  ${mf} ${sig}
   COMMAND ${CMAKE_COMMAND}
     -DMODULE_BIN=${bin}
     -DKEY_DIR=${CMAKE_CURRENT_SOURCE_DIR}/keys
@@ -47,12 +46,11 @@ add_custom_command(
     -DABI_FILE=${APP_PLATFORM_ABI_FILE}
     -DOUT_MF_INC=${mf}
     -DOUT_SIG_INC=${sig}
-    -DOUT_PUB_INC=${pub}
     -DPYTHON_EXECUTABLE=${PYTHON_EXECUTABLE}
     -P ${ZEPHYR_BASE}/subsys/app_platform/cmake/sign_module.cmake
   DEPENDS ${bin} ${APP_PLATFORM_ABI_FILE}
 )
-add_custom_target(test_sign DEPENDS ${mf} ${sig} ${pub})
+add_custom_target(test_sign DEPENDS ${mf} ${sig})
 add_dependencies(test_sign app_platform_abi)
 add_dependencies(app test_sign)
 

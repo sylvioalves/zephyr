@@ -30,9 +30,6 @@ static const uint8_t caps_manifest[] = {
 static const uint8_t caps_sig[] = {
 #include "test_mod.caps.sig.inc"
 };
-static const uint8_t mod_pubkey[] = {
-#include "test_mod.pubkey.inc"
-};
 
 #define REQUESTED (APP_CAP_LOG | APP_CAP_TIME | APP_CAP_RANDOM)
 
@@ -44,8 +41,8 @@ static struct llext *load_caps_module(struct app_manifest *mf, void **entry)
 	memcpy(module_work, mod_bytes, sizeof(mod_bytes));
 	memcpy(mf, caps_manifest, sizeof(*mf));
 	zassert_equal(app_loader_verify_load_manifest(mf, sizeof(*mf), caps_sig, sizeof(caps_sig),
-						      module_work, sizeof(mod_bytes), mod_pubkey,
-						      sizeof(mod_pubkey), "app_main", &ext, entry),
+						      module_work, sizeof(mod_bytes), "app_main",
+						      &ext, entry),
 		      0);
 	return ext;
 }

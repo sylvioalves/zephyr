@@ -40,9 +40,6 @@ static const uint8_t mod_manifest[] = {
 static const uint8_t mod_sig[] = {
 #include "test_mod.heap.sig.inc"
 };
-static const uint8_t mod_pubkey[] = {
-#include "test_mod.pubkey.inc"
-};
 
 K_APPMEM_PARTITION_DEFINE(heap_part);
 
@@ -477,8 +474,8 @@ ZTEST(memheap, test_loaded_module_gets_its_signed_heap)
 	zassert_true(mf.heap_size > 0U, "the test module declares no heap");
 
 	zassert_equal(app_loader_verify_load_manifest(&mf, sizeof(mf), mod_sig, sizeof(mod_sig),
-						      buf, sizeof(mod_bytes), mod_pubkey,
-						      sizeof(mod_pubkey), "app_main", &ext, &entry),
+						      buf, sizeof(mod_bytes), "app_main", &ext,
+						      &entry),
 		      0);
 	zassert_equal(app_loader_heap_size(ext), mf.heap_size);
 

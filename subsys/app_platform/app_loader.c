@@ -5,8 +5,9 @@
  */
 
 /* Verify a module and load it as an llext. Two levels are offered: a SHA-256
- * integrity check (detects corruption) and an ECDSA P-256 signature check
- * (proves the module came from the holder of a trusted private key, the path a
+ * integrity check against a hash the firmware supplies (detects corruption) and
+ * a signed manifest checked with a key of the trusted key table compiled into
+ * the firmware (proves the module came from a trusted publisher, the path a
  * network-downloaded module must follow). The check runs before the module is
  * loaded, so a tampered, forged or malformed module is rejected and never
  * linked. The module is also structurally bounds-checked before any parsing.
@@ -17,6 +18,7 @@
 #include <zephyr/app_platform/app_abi.h>
 #include <zephyr/app_platform_abi.h>
 
+#include <zephyr/init.h>
 #include <zephyr/kernel.h>
 #include <zephyr/llext/llext.h>
 #include <zephyr/llext/buf_loader.h>
@@ -100,6 +102,48 @@ static int sha256(const uint8_t *buf, size_t len, uint8_t out[32])
 
 	return (st == PSA_SUCCESS && olen == 32) ? 0 : -EIO;
 }
+
+/* The keys trusted to sign manifests, generated from the key list. Key id 0 is
+ * the development key, disabled unless CONFIG_APP_PLATFORM_DEV_KEY is set.
+ */
+enum key_state {
+	KEY_ACTIVE,
+	KEY_REVOKED,
+	KEY_DISABLED,
+};
+
+struct trusted_key {
+	uint32_t id;
+	enum key_state state;
+	app_caps_t caps;
+	const char *prefix;
+	uint8_t pubkey[65];
+};
+
+static const struct trusted_key trusted_keys[] = {
+#include <zephyr/app_platform/app_keys.inc>
+};
+
+static const struct trusted_key *key_find(uint32_t id)
+{
+	for (size_t i = 0; i < ARRAY_SIZE(trusted_keys); i++) {
+		if (trusted_keys[i].id == id) {
+			return &trusted_keys[i];
+		}
+	}
+	return NULL;
+}
+
+static int dev_key_warning(void)
+{
+	if (IS_ENABLED(CONFIG_APP_PLATFORM_DEV_KEY)) {
+		LOG_WRN("modules signed with the development key are accepted, "
+			"disable CONFIG_APP_PLATFORM_DEV_KEY in products");
+	}
+	return 0;
+}
+
+SYS_INIT(dev_key_warning, APPLICATION, 0);
 
 /* Verify an ECDSA P-256 signature over a 32-byte digest with a SEC1 public
  * key. Returns 0 if authentic, -EPERM if not, -EIO on a crypto fault.
@@ -493,44 +537,15 @@ int app_loader_verify_load(const char *name, const uint8_t *buf, size_t len,
 	return load_checked(name, buf, len, false, NULL, entry_sym, ext, entry);
 }
 
-int app_loader_verify_load_signed(const char *name, const uint8_t *buf,
-				  size_t len, const uint8_t *sig, size_t sig_len,
-				  const uint8_t *pubkey, size_t pubkey_len,
-				  const char *entry_sym, struct llext **ext,
-				  void **entry)
-{
-	uint8_t digest[32];
-	int rc;
-
-	if (psa_crypto_init() != PSA_SUCCESS) {
-		return -EIO;
-	}
-	rc = elf_bounds_ok(name, buf, len);
-	if (rc != 0) {
-		return rc;
-	}
-	if (sha256(buf, len, digest) != 0) {
-		return -EIO;
-	}
-
-	rc = ecdsa_verify(pubkey, pubkey_len, digest, sig, sig_len);
-
-	if (rc != 0) {
-		LOG_WRN("verify failed for '%s' - bad signature, rejected", name);
-		return rc;
-	}
-	LOG_INF("verify OK for '%s' (ecdsa-p256 signature authentic)", name);
-
-	return load_checked(name, buf, len, false, NULL, entry_sym, ext, entry);
-}
-
-/* Check the layout of a manifest of @p mf_len bytes, authenticate it, and check
- * that this firmware runs what it describes. Authenticating the manifest
- * authenticates the name and version it carries.
+/* Check the layout of a manifest of @p mf_len bytes, authenticate it with the
+ * trusted key it names, and check that the key may sign it and that this
+ * firmware runs what it describes. Authenticating the manifest authenticates
+ * the name and version it carries.
  */
 static int manifest_verify(const struct app_manifest *mf, size_t mf_len, const uint8_t *sig,
-			   size_t sig_len, const uint8_t *pubkey, size_t pubkey_len)
+			   size_t sig_len)
 {
+	const struct trusted_key *key;
 	uint8_t digest[32];
 
 	if (mf_len >= sizeof(mf->magic) && app_manifest_retired_format(mf->magic) != 0U) {
@@ -544,11 +559,31 @@ static int manifest_verify(const struct app_manifest *mf, size_t mf_len, const u
 		LOG_WRN("malformed manifest, rejected");
 		return -EBADMSG;
 	}
+	key = key_find(mf->key_id);
+	if (key == NULL) {
+		LOG_WRN("manifest signed with key %u, which this firmware does not trust, rejected",
+			mf->key_id);
+		return -ENXIO;
+	}
+	if (key->state == KEY_DISABLED) {
+		LOG_WRN("manifest signed with the development key, which this firmware does not "
+			"accept, rejected");
+		return -ENXIO;
+	}
+	if (key->state == KEY_REVOKED) {
+		LOG_WRN("manifest signed with key %u, which is revoked, rejected", mf->key_id);
+		return -ECANCELED;
+	}
 	if (sha256((const uint8_t *)mf, mf_len, digest) != 0) {
 		return -EIO;
 	}
-	if (ecdsa_verify(pubkey, pubkey_len, digest, sig, sig_len) != 0) {
+	if (ecdsa_verify(key->pubkey, sizeof(key->pubkey), digest, sig, sig_len) != 0) {
 		LOG_WRN("manifest signature invalid, rejected");
+		return -EPERM;
+	}
+	if (strncmp(mf->name, key->prefix, strlen(key->prefix)) != 0) {
+		LOG_WRN("'%s' rejected: key %u signs only names starting with '%s'", mf->name,
+			mf->key_id, key->prefix);
 		return -EPERM;
 	}
 	if ((mf->required_caps & ~mf->requested_caps) != 0U) {
@@ -569,10 +604,8 @@ static int manifest_verify(const struct app_manifest *mf, size_t mf_len, const u
 }
 
 int app_loader_verify_load_manifest(const struct app_manifest *mf, size_t mf_len,
-				    const uint8_t *sig, size_t sig_len,
-				    const uint8_t *buf, size_t len,
-				    const uint8_t *pubkey, size_t pubkey_len,
-				    const char *entry_sym, struct llext **ext,
+				    const uint8_t *sig, size_t sig_len, const uint8_t *buf,
+				    size_t len, const char *entry_sym, struct llext **ext,
 				    void **entry)
 {
 	uint8_t mod_digest[32];
@@ -582,10 +615,10 @@ int app_loader_verify_load_manifest(const struct app_manifest *mf, size_t mf_len
 		return -EIO;
 	}
 
-	/* 1. The signature must cover this manifest, and this firmware must
-	 * run what it describes.
+	/* 1. A trusted key must have signed this manifest, and this firmware
+	 * must run what it describes.
 	 */
-	rc = manifest_verify(mf, mf_len, sig, sig_len, pubkey, pubkey_len);
+	rc = manifest_verify(mf, mf_len, sig, sig_len);
 	if (rc != 0) {
 		return rc;
 	}
@@ -788,10 +821,8 @@ static int verify_load_copy(const struct app_manifest *mf, const char *path,
 }
 
 int app_loader_verify_load_manifest_file(const struct app_manifest *mf, size_t mf_len,
-					 const uint8_t *sig, size_t sig_len,
-					 const char *path, const uint8_t *pubkey,
-					 size_t pubkey_len, const char *entry_sym,
-					 struct llext **ext, void **entry)
+					 const uint8_t *sig, size_t sig_len, const char *path,
+					 const char *entry_sym, struct llext **ext, void **entry)
 {
 	uint8_t mod_digest[32];
 	uint8_t head[ELF_HDR_MIN];
@@ -803,7 +834,7 @@ int app_loader_verify_load_manifest_file(const struct app_manifest *mf, size_t m
 	}
 
 	/* 1. Authenticate the manifest (and thus the name and version). */
-	rc = manifest_verify(mf, mf_len, sig, sig_len, pubkey, pubkey_len);
+	rc = manifest_verify(mf, mf_len, sig, sig_len);
 	if (rc != 0) {
 		return rc;
 	}

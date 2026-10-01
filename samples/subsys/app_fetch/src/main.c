@@ -35,10 +35,6 @@
 #include <zephyr/net/http/client.h>
 #include <string.h>
 
-static const uint8_t trusted_pubkey[] = {
-#include "fetch_app.pubkey.inc"
-};
-
 /* The most a loaded application may hold; its manifest requests its own. */
 #define APP_CAPS_CEILING (APP_CAP_LOG | APP_CAP_TIME | APP_CAP_RANDOM)
 #define MOUNT_POINT  CONFIG_APP_PLATFORM_REGISTRY_MOUNT_POINT
@@ -233,10 +229,7 @@ static int autostart_one(const struct app_record *rec, void *user)
 
 	struct llext *ext = NULL;
 	void *entry = NULL;
-	int rc = app_loader_verify_load_manifest_file(mf, mf_len, sig,
-						      APP_MANIFEST_SIG_LEN, lpath,
-						      trusted_pubkey,
-						      ARRAY_SIZE(trusted_pubkey),
+	int rc = app_loader_verify_load_manifest_file(mf, mf_len, sig, APP_MANIFEST_SIG_LEN, lpath,
 						      "app_main", &ext, &entry);
 
 	if (rc != 0) {
@@ -302,10 +295,7 @@ static int cmd_fetch(const struct shell *sh, size_t argc, char **argv)
 
 	struct llext *ext = NULL;
 	void *entry = NULL;
-	int rc = app_loader_verify_load_manifest_file(mf, mf_len, sig,
-						      APP_MANIFEST_SIG_LEN, lpath,
-						      trusted_pubkey,
-						      ARRAY_SIZE(trusted_pubkey),
+	int rc = app_loader_verify_load_manifest_file(mf, mf_len, sig, APP_MANIFEST_SIG_LEN, lpath,
 						      "app_main", &ext, &entry);
 
 	if (rc != 0) {

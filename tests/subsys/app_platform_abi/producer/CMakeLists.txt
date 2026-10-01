@@ -11,7 +11,6 @@ set(gen_dir ${ZEPHYR_BINARY_DIR}/include/generated)
 set(bin ${PROJECT_BINARY_DIR}/llext/renumber_mod.llext)
 set(mf  ${gen_dir}/renumber_mod.manifest.inc)
 set(sig ${gen_dir}/renumber_mod.sig.inc)
-set(pub ${gen_dir}/renumber_mod.pubkey.inc)
 set(facts ${gen_dir}/renumber_facts.h)
 
 app_platform_add_module(renumber_ext OUTPUT ${bin}
@@ -19,7 +18,7 @@ app_platform_add_module(renumber_ext OUTPUT ${bin}
 generate_inc_file_for_target(app ${bin} ${gen_dir}/renumber_mod.inc)
 
 add_custom_command(
-  OUTPUT  ${mf} ${sig} ${pub}
+  OUTPUT  ${mf} ${sig}
   COMMAND ${CMAKE_COMMAND}
     -DMODULE_BIN=${bin}
     -DKEY_DIR=${ZEPHYR_BASE}/tests/subsys/app_platform/keys
@@ -29,12 +28,11 @@ add_custom_command(
     -DABI_FILE=${APP_PLATFORM_ABI_FILE}
     -DOUT_MF_INC=${mf}
     -DOUT_SIG_INC=${sig}
-    -DOUT_PUB_INC=${pub}
     -DPYTHON_EXECUTABLE=${PYTHON_EXECUTABLE}
     -P ${ZEPHYR_BASE}/subsys/app_platform/cmake/sign_module.cmake
   DEPENDS ${bin} ${APP_PLATFORM_ABI_FILE}
 )
-add_custom_target(renumber_sign DEPENDS ${mf} ${sig} ${pub})
+add_custom_target(renumber_sign DEPENDS ${mf} ${sig})
 add_dependencies(renumber_sign app_platform_abi)
 add_dependencies(app renumber_sign)
 

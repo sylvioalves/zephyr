@@ -19,7 +19,9 @@
  * is two steps: the ECDSA P-256 signature authenticates the manifest, then the
  * module is accepted only if its SHA-256 matches @ref app_manifest.module_sha256.
  * So the name and version are authenticated, not asserted by the caller, and a
- * valid signature cannot be moved onto different bytes or relabelled.
+ * valid signature cannot be moved onto different bytes or relabelled. The
+ * manifest names the key that signed it, @ref app_manifest.key_id, and is
+ * checked with that key from the trusted key table compiled into the firmware.
  *
  * The manifest also carries the major version of the application interface the
  * module was built against, @ref app_manifest.abi_major, and a module is loaded
@@ -98,7 +100,7 @@ struct app_manifest {
 	uint16_t abi_major;                       /**< application interface major version */
 	uint16_t reserved0;                       /**< zero */
 	uint32_t heap_size;                       /**< per-application heap bytes, 0 for none */
-	uint32_t key_id;                          /**< signing key, 0 for the default key */
+	uint32_t key_id;                          /**< signing key, 0 for the development key */
 	uint64_t requested_caps;                  /**< capabilities the app asks for */
 	uint64_t required_caps;                   /**< capabilities the app cannot run without */
 	uint32_t flags;                           /**< zero, no flag is defined */

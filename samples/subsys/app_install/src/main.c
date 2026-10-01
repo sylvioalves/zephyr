@@ -30,14 +30,6 @@
 #include <zephyr/fs/fs.h>
 #include <string.h>
 
-/* Trusted public key: only an app signed by the matching host key is accepted.
- * The bundled reference app's bytes are unused at runtime; the key is what
- * matters for verifying uploads.
- */
-static const uint8_t trusted_pubkey[] = {
-#include "install_app.pubkey.inc"
-};
-
 /* The most a loaded application may hold; its manifest requests its own. */
 #define APP_CAPS_CEILING (APP_CAP_LOG | APP_CAP_TIME | APP_CAP_RANDOM)
 
@@ -70,10 +62,7 @@ static int cmd_install(const struct shell *sh, size_t argc, char **argv)
 
 	struct llext *ext = NULL;
 	void *entry = NULL;
-	int rc = app_loader_verify_load_manifest_file(mf, mf_len, sig,
-						      APP_MANIFEST_SIG_LEN, path,
-						      trusted_pubkey,
-						      ARRAY_SIZE(trusted_pubkey),
+	int rc = app_loader_verify_load_manifest_file(mf, mf_len, sig, APP_MANIFEST_SIG_LEN, path,
 						      "app_main", &ext, &entry);
 
 	if (rc != 0) {

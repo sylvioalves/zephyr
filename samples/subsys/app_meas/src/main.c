@@ -72,9 +72,6 @@ static const uint8_t meas64_sig[] = {
 static const uint8_t meas64_sha[32] = {
 #include "meas64.sha256.inc"
 };
-static const uint8_t pubkey[] = {
-#include "meas0.pubkey.inc"
-};
 
 struct mod {
 	const char *name;
@@ -159,9 +156,7 @@ static void phase_load(const struct mod *m)
 
 	uint32_t t0 = cyc();
 	int rc = app_loader_verify_load_manifest(&mb.mf, m->mf_len, m->sig, APP_MANIFEST_SIG_LEN,
-						 m->bytes, m->len, pubkey,
-						 sizeof(pubkey), "app_main",
-						 &ext, &entry);
+						 m->bytes, m->len, "app_main", &ext, &entry);
 	uint32_t t1 = cyc();
 
 	if (rc != 0) {

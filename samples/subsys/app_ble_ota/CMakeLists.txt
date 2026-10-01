@@ -44,17 +44,3 @@ app_platform_add_module(ota_ext OUTPUT ${o_bin} SOURCES ${o_src})
 llext_include_directories(ota_ext ${ZEPHYR_BINARY_DIR}/include/generated)
 add_dependencies(app ota_ext)
 
-# This device signs nothing; it needs only the public key to check what the
-# peer sends.
-set(o_pub ${ZEPHYR_BINARY_DIR}/include/generated/ota_app.pubkey.inc)
-
-add_custom_command(
-  OUTPUT  ${o_pub}
-  COMMAND ${CMAKE_COMMAND}
-    -DKEY_DIR=${CMAKE_CURRENT_SOURCE_DIR}/keys
-    -DOUT_PUB_INC=${o_pub}
-    -DPYTHON_EXECUTABLE=${PYTHON_EXECUTABLE}
-    -P ${CMAKE_CURRENT_SOURCE_DIR}/cmake/pubkey_only.cmake
-)
-add_custom_target(ota_pubkey DEPENDS ${o_pub})
-add_dependencies(app ota_pubkey)
