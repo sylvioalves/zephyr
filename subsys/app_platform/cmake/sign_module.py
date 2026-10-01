@@ -15,10 +15,17 @@ format, then the fields, packed and little-endian.
 The firmware facts come from the file the firmware build writes
 (app_platform_abi.txt), one key=value per line. A module that imports a symbol
 outside the list of importable symbols it names is not signed.
+
+The manifest is signed with --key under --key-id, or with the key the firmware
+build was given (APP_SIGNING_KEY and APP_SIGNING_KEY_ID), or else with the
+development key, key id 0, at --dev-key, generated when missing. The key must
+be the one the firmware lists under that id, not revoked, and allowed to sign
+the application name and its required capabilities.
 """
 
 import argparse
 import hashlib
+import json
 import re
 import struct
 import subprocess
@@ -28,6 +35,7 @@ from pathlib import Path
 from cryptography.hazmat.primitives import hashes
 from cryptography.hazmat.primitives import serialization as ser
 from cryptography.hazmat.primitives.asymmetric import ec, utils
+from gen_app_keys import create_private_key, public_point
 
 MAGIC = 0x34464D41
 FORMAT = 4
@@ -39,18 +47,27 @@ MAX_LEN = 256
 CAPS_H = Path(__file__).resolve().parents[3] / "include/zephyr/app_platform/app_caps.h"
 
 
-def parse_caps(value):
-    """Capabilities as a number or as comma-separated names from app_caps.h."""
-    value = value.strip()
-    if not value or value[0].isdigit():
-        return int(value or "0", 0)
-    bits = {
+def cap_bits():
+    return {
         m.group(1): int(m.group(2))
         for m in re.finditer(
             r"#define\s+APP_CAP_(\w+)\s+APP_CAP_BIT\((\d+)\)",
             CAPS_H.read_text(encoding="utf-8"),
         )
     }
+
+
+def cap_names(caps):
+    bits = sorted(cap_bits().items(), key=lambda b: b[1])
+    return ",".join(name for name, bit in bits if caps >> bit & 1) or "none"
+
+
+def parse_caps(value):
+    """Capabilities as a number or as comma-separated names from app_caps.h."""
+    value = value.strip()
+    if not value or value[0].isdigit():
+        return int(value or "0", 0)
+    bits = cap_bits()
     caps = 0
     for name in value.split(","):
         name = name.strip().upper().removeprefix("APP_CAP_")
@@ -69,7 +86,7 @@ def read_abi_file(path):
     return facts
 
 
-def build_manifest(module, args, facts):
+def build_manifest(module, args, facts, key_id):
     name = args.name.encode("ascii")
     if len(name) >= NAME_MAX:
         sys.exit(f"application name '{args.name}' is longer than {NAME_MAX - 1} bytes")
@@ -85,7 +102,7 @@ def build_manifest(module, args, facts):
         abi_major,
         0,
         args.heap_size,
-        args.key_id,
+        key_id,
         args.requested_caps,
         args.required_caps,
         0,
@@ -107,14 +124,62 @@ def forbidden_imports(module_path, facts):
     return sorted(imported - allowed)
 
 
+def signing_key(args, facts):
+    """The private key path and key id the manifest is signed with."""
+    if args.key:
+        if args.key_id is None:
+            sys.exit("a signing key needs its key id: set APP_SIGNING_KEY_ID")
+        return Path(args.key), args.key_id
+    if facts.get("signing_key"):
+        key_id = args.key_id if args.key_id is not None else int(facts["signing_key_id"], 0)
+        return Path(facts["signing_key"]), key_id
+    if not args.dev_key:
+        sys.exit("no signing key: set KEY_DIR for the development key, or APP_SIGNING_KEY")
+    dev_key = Path(args.dev_key)
+    if not dev_key.exists():
+        create_private_key(dev_key)
+    return dev_key, args.key_id if args.key_id is not None else 0
+
+
 def load_key(key_path):
-    if not key_path.exists():
-        key_path.parent.mkdir(parents=True, exist_ok=True)
-        key = ec.generate_private_key(ec.SECP256R1())
-        key_path.write_bytes(
-            key.private_bytes(ser.Encoding.PEM, ser.PrivateFormat.PKCS8, ser.NoEncryption())
+    try:
+        key = ser.load_pem_private_key(key_path.read_bytes(), None)
+    except (OSError, ValueError, TypeError) as e:
+        sys.exit(f"cannot read the signing key {key_path}: {e}")
+    if not isinstance(key, ec.EllipticCurvePrivateKey) or key.curve.name != "secp256r1":
+        sys.exit(f"{key_path} is not a P-256 private key")
+    return key
+
+
+def check_key(key, key_path, key_id, args, keys_path):
+    """Refuse a key the firmware would refuse; warn of capabilities it would drop."""
+    keys = json.loads(Path(keys_path).read_text(encoding="utf-8"))["keys"]
+    entry = next((k for k in keys if k["id"] == key_id), None)
+    where = f"key id {key_id}"
+    if entry is None:
+        sys.exit(f"{where} is not in the firmware key list ({keys_path})")
+    if entry["state"] == "disabled":
+        sys.exit(
+            "key id 0 is the development key, which this firmware does not accept "
+            "(CONFIG_APP_PLATFORM_DEV_KEY is disabled): sign with APP_SIGNING_KEY and "
+            "APP_SIGNING_KEY_ID"
         )
-    return ser.load_pem_private_key(key_path.read_bytes(), None)
+    if entry["state"] == "revoked":
+        sys.exit(f"{where} is revoked in the firmware key list")
+    if public_point(key.public_key()).hex() != entry["pubkey"]:
+        sys.exit(f"{key_path} is not the key the firmware lists as {where}")
+    if not args.name.startswith(entry["prefix"]):
+        sys.exit(f"{where} signs only names starting with '{entry['prefix']}', not '{args.name}'")
+    missing = args.required_caps & ~entry["caps"]
+    if missing:
+        sys.exit(f"required capabilities {cap_names(missing)} are outside the ceiling of {where}")
+    dropped = args.requested_caps & ~entry["caps"]
+    if dropped:
+        print(
+            f"warning: requested capabilities {cap_names(dropped)} are outside the ceiling of "
+            f"{where} and are not granted",
+            file=sys.stderr,
+        )
 
 
 def sign(key, data):
@@ -131,7 +196,8 @@ def emit(path, data):
 def main():
     parser = argparse.ArgumentParser(description=__doc__, allow_abbrev=False)
     parser.add_argument("--module", required=True, help="module to sign")
-    parser.add_argument("--key", required=True, help="private key, generated when missing")
+    parser.add_argument("--key", help="private key of a listed signing key")
+    parser.add_argument("--dev-key", help="development private key, generated when missing")
     parser.add_argument("--abi-file", required=True, help="firmware facts")
     parser.add_argument("--name", required=True, help="application name")
     parser.add_argument("--version", type=int, required=True, help="application version")
@@ -148,7 +214,9 @@ def main():
         default=0,
         help="capabilities it cannot run without, a subset of the requested ones",
     )
-    parser.add_argument("--key-id", type=lambda v: int(v, 0), default=0)
+    parser.add_argument(
+        "--key-id", type=lambda v: int(v, 0), help="signing key id, 0 for the development key"
+    )
     parser.add_argument("--abi-major", help="interface major version, overrides the firmware's")
     parser.add_argument("--target", help="target fingerprint, overrides the firmware's")
     parser.add_argument(
@@ -160,6 +228,11 @@ def main():
         "--skip-import-check",
         action="store_true",
         help="sign a module importing symbols the loader refuses, for tests",
+    )
+    parser.add_argument(
+        "--skip-key-check",
+        action="store_true",
+        help="sign with a key the firmware refuses for this module, for tests",
     )
     parser.add_argument("--out-mf-inc", required=True, help="manifest as C byte literals")
     parser.add_argument("--out-sig-inc", required=True, help="signature as C byte literals")
@@ -183,9 +256,15 @@ def main():
                 "and subsys/app_platform/abi/app_imports.txt."
             )
 
+    key_path, key_id = signing_key(args, facts)
+    if not 0 <= key_id <= 0xFFFFFFFF:
+        sys.exit("the key id must fit 32 bits")
+    key = load_key(key_path)
+    if not args.skip_key_check and facts.get("keys"):
+        check_key(key, key_path, key_id, args, facts["keys"])
+
     module = Path(args.module).read_bytes()
-    key = load_key(Path(args.key))
-    mf = build_manifest(module, args, facts)
+    mf = build_manifest(module, args, facts, key_id)
     sig = sign(key, mf)
 
     emit(args.out_mf_inc, mf)
