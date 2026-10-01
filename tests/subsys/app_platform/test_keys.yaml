@@ -1,0 +1,19 @@
+# SPDX-License-Identifier: Apache-2.0
+#
+# Test-only publisher keys. The private keys are generated under keys/ on the
+# first build and are never part of the tree; a product never lists a key with
+# "generate".
+keys:
+  - id: 1
+    key: keys/publisher_a.pem
+    generate: true
+    caps: ALL
+  - id: 2
+    key: keys/publisher_b.pem
+    generate: true
+    caps: [LOG]
+    prefix: b_
+  - id: 3
+    key: keys/revoked.pem
+    generate: true
+    revoked: true

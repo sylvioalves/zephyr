@@ -7,9 +7,9 @@
 # loader's relocation bounds check rejects an out-of-section relocation even
 # when verification passes.
 #
-# Inputs: MODULE_BIN, KEY_DIR, APP_NAME, APP_VERSION, APP_REQUESTED_CAPS,
-#         ABI_FILE, OUT_INC, OUT_MF_INC, OUT_SIG_INC, PYTHON_EXECUTABLE,
-#         ZEPHYR_BASE.
+# Inputs: MODULE_BIN, APP_SIGNING_KEY, APP_SIGNING_KEY_ID, APP_NAME, APP_VERSION,
+#         APP_REQUESTED_CAPS, ABI_FILE, OUT_INC, OUT_MF_INC, OUT_SIG_INC,
+#         PYTHON_EXECUTABLE, ZEPHYR_BASE.
 
 set(evil_bin "${OUT_INC}.bin")
 

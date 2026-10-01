@@ -4,11 +4,8 @@ cmake_minimum_required(VERSION 3.20.0)
 find_package(Zephyr REQUIRED HINTS $ENV{ZEPHYR_BASE})
 project(app_platform_test)
 
-set(APP_NAME    "testmod")
-set(APP_VERSION 1)
-set(APP_REQUESTED_CAPS LOG)
-
-target_sources(app PRIVATE src/main.c src/loader_neg.c src/abi.c src/caps.c src/module_run.c)
+target_sources(app PRIVATE src/main.c src/loader_neg.c src/abi.c src/caps.c src/keys.c
+  src/module_run.c)
 target_sources_ifdef(CONFIG_USERSPACE app PRIVATE src/hostile.c)
 if(CONFIG_APP_PLATFORM_APP_THREADS GREATER 0)
   target_sources(app PRIVATE src/threads.c)
@@ -18,192 +15,114 @@ if(CONFIG_APP_PLATFORM_APP_HEAP_POOL_SIZE GREATER 0)
 endif()
 target_sources_ifdef(CONFIG_APP_PLATFORM_CPU_AFFINITY app PRIVATE src/smp.c)
 
+set(gen_dir ${ZEPHYR_BINARY_DIR}/include/generated)
+set(key_dir ${CMAKE_CURRENT_SOURCE_DIR}/keys)
 set(ext_src ${PROJECT_SOURCE_DIR}/module/src/test_mod.c)
 set(bin ${PROJECT_BINARY_DIR}/llext/test_mod.llext)
-set(inc ${ZEPHYR_BINARY_DIR}/include/generated/test_mod.inc)
-set(mf  ${ZEPHYR_BINARY_DIR}/include/generated/test_mod.manifest.inc)
-set(sig ${ZEPHYR_BINARY_DIR}/include/generated/test_mod.sig.inc)
 
 app_platform_add_module(test_ext OUTPUT ${bin} SOURCES ${ext_src})
-llext_include_directories(test_ext ${ZEPHYR_BINARY_DIR}/include/generated)
-generate_inc_file_for_target(app ${bin} ${inc})
+llext_include_directories(test_ext ${gen_dir})
+generate_inc_file_for_target(app ${bin} ${gen_dir}/test_mod.inc)
 
 # A module calling a service the firmware is built without.
 set(absent_bin ${PROJECT_BINARY_DIR}/llext/absent_mod.llext)
-set(absent_inc ${ZEPHYR_BINARY_DIR}/include/generated/absent_mod.inc)
 app_platform_add_module(absent_ext OUTPUT ${absent_bin}
   SOURCES ${PROJECT_SOURCE_DIR}/module/src/absent_mod.c)
-generate_inc_file_for_target(app ${absent_bin} ${absent_inc})
+generate_inc_file_for_target(app ${absent_bin} ${gen_dir}/absent_mod.inc)
 
-add_custom_command(
-  OUTPUT  ${mf} ${sig}
-  COMMAND ${CMAKE_COMMAND}
-    -DMODULE_BIN=${bin}
-    -DKEY_DIR=${CMAKE_CURRENT_SOURCE_DIR}/keys
-    -DAPP_NAME=${APP_NAME}
-    -DAPP_VERSION=${APP_VERSION}
-    -DAPP_REQUESTED_CAPS=${APP_REQUESTED_CAPS}
-    -DABI_FILE=${APP_PLATFORM_ABI_FILE}
-    -DOUT_MF_INC=${mf}
-    -DOUT_SIG_INC=${sig}
-    -DPYTHON_EXECUTABLE=${PYTHON_EXECUTABLE}
-    -P ${ZEPHYR_BASE}/subsys/app_platform/cmake/sign_module.cmake
-  DEPENDS ${bin} ${APP_PLATFORM_ABI_FILE}
-)
-add_custom_target(test_sign DEPENDS ${mf} ${sig})
-add_dependencies(test_sign app_platform_abi)
-add_dependencies(app test_sign)
-
-# The same module signed for another interface major version, for the loader's
-# ABI check. Reuses the key generated above.
-set(badabi_mf  ${ZEPHYR_BINARY_DIR}/include/generated/test_mod.badabi.manifest.inc)
-set(badabi_sig ${ZEPHYR_BINARY_DIR}/include/generated/test_mod.badabi.sig.inc)
-
-add_custom_command(
-  OUTPUT  ${badabi_mf} ${badabi_sig}
-  COMMAND ${CMAKE_COMMAND}
-    -DMODULE_BIN=${bin}
-    -DKEY_DIR=${CMAKE_CURRENT_SOURCE_DIR}/keys
-    -DAPP_NAME=${APP_NAME}
-    -DAPP_VERSION=${APP_VERSION}
-    -DAPP_REQUESTED_CAPS=${APP_REQUESTED_CAPS}
-    -DABI_FILE=${APP_PLATFORM_ABI_FILE}
-    -DABI_MAJOR_OVERRIDE=0xffff
-    -DOUT_MF_INC=${badabi_mf}
-    -DOUT_SIG_INC=${badabi_sig}
-    -DPYTHON_EXECUTABLE=${PYTHON_EXECUTABLE}
-    -P ${ZEPHYR_BASE}/subsys/app_platform/cmake/sign_module.cmake
-  DEPENDS ${bin} ${sig} ${APP_PLATFORM_ABI_FILE}
-)
-add_custom_target(test_badabi DEPENDS ${badabi_mf} ${badabi_sig})
-add_dependencies(test_badabi app_platform_abi)
-add_dependencies(app test_badabi)
-
-# The same module under a manifest carrying fields past the ones the firmware
-# knows, under one cut short of them, and signed for another target. Reuses the
-# key generated above.
-foreach(variant long:MANIFEST_LEN=200 short:MANIFEST_LEN=100 target:TARGET_OVERRIDE=0)
-  string(REPLACE ":" ";" variant ${variant})
-  list(GET variant 0 tag)
-  list(GET variant 1 input)
-  set(v_mf  ${ZEPHYR_BINARY_DIR}/include/generated/test_mod.${tag}.manifest.inc)
-  set(v_sig ${ZEPHYR_BINARY_DIR}/include/generated/test_mod.${tag}.sig.inc)
-
-  add_custom_command(
-    OUTPUT  ${v_mf} ${v_sig}
-    COMMAND ${CMAKE_COMMAND}
-      -DMODULE_BIN=${bin}
-      -DKEY_DIR=${CMAKE_CURRENT_SOURCE_DIR}/keys
-      -DAPP_NAME=${APP_NAME}
-      -DAPP_VERSION=${APP_VERSION}
-      -DAPP_REQUESTED_CAPS=${APP_REQUESTED_CAPS}
-      -DABI_FILE=${APP_PLATFORM_ABI_FILE}
-      -D${input}
-      -DOUT_MF_INC=${v_mf}
-      -DOUT_SIG_INC=${v_sig}
-      -DPYTHON_EXECUTABLE=${PYTHON_EXECUTABLE}
-      -P ${ZEPHYR_BASE}/subsys/app_platform/cmake/sign_module.cmake
-    DEPENDS ${bin} ${sig} ${APP_PLATFORM_ABI_FILE}
-  )
-  add_custom_target(test_${tag}_sign DEPENDS ${v_mf} ${v_sig})
-  add_dependencies(test_${tag}_sign app_platform_abi)
-  add_dependencies(app test_${tag}_sign)
-endforeach()
-
-# The same module signed with a heap, for the per-application heap suite.
-# Reuses the key generated above.
-set(heap_mf  ${ZEPHYR_BINARY_DIR}/include/generated/test_mod.heap.manifest.inc)
-set(heap_sig ${ZEPHYR_BINARY_DIR}/include/generated/test_mod.heap.sig.inc)
-
-add_custom_command(
-  OUTPUT  ${heap_mf} ${heap_sig}
-  COMMAND ${CMAKE_COMMAND}
-    -DMODULE_BIN=${bin}
-    -DKEY_DIR=${CMAKE_CURRENT_SOURCE_DIR}/keys
-    -DAPP_NAME=${APP_NAME}
-    -DAPP_VERSION=${APP_VERSION}
-    -DAPP_REQUESTED_CAPS=${APP_REQUESTED_CAPS}
-    -DAPP_HEAP_SIZE=992
-    -DABI_FILE=${APP_PLATFORM_ABI_FILE}
-    -DOUT_MF_INC=${heap_mf}
-    -DOUT_SIG_INC=${heap_sig}
-    -DPYTHON_EXECUTABLE=${PYTHON_EXECUTABLE}
-    -P ${ZEPHYR_BASE}/subsys/app_platform/cmake/sign_module.cmake
-  DEPENDS ${bin} ${sig} ${APP_PLATFORM_ABI_FILE}
-)
-add_custom_target(test_heap_sign DEPENDS ${heap_mf} ${heap_sig})
-add_dependencies(test_heap_sign app_platform_abi)
-add_dependencies(app test_heap_sign)
-
-# The same module requesting and requiring more capabilities, for the
-# capability suite. Reuses the key generated above.
-set(caps_mf  ${ZEPHYR_BINARY_DIR}/include/generated/test_mod.caps.manifest.inc)
-set(caps_sig ${ZEPHYR_BINARY_DIR}/include/generated/test_mod.caps.sig.inc)
-
-add_custom_command(
-  OUTPUT  ${caps_mf} ${caps_sig}
-  COMMAND ${CMAKE_COMMAND}
-    -DMODULE_BIN=${bin}
-    -DKEY_DIR=${CMAKE_CURRENT_SOURCE_DIR}/keys
-    -DAPP_NAME=${APP_NAME}
-    -DAPP_VERSION=${APP_VERSION}
-    -DAPP_REQUESTED_CAPS=LOG,TIME,RANDOM
-    -DAPP_REQUIRED_CAPS=LOG,TIME
-    -DABI_FILE=${APP_PLATFORM_ABI_FILE}
-    -DOUT_MF_INC=${caps_mf}
-    -DOUT_SIG_INC=${caps_sig}
-    -DPYTHON_EXECUTABLE=${PYTHON_EXECUTABLE}
-    -P ${ZEPHYR_BASE}/subsys/app_platform/cmake/sign_module.cmake
-  DEPENDS ${bin} ${sig} ${APP_PLATFORM_ABI_FILE}
-)
-add_custom_target(test_caps_sign DEPENDS ${caps_mf} ${caps_sig})
-add_dependencies(test_caps_sign app_platform_abi)
-add_dependencies(app test_caps_sign)
-
-# A module importing a function outside the exported interface, signed without
-# the signer's import check for the loader's. Reuses the key generated above.
+# A module importing a function outside the exported interface.
 set(forbidden_bin ${PROJECT_BINARY_DIR}/llext/forbidden_mod.llext)
-set(forbidden_inc ${ZEPHYR_BINARY_DIR}/include/generated/forbidden_mod.inc)
-set(forbidden_mf  ${ZEPHYR_BINARY_DIR}/include/generated/forbidden_mod.manifest.inc)
-set(forbidden_sig ${ZEPHYR_BINARY_DIR}/include/generated/forbidden_mod.sig.inc)
 app_platform_add_module(forbidden_ext OUTPUT ${forbidden_bin}
   SOURCES ${PROJECT_SOURCE_DIR}/module/src/forbidden_mod.c)
-generate_inc_file_for_target(app ${forbidden_bin} ${forbidden_inc})
+generate_inc_file_for_target(app ${forbidden_bin} ${gen_dir}/forbidden_mod.inc)
 
-add_custom_command(
-  OUTPUT  ${forbidden_mf} ${forbidden_sig}
-  COMMAND ${CMAKE_COMMAND}
-    -DMODULE_BIN=${forbidden_bin}
-    -DKEY_DIR=${CMAKE_CURRENT_SOURCE_DIR}/keys
-    -DAPP_NAME=forbidden
-    -DAPP_VERSION=1
-    -DAPP_REQUESTED_CAPS=${APP_REQUESTED_CAPS}
-    -DABI_FILE=${APP_PLATFORM_ABI_FILE}
-    -DSKIP_IMPORT_CHECK=1
-    -DOUT_MF_INC=${forbidden_mf}
-    -DOUT_SIG_INC=${forbidden_sig}
-    -DPYTHON_EXECUTABLE=${PYTHON_EXECUTABLE}
-    -P ${ZEPHYR_BASE}/subsys/app_platform/cmake/sign_module.cmake
-  DEPENDS ${forbidden_bin} ${sig} ${APP_PLATFORM_ABI_FILE}
-)
-add_custom_target(test_forbidden_sign DEPENDS ${forbidden_mf} ${forbidden_sig})
-add_dependencies(test_forbidden_sign app_platform_abi)
-add_dependencies(app test_forbidden_sign)
+# test_sign(<tag> <module> <name> [-D<input>=<value>...])
+#
+# Signs <module> as application <name>, version 1, requesting LOG, with the
+# test publisher key 1 of test_keys.yaml, into <tag>.manifest.inc and
+# <tag>.sig.inc. The extra arguments override those inputs of
+# sign_module.cmake: an empty APP_SIGNING_KEY signs with the key under KEY_DIR,
+# by default the development key.
+function(test_sign tag module name)
+  set(out_mf  ${gen_dir}/${tag}.manifest.inc)
+  set(out_sig ${gen_dir}/${tag}.sig.inc)
+  string(MAKE_C_IDENTIFIER ${tag} target)
+
+  add_custom_command(
+    OUTPUT  ${out_mf} ${out_sig}
+    COMMAND ${CMAKE_COMMAND}
+      -DMODULE_BIN=${module}
+      -DKEY_DIR=${key_dir}
+      -DAPP_SIGNING_KEY=${key_dir}/publisher_a.pem
+      -DAPP_SIGNING_KEY_ID=1
+      -DAPP_NAME=${name}
+      -DAPP_VERSION=1
+      -DAPP_REQUESTED_CAPS=LOG
+      -DABI_FILE=${APP_PLATFORM_ABI_FILE}
+      ${ARGN}
+      -DOUT_MF_INC=${out_mf}
+      -DOUT_SIG_INC=${out_sig}
+      -DPYTHON_EXECUTABLE=${PYTHON_EXECUTABLE}
+      -P ${ZEPHYR_BASE}/subsys/app_platform/cmake/sign_module.cmake
+    DEPENDS ${module} ${APP_PLATFORM_ABI_FILE}
+  )
+  add_custom_target(${target}_sign DEPENDS ${out_mf} ${out_sig})
+  add_dependencies(${target}_sign app_platform_abi)
+  add_dependencies(app ${target}_sign)
+endfunction()
+
+test_sign(test_mod ${bin} testmod)
+
+# The same module signed for another interface major version, under a manifest
+# carrying fields past the ones the firmware knows, under one cut short of
+# them, signed for another target, with a heap, and requesting and requiring
+# more capabilities.
+test_sign(test_mod.badabi ${bin} testmod -DABI_MAJOR_OVERRIDE=0xffff)
+test_sign(test_mod.long ${bin} testmod -DMANIFEST_LEN=200)
+test_sign(test_mod.short ${bin} testmod -DMANIFEST_LEN=100)
+test_sign(test_mod.target ${bin} testmod -DTARGET_OVERRIDE=0)
+test_sign(test_mod.heap ${bin} testmod -DAPP_HEAP_SIZE=992)
+test_sign(test_mod.caps ${bin} testmod -DAPP_REQUESTED_CAPS=LOG,TIME,RANDOM
+  -DAPP_REQUIRED_CAPS=LOG,TIME)
+
+# The module importing a forbidden function, signed without the signer's import
+# check for the loader's.
+test_sign(forbidden_mod ${forbidden_bin} forbidden -DSKIP_IMPORT_CHECK=1)
+
+# The same module signed with the development key, with a key test_keys.yaml
+# does not list, with a revoked key, and with publisher key 2, whose ceiling is
+# LOG and whose names start with b_: within its limits, requiring a capability
+# outside its ceiling and under a name outside its prefix. The signer refuses
+# all but one of them, so its key check is skipped.
+test_sign(test_mod.dev ${bin} testmod -DAPP_SIGNING_KEY= -DAPP_SIGNING_KEY_ID=0
+  -DSKIP_KEY_CHECK=1)
+test_sign(test_mod.unknown ${bin} testmod -DKEY_DIR=${PROJECT_BINARY_DIR}/unlisted_key
+  -DAPP_SIGNING_KEY= -DAPP_SIGNING_KEY_ID=7 -DSKIP_KEY_CHECK=1)
+test_sign(test_mod.revoked ${bin} testmod -DAPP_SIGNING_KEY=${key_dir}/revoked.pem
+  -DAPP_SIGNING_KEY_ID=3 -DSKIP_KEY_CHECK=1)
+test_sign(test_mod.b ${bin} b_mod -DAPP_SIGNING_KEY=${key_dir}/publisher_b.pem
+  -DAPP_SIGNING_KEY_ID=2 -DAPP_REQUESTED_CAPS=LOG,TIME,RANDOM -DAPP_REQUIRED_CAPS=LOG)
+test_sign(test_mod.breq ${bin} b_req -DAPP_SIGNING_KEY=${key_dir}/publisher_b.pem
+  -DAPP_SIGNING_KEY_ID=2 -DAPP_REQUESTED_CAPS=LOG,TIME -DAPP_REQUIRED_CAPS=LOG,TIME
+  -DSKIP_KEY_CHECK=1)
+test_sign(test_mod.bname ${bin} testmod -DAPP_SIGNING_KEY=${key_dir}/publisher_b.pem
+  -DAPP_SIGNING_KEY_ID=2 -DSKIP_KEY_CHECK=1)
 
 # A signed-but-malformed module (out-of-section relocation) for the loader's
-# relocation bounds-check test. Reuses the key generated above.
-set(evil    ${ZEPHYR_BINARY_DIR}/include/generated/evil_mod.inc)
-set(evil_mf ${ZEPHYR_BINARY_DIR}/include/generated/evil_mod.manifest.inc)
-set(evil_sig ${ZEPHYR_BINARY_DIR}/include/generated/evil_mod.sig.inc)
+# relocation bounds-check test.
+set(evil    ${gen_dir}/evil_mod.inc)
+set(evil_mf ${gen_dir}/evil_mod.manifest.inc)
+set(evil_sig ${gen_dir}/evil_mod.sig.inc)
 
 add_custom_command(
   OUTPUT  ${evil} ${evil_mf} ${evil_sig}
   COMMAND ${CMAKE_COMMAND}
     -DMODULE_BIN=${bin}
-    -DKEY_DIR=${CMAKE_CURRENT_SOURCE_DIR}/keys
+    -DAPP_SIGNING_KEY=${key_dir}/publisher_a.pem
+    -DAPP_SIGNING_KEY_ID=1
     -DAPP_NAME=evil
     -DAPP_VERSION=1
-    -DAPP_REQUESTED_CAPS=${APP_REQUESTED_CAPS}
+    -DAPP_REQUESTED_CAPS=LOG
     -DABI_FILE=${APP_PLATFORM_ABI_FILE}
     -DOUT_INC=${evil}
     -DOUT_MF_INC=${evil_mf}
@@ -211,7 +130,7 @@ add_custom_command(
     -DPYTHON_EXECUTABLE=${PYTHON_EXECUTABLE}
     -DZEPHYR_BASE=${ZEPHYR_BASE}
     -P ${CMAKE_CURRENT_SOURCE_DIR}/cmake/make_evil.cmake
-  DEPENDS ${bin} ${sig} ${APP_PLATFORM_ABI_FILE}
+  DEPENDS ${bin} ${APP_PLATFORM_ABI_FILE}
 )
 add_custom_target(test_evil DEPENDS ${evil} ${evil_mf} ${evil_sig})
 add_dependencies(test_evil app_platform_abi)

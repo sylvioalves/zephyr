@@ -28,6 +28,16 @@ tests:
       - CONFIG_USERSPACE=y
       - CONFIG_MAX_THREAD_BYTES=4
       - CONFIG_PRIVILEGED_STACK_SIZE=3072
+  # Only the test publisher keys are trusted: the development key is refused.
+  app_platform.core.no_dev_key:
+    timeout: 60
+    platform_exclude:
+      - esp32_devkitc/esp32/procpu
+    extra_configs:
+      - CONFIG_USERSPACE=y
+      - CONFIG_MAX_THREAD_BYTES=4
+      - CONFIG_PRIVILEGED_STACK_SIZE=3072
+      - CONFIG_APP_PLATFORM_DEV_KEY=n
   # Supervisor-mode applications: the suites that pit an application against
   # memory protection are left out.
   app_platform.core.no_userspace:

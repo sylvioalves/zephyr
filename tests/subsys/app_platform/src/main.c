@@ -290,6 +290,32 @@ ZTEST(registry, test_commit_downgrade_over_image_that_cannot_load)
 	zassert_equal(app_registry_uninstall("rbapp"), 0);
 }
 
+/* An installed image signed with a revoked or unknown key still bounds the
+ * version that may replace it.
+ */
+ZTEST(registry, test_commit_downgrade_over_refused_key_refused)
+{
+	const uint32_t key_ids[] = {3U, 77U};
+	struct app_manifest mf;
+	struct app_record rec;
+
+	for (size_t i = 0; i < ARRAY_SIZE(key_ids); i++) {
+		mf = stage("rkapp", 6, 0x66);
+		mf.key_id = key_ids[i];
+		zassert_equal(app_registry_store_staged_manifest("rkapp", &mf, sizeof(mf), mod_sig,
+								 ARRAY_SIZE(mod_sig)),
+			      0);
+		zassert_equal(app_registry_commit("rkapp", false, &mf), 0);
+
+		mf = stage("rkapp", 4, 0x44);
+		zassert_equal(app_registry_commit("rkapp", false, &mf), -EACCES,
+			      "a downgrade over an image of key %u was accepted", key_ids[i]);
+		zassert_true(get_record("rkapp", &rec));
+		zassert_equal(rec.version, 6U);
+		zassert_equal(app_registry_uninstall("rkapp"), 0);
+	}
+}
+
 ZTEST(registry, test_check_refuses_other_images)
 {
 	struct app_manifest mf = stage("ckapp", 7, 0x77);
