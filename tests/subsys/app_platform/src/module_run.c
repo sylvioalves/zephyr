@@ -12,6 +12,8 @@
 
 #include "module_run.h"
 
+uint8_t module_work[MODULE_WORK_SIZE] __aligned(8);
+
 static char watched[32];
 static atomic_t watched_faulted;
 

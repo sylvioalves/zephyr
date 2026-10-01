@@ -19,6 +19,8 @@
 #include <errno.h>
 #include <string.h>
 
+#include "module_run.h"
+
 static const uint8_t mod_bytes[] = {
 #include "test_mod.inc"
 };
@@ -34,17 +36,15 @@ static const uint8_t mod_pubkey[] = {
 
 #define REQUESTED (APP_CAP_LOG | APP_CAP_TIME | APP_CAP_RANDOM)
 
-static uint8_t caps_work[8192] __aligned(8);
-
 static struct llext *load_caps_module(struct app_manifest *mf, void **entry)
 {
 	struct llext *ext = NULL;
 
-	zassert_true(sizeof(mod_bytes) <= sizeof(caps_work), "module too big");
-	memcpy(caps_work, mod_bytes, sizeof(mod_bytes));
+	zassert_true(sizeof(mod_bytes) <= sizeof(module_work), "module too big");
+	memcpy(module_work, mod_bytes, sizeof(mod_bytes));
 	memcpy(mf, caps_manifest, sizeof(*mf));
 	zassert_equal(app_loader_verify_load_manifest(mf, sizeof(*mf), caps_sig, sizeof(caps_sig),
-						      caps_work, sizeof(mod_bytes), mod_pubkey,
+						      module_work, sizeof(mod_bytes), mod_pubkey,
 						      sizeof(mod_pubkey), "app_main", &ext, entry),
 		      0);
 	return ext;
@@ -130,8 +130,8 @@ ZTEST(module_caps, test_module_without_manifest_holds_ceiling)
 	void *entry = NULL;
 
 	memcpy(&mf, caps_manifest, sizeof(mf));
-	memcpy(caps_work, mod_bytes, sizeof(mod_bytes));
-	zassert_equal(app_loader_verify_load("hashed", caps_work, sizeof(mod_bytes),
+	memcpy(module_work, mod_bytes, sizeof(mod_bytes));
+	zassert_equal(app_loader_verify_load("hashed", module_work, sizeof(mod_bytes),
 					     mf.module_sha256, "app_main", &ext, &entry),
 		      0);
 	zassert_equal(app_loader_manifest_caps(ext, &requested, &required), -ENOENT);

@@ -19,6 +19,8 @@
 #include <zephyr/sys/byteorder.h>
 #include <string.h>
 
+#include "module_run.h"
+
 static const uint8_t mod_bytes[] = {
 #include "test_mod.inc"
 };
@@ -68,8 +70,6 @@ static const uint8_t forbidden_sig[] = {
 #define MANIFEST_V3_MAGIC 0x33464d41U
 #define MANIFEST_V3_LEN   124U
 
-static uint8_t work[8192 + 256] __aligned(8);
-
 static int load_key(const struct app_manifest *mf, const uint8_t *key,
 		    size_t key_len, uint8_t *buf, size_t len, struct llext **ext)
 {
@@ -87,10 +87,10 @@ ZTEST(loader_neg, test_wrong_key_rejected)
 	uint8_t key[65];
 
 	memcpy(&mf, mod_manifest, sizeof(mf));
-	memcpy(work, mod_bytes, ARRAY_SIZE(mod_bytes));
+	memcpy(module_work, mod_bytes, ARRAY_SIZE(mod_bytes));
 	memcpy(key, mod_pubkey, sizeof(key));
 	key[10] ^= 0x55; /* a different (invalid or foreign) public point */
-	zassert_equal(load_key(&mf, key, sizeof(key), work, ARRAY_SIZE(mod_bytes),
+	zassert_equal(load_key(&mf, key, sizeof(key), module_work, ARRAY_SIZE(mod_bytes),
 			       &ext), -EPERM, "wrong key must be rejected");
 	zassert_is_null(ext);
 }
@@ -101,9 +101,9 @@ ZTEST(loader_neg, test_truncated_module_rejected)
 	struct llext *ext = NULL;
 
 	memcpy(&mf, mod_manifest, sizeof(mf));
-	memcpy(work, mod_bytes, ARRAY_SIZE(mod_bytes));
+	memcpy(module_work, mod_bytes, ARRAY_SIZE(mod_bytes));
 	/* Manifest untouched, module cut short: length binds first. */
-	int rc = load_key(&mf, mod_pubkey, ARRAY_SIZE(mod_pubkey), work,
+	int rc = load_key(&mf, mod_pubkey, ARRAY_SIZE(mod_pubkey), module_work,
 			  ARRAY_SIZE(mod_bytes) / 2, &ext);
 
 	zassert_equal(rc, -EPERM, "truncated module must be rejected (%d)", rc);
@@ -116,9 +116,9 @@ ZTEST(loader_neg, test_padded_module_rejected)
 	struct llext *ext = NULL;
 
 	memcpy(&mf, mod_manifest, sizeof(mf));
-	memcpy(work, mod_bytes, ARRAY_SIZE(mod_bytes));
-	memset(work + ARRAY_SIZE(mod_bytes), 0x90, 256);
-	int rc = load_key(&mf, mod_pubkey, ARRAY_SIZE(mod_pubkey), work,
+	memcpy(module_work, mod_bytes, ARRAY_SIZE(mod_bytes));
+	memset(module_work + ARRAY_SIZE(mod_bytes), 0x90, 256);
+	int rc = load_key(&mf, mod_pubkey, ARRAY_SIZE(mod_pubkey), module_work,
 			  ARRAY_SIZE(mod_bytes) + 256, &ext);
 
 	zassert_equal(rc, -EPERM, "padded module must be rejected (%d)", rc);
@@ -131,9 +131,9 @@ ZTEST(loader_neg, test_name_mismatch_rejected)
 	struct llext *ext = NULL;
 
 	memcpy(&mf, mod_manifest, sizeof(mf));
-	memcpy(work, mod_bytes, ARRAY_SIZE(mod_bytes));
+	memcpy(module_work, mod_bytes, ARRAY_SIZE(mod_bytes));
 	strncpy(mf.name, "impostor", sizeof(mf.name) - 1);
-	int rc = load_key(&mf, mod_pubkey, ARRAY_SIZE(mod_pubkey), work,
+	int rc = load_key(&mf, mod_pubkey, ARRAY_SIZE(mod_pubkey), module_work,
 			  ARRAY_SIZE(mod_bytes), &ext);
 
 	zassert_equal(rc, -EPERM, "renamed manifest must be rejected (%d)", rc);
@@ -146,9 +146,9 @@ ZTEST(loader_neg, test_version_field_tamper_rejected)
 	struct llext *ext = NULL;
 
 	memcpy(&mf, mod_manifest, sizeof(mf));
-	memcpy(work, mod_bytes, ARRAY_SIZE(mod_bytes));
+	memcpy(module_work, mod_bytes, ARRAY_SIZE(mod_bytes));
 	mf.version += 1; /* bump the version without re-signing */
-	int rc = load_key(&mf, mod_pubkey, ARRAY_SIZE(mod_pubkey), work,
+	int rc = load_key(&mf, mod_pubkey, ARRAY_SIZE(mod_pubkey), module_work,
 			  ARRAY_SIZE(mod_bytes), &ext);
 
 	zassert_equal(rc, -EPERM, "version tamper must be rejected (%d)", rc);
@@ -161,10 +161,10 @@ ZTEST(loader_neg, test_heap_size_tamper_rejected)
 	struct llext *ext = NULL;
 
 	memcpy(&mf, mod_manifest, sizeof(mf));
-	memcpy(work, mod_bytes, ARRAY_SIZE(mod_bytes));
+	memcpy(module_work, mod_bytes, ARRAY_SIZE(mod_bytes));
 	mf.heap_size += 4096U; /* enlarge the heap without re-signing */
-	int rc = load_key(&mf, mod_pubkey, ARRAY_SIZE(mod_pubkey), work, ARRAY_SIZE(mod_bytes),
-			  &ext);
+	int rc = load_key(&mf, mod_pubkey, ARRAY_SIZE(mod_pubkey), module_work,
+			  ARRAY_SIZE(mod_bytes), &ext);
 
 	zassert_equal(rc, -EPERM, "heap size tamper must be rejected (%d)", rc);
 	zassert_is_null(ext);
@@ -177,9 +177,9 @@ ZTEST(loader_neg, test_foreign_abi_rejected)
 	void *entry = NULL;
 
 	memcpy(&mf, badabi_manifest, sizeof(mf));
-	memcpy(work, mod_bytes, ARRAY_SIZE(mod_bytes));
+	memcpy(module_work, mod_bytes, ARRAY_SIZE(mod_bytes));
 	int rc = app_loader_verify_load_manifest(&mf, sizeof(mf), badabi_sig,
-						 ARRAY_SIZE(badabi_sig), work,
+						 ARRAY_SIZE(badabi_sig), module_work,
 						 ARRAY_SIZE(mod_bytes), mod_pubkey,
 						 ARRAY_SIZE(mod_pubkey), "app_main", &ext, &entry);
 
@@ -218,9 +218,9 @@ ZTEST(loader_neg, test_foreign_target_rejected)
 
 	memcpy(&mf, target_manifest, sizeof(mf));
 	zassert_equal(mf.target, 0U);
-	memcpy(work, mod_bytes, ARRAY_SIZE(mod_bytes));
+	memcpy(module_work, mod_bytes, ARRAY_SIZE(mod_bytes));
 	int rc = app_loader_verify_load_manifest(&mf, sizeof(mf), target_sig,
-						 ARRAY_SIZE(target_sig), work,
+						 ARRAY_SIZE(target_sig), module_work,
 						 ARRAY_SIZE(mod_bytes), mod_pubkey,
 						 ARRAY_SIZE(mod_pubkey), "app_main", &ext, &entry);
 
@@ -243,10 +243,10 @@ ZTEST(loader_neg, test_forbidden_import_rejected)
 	int rc;
 
 	memcpy(&mf, forbidden_manifest, sizeof(mf));
-	zassert_true(ARRAY_SIZE(forbidden_bytes) <= sizeof(work), "module too big");
-	memcpy(work, forbidden_bytes, ARRAY_SIZE(forbidden_bytes));
+	zassert_true(ARRAY_SIZE(forbidden_bytes) <= sizeof(module_work), "module too big");
+	memcpy(module_work, forbidden_bytes, ARRAY_SIZE(forbidden_bytes));
 	rc = app_loader_verify_load_manifest(&mf, sizeof(mf), forbidden_sig,
-					     ARRAY_SIZE(forbidden_sig), work,
+					     ARRAY_SIZE(forbidden_sig), module_work,
 					     ARRAY_SIZE(forbidden_bytes), mod_pubkey,
 					     ARRAY_SIZE(mod_pubkey), "app_main", &ext, &entry);
 	zassert_equal(rc, -EACCES, "forbidden import must be rejected (%d)", rc);
@@ -272,16 +272,16 @@ ZTEST(loader_neg, test_foreign_class_and_machine_rejected)
 	struct llext *ext = NULL;
 	void *entry = NULL;
 
-	memcpy(work, mod_bytes, ARRAY_SIZE(mod_bytes));
-	work[class_off] ^= 0x3U;
-	zassert_equal(app_loader_verify_load("foreign", work, ARRAY_SIZE(mod_bytes), expect,
+	memcpy(module_work, mod_bytes, ARRAY_SIZE(mod_bytes));
+	module_work[class_off] ^= 0x3U;
+	zassert_equal(app_loader_verify_load("foreign", module_work, ARRAY_SIZE(mod_bytes), expect,
 					     "app_main", &ext, &entry), -E2BIG,
 		      "a module of another ELF class must be rejected");
 	zassert_is_null(ext);
 
-	memcpy(work, mod_bytes, ARRAY_SIZE(mod_bytes));
-	work[machine_off] ^= 0xffU;
-	zassert_equal(app_loader_verify_load("foreign", work, ARRAY_SIZE(mod_bytes), expect,
+	memcpy(module_work, mod_bytes, ARRAY_SIZE(mod_bytes));
+	module_work[machine_off] ^= 0xffU;
+	zassert_equal(app_loader_verify_load("foreign", module_work, ARRAY_SIZE(mod_bytes), expect,
 					     "app_main", &ext, &entry), -E2BIG,
 		      "a module for another CPU must be rejected");
 	zassert_is_null(ext);
@@ -301,9 +301,9 @@ ZTEST(loader_neg, test_foreign_elf_flags_rejected)
 	struct llext *ext = NULL;
 	void *entry = NULL;
 
-	memcpy(work, mod_bytes, ARRAY_SIZE(mod_bytes));
-	sys_put_le32(sys_get_le32(&work[flags_off]) ^ flip, &work[flags_off]);
-	zassert_equal(app_loader_verify_load("foreign", work, ARRAY_SIZE(mod_bytes), expect,
+	memcpy(module_work, mod_bytes, ARRAY_SIZE(mod_bytes));
+	sys_put_le32(sys_get_le32(&module_work[flags_off]) ^ flip, &module_work[flags_off]);
+	zassert_equal(app_loader_verify_load("foreign", module_work, ARRAY_SIZE(mod_bytes), expect,
 					     "app_main", &ext, &entry), -ENOEXEC,
 		      "a module for another float ABI must be rejected");
 	zassert_is_null(ext);
@@ -319,9 +319,9 @@ static int load_mf(const union app_manifest_buf *mb, size_t mf_len, const uint8_
 {
 	void *entry = NULL;
 
-	memcpy(work, mod_bytes, ARRAY_SIZE(mod_bytes));
-	return app_loader_verify_load_manifest(&mb->mf, mf_len, sig, APP_MANIFEST_SIG_LEN, work,
-					       ARRAY_SIZE(mod_bytes), mod_pubkey,
+	memcpy(module_work, mod_bytes, ARRAY_SIZE(mod_bytes));
+	return app_loader_verify_load_manifest(&mb->mf, mf_len, sig, APP_MANIFEST_SIG_LEN,
+					       module_work, ARRAY_SIZE(mod_bytes), mod_pubkey,
 					       ARRAY_SIZE(mod_pubkey), "app_main", ext, &entry);
 }
 

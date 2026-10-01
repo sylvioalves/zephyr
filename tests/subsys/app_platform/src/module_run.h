@@ -8,6 +8,12 @@
 #define APP_PLATFORM_TEST_MODULE_RUN_H_
 
 #include <stdbool.h>
+#include <stdint.h>
+
+#define MODULE_WORK_SIZE (8192 + 256)
+
+/* Mutable copy of a module, shared by the suites. */
+extern uint8_t module_work[MODULE_WORK_SIZE];
 
 /* Record whether the application named @p name faults from now on. */
 void module_watch(const char *name);

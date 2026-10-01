@@ -40,8 +40,6 @@ static const uint8_t absent_bytes[] __aligned(8) = {
 #include "absent_mod.inc"
 };
 
-static uint8_t abi_work[8192] __aligned(8);
-
 ZTEST(module_abi, test_kernel_services)
 {
 	struct app_manifest mf;
@@ -49,11 +47,11 @@ ZTEST(module_abi, test_kernel_services)
 	void *entry = NULL;
 	int id;
 
-	zassert_true(sizeof(mod_bytes) <= sizeof(abi_work), "module too big");
-	memcpy(abi_work, mod_bytes, sizeof(mod_bytes));
+	zassert_true(sizeof(mod_bytes) <= sizeof(module_work), "module too big");
+	memcpy(module_work, mod_bytes, sizeof(mod_bytes));
 	memcpy(&mf, mod_manifest, sizeof(mf));
 	zassert_equal(app_loader_verify_load_manifest(&mf, sizeof(mf), mod_sig, sizeof(mod_sig),
-						      abi_work, sizeof(mod_bytes), mod_pubkey,
+						      module_work, sizeof(mod_bytes), mod_pubkey,
 						      sizeof(mod_pubkey), "app_main", &ext, &entry),
 		      0);
 
@@ -71,10 +69,10 @@ ZTEST(module_abi, test_64bit_division)
 	void *entry = NULL;
 	int id;
 
-	memcpy(abi_work, mod_bytes, sizeof(mod_bytes));
+	memcpy(module_work, mod_bytes, sizeof(mod_bytes));
 	memcpy(&mf, mod_manifest, sizeof(mf));
 	zassert_equal(app_loader_verify_load_manifest(&mf, sizeof(mf), mod_sig, sizeof(mod_sig),
-						      abi_work, sizeof(mod_bytes), mod_pubkey,
+						      module_work, sizeof(mod_bytes), mod_pubkey,
 						      sizeof(mod_pubkey), "app_main", &ext, &entry),
 		      0);
 

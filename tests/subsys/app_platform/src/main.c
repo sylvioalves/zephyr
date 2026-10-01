@@ -38,9 +38,6 @@ static const uint8_t mod_pubkey[] = {
 #include "test_mod.pubkey.inc"
 };
 
-/* A mutable copy used to craft malformed variants. */
-static uint8_t work[8192] __aligned(8);
-
 static struct app_manifest manifest_copy(void)
 {
 	struct app_manifest mf;
@@ -51,8 +48,8 @@ static struct app_manifest manifest_copy(void)
 
 static size_t fresh_module(void)
 {
-	zassert_true(ARRAY_SIZE(mod_bytes) <= sizeof(work), "module too big");
-	memcpy(work, mod_bytes, ARRAY_SIZE(mod_bytes));
+	zassert_true(ARRAY_SIZE(mod_bytes) <= sizeof(module_work), "module too big");
+	memcpy(module_work, mod_bytes, ARRAY_SIZE(mod_bytes));
 	return ARRAY_SIZE(mod_bytes);
 }
 
@@ -348,7 +345,7 @@ ZTEST(loader, test_genuine_loads)
 	size_t len = fresh_module();
 	struct llext *ext = NULL;
 
-	zassert_equal(load_with(&mf, mod_sig, ARRAY_SIZE(mod_sig), work, len,
+	zassert_equal(load_with(&mf, mod_sig, ARRAY_SIZE(mod_sig), module_work, len,
 				&ext), 0, "genuine module should load");
 	zassert_not_null(ext);
 	zassert_true(app_loader_is_verified(ext), "should be marked verified");
@@ -363,10 +360,10 @@ ZTEST(loader, test_same_name_loaded_twice)
 	struct llext *first = NULL;
 	struct llext *second = NULL;
 
-	zassert_equal(load_with(&mf, mod_sig, ARRAY_SIZE(mod_sig), work, len,
+	zassert_equal(load_with(&mf, mod_sig, ARRAY_SIZE(mod_sig), module_work, len,
 				&first), 0);
 	len = fresh_module();
-	zassert_equal(load_with(&mf, mod_sig, ARRAY_SIZE(mod_sig), work, len,
+	zassert_equal(load_with(&mf, mod_sig, ARRAY_SIZE(mod_sig), module_work, len,
 				&second), -EALREADY,
 		      "a second load of a loaded name must be refused");
 	zassert_is_null(second, "the loaded extension was handed back");
@@ -398,7 +395,7 @@ ZTEST(loader, test_file_genuine_loads)
 	size_t len = fresh_module();
 	struct llext *ext = NULL;
 
-	zassert_equal(load_file_with(work, len, &ext), 0, "genuine file should load");
+	zassert_equal(load_file_with(module_work, len, &ext), 0, "genuine file should load");
 	zassert_true(app_loader_is_verified(ext));
 	app_loader_forget(ext);
 	llext_unload(&ext);
@@ -409,8 +406,8 @@ ZTEST(loader, test_file_longer_than_signed_rejected)
 	size_t len = fresh_module();
 	struct llext *ext = NULL;
 
-	work[len] = 0;
-	zassert_equal(load_file_with(work, len + 1U, &ext), -EPERM);
+	module_work[len] = 0;
+	zassert_equal(load_file_with(module_work, len + 1U, &ext), -EPERM);
 	zassert_is_null(ext);
 }
 
@@ -419,8 +416,8 @@ ZTEST(loader, test_file_tampered_rejected)
 	size_t len = fresh_module();
 	struct llext *ext = NULL;
 
-	work[len / 2] ^= 0xff;
-	zassert_equal(load_file_with(work, len, &ext), -EPERM);
+	module_work[len / 2] ^= 0xff;
+	zassert_equal(load_file_with(module_work, len, &ext), -EPERM);
 	zassert_is_null(ext);
 }
 
@@ -431,8 +428,8 @@ ZTEST(loader, test_tampered_module_rejected)
 	struct llext *ext = NULL;
 
 	/* Flip a byte: module no longer matches the signed manifest hash. */
-	work[len / 2] ^= 0xff;
-	zassert_equal(load_with(&mf, mod_sig, ARRAY_SIZE(mod_sig), work, len,
+	module_work[len / 2] ^= 0xff;
+	zassert_equal(load_with(&mf, mod_sig, ARRAY_SIZE(mod_sig), module_work, len,
 				&ext), -EPERM, "tampered module must be rejected");
 	zassert_is_null(ext);
 }
@@ -446,7 +443,7 @@ ZTEST(loader, test_bad_signature_rejected)
 
 	memcpy(sig, mod_sig, sizeof(sig));
 	sig[0] ^= 0xff; /* corrupt the signature */
-	zassert_equal(load_with(&mf, sig, sizeof(sig), work, len, &ext), -EPERM,
+	zassert_equal(load_with(&mf, sig, sizeof(sig), module_work, len, &ext), -EPERM,
 		      "bad signature must be rejected");
 	zassert_is_null(ext);
 }
@@ -458,7 +455,7 @@ ZTEST(loader, test_bad_manifest_magic_rejected)
 	struct llext *ext = NULL;
 
 	mf.magic ^= 0xffffffff; /* corrupting the manifest breaks its signature */
-	zassert_not_equal(load_with(&mf, mod_sig, ARRAY_SIZE(mod_sig), work, len,
+	zassert_not_equal(load_with(&mf, mod_sig, ARRAY_SIZE(mod_sig), module_work, len,
 				    &ext), 0, "altered manifest must be rejected");
 	zassert_is_null(ext);
 }
@@ -470,7 +467,7 @@ ZTEST(loader, test_length_mismatch_rejected)
 	struct llext *ext = NULL;
 
 	/* Present fewer bytes than the manifest binds. */
-	zassert_not_equal(load_with(&mf, mod_sig, ARRAY_SIZE(mod_sig), work,
+	zassert_not_equal(load_with(&mf, mod_sig, ARRAY_SIZE(mod_sig), module_work,
 				    len - 16, &ext), 0,
 			  "length mismatch must be rejected");
 	zassert_is_null(ext);
@@ -498,14 +495,14 @@ ZTEST(loader, test_oob_relocation_rejected)
 	struct llext *ext = NULL;
 
 	memcpy(&mf, evil_manifest, sizeof(mf));
-	zassert_true(ARRAY_SIZE(evil_bytes) <= sizeof(work), "evil too big");
-	memcpy(work, evil_bytes, ARRAY_SIZE(evil_bytes));
+	zassert_true(ARRAY_SIZE(evil_bytes) <= sizeof(module_work), "evil too big");
+	memcpy(module_work, evil_bytes, ARRAY_SIZE(evil_bytes));
 
 	/* Manifest+signature are valid for these bytes, so verification passes
 	 * and the loader links it - where the relocation bounds check rejects the
 	 * out-of-section r_offset with -ENOEXEC.
 	 */
-	int rc = load_with(&mf, evil_sig, ARRAY_SIZE(evil_sig), work,
+	int rc = load_with(&mf, evil_sig, ARRAY_SIZE(evil_sig), module_work,
 			   ARRAY_SIZE(evil_bytes), &ext);
 
 	zassert_equal(rc, -ENOEXEC,
@@ -584,8 +581,10 @@ ZTEST(lifecycle, test_restart_refused_for_loaded_app)
 	void *entry = NULL;
 
 	zassert_equal(app_loader_verify_load_manifest(&mf, sizeof(mf), mod_sig, ARRAY_SIZE(mod_sig),
-						      work, len, mod_pubkey, ARRAY_SIZE(mod_pubkey),
-						      "app_main", &ext, &entry), 0);
+						      module_work, len, mod_pubkey,
+						      ARRAY_SIZE(mod_pubkey), "app_main", &ext,
+						      &entry),
+		      0);
 
 	module_watch(mf.name);
 
@@ -773,7 +772,7 @@ ZTEST(lifecycle, test_launch_stopped_module)
 		int id;
 
 		zassert_equal(app_loader_verify_load_manifest(&mf, sizeof(mf), mod_sig,
-							      ARRAY_SIZE(mod_sig), work, len,
+							      ARRAY_SIZE(mod_sig), module_work, len,
 							      mod_pubkey, ARRAY_SIZE(mod_pubkey),
 							      "app_main", &ext, &entry), 0);
 		module_watch(mf.name);
