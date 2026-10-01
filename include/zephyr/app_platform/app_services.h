@@ -745,6 +745,26 @@ __syscall int app_svc_gpio_count(void);
 __syscall int app_svc_gpio_set(int line, int on);
 
 /**
+ * @brief Drive several GPIO lines in one call. Needs @ref APP_CAP_GPIO and a
+ *        per-line grant for every line in @p mask.
+ *
+ * Bit N of @p mask selects line N and bit N of @p values gives its level. No
+ * other caller of the service runs between the first and the last line, and
+ * the lines of one GPIO port change in one driver call. A line driven high is
+ * driven low when the application is reclaimed, as with @ref app_svc_gpio_set.
+ *
+ * @param mask   Lines to drive, bit N for line N.
+ * @param values Levels for the lines in @p mask, bit N set to drive line N high.
+ * @retval 0 on success, also for an empty @p mask.
+ * @retval -EPERM without @ref APP_CAP_GPIO.
+ * @retval -EINVAL @p mask names a line at or above @ref app_svc_gpio_count.
+ * @retval -EACCES with the capability but without a grant for a line in
+ *         @p mask. No line is driven.
+ * @retval -EBUSY The service stayed locked by another caller.
+ */
+__syscall int app_svc_gpio_set_mask(uint32_t mask, uint32_t values);
+
+/**
  * @brief Resolve a GPIO line's devicetree name to its index. Needs @ref
  *        APP_CAP_GPIO. Resolve once and pass the index to @ref app_svc_gpio_set.
  *

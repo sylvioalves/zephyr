@@ -194,6 +194,82 @@ int z_impl_app_svc_gpio_set(int line, int on)
 #endif
 }
 
+#if HAS_LINES
+/* Drive the lines in @p mask, one driver call per port. */
+static int lines_set_mask(uint32_t mask, uint32_t values)
+{
+	uint32_t left = mask;
+
+	while (left != 0U) {
+		const struct device *port = lines[find_lsb_set(left) - 1].port;
+		gpio_port_pins_t pins = 0U;
+		gpio_port_value_t levels = 0U;
+		int rc;
+
+		for (int i = 0; i < (int)LINE_COUNT; i++) {
+			if ((left & BIT(i)) == 0U || lines[i].port != port) {
+				continue;
+			}
+			bool high = ((values & BIT(i)) != 0U) !=
+				    ((lines[i].dt_flags & GPIO_ACTIVE_LOW) != 0U);
+
+			pins |= BIT(lines[i].pin);
+			if (high) {
+				levels |= BIT(lines[i].pin);
+			}
+			left &= ~BIT(i);
+		}
+		rc = gpio_port_set_masked_raw(port, pins, levels);
+		if (rc != 0) {
+			return rc;
+		}
+	}
+	return 0;
+}
+#endif
+
+int z_impl_app_svc_gpio_set_mask(uint32_t mask, uint32_t values)
+{
+	if (!app_has_cap(APP_CAP_GPIO)) {
+		return -EPERM;
+	}
+
+	int id = app_platform_id_current();
+
+	if (id < 0 || id >= MAX_APPS) {
+		return -EINVAL;
+	}
+	if ((mask & ~(uint32_t)BIT64_MASK(LINE_COUNT)) != 0U) {
+		return -EINVAL;
+	}
+	if ((mask & ~line_grant[id]) != 0U) {
+		return -EACCES;
+	}
+	if (mask == 0U) {
+		return 0;
+	}
+#if HAS_LINES
+	int rc;
+
+	if (app_service_lock(&line_lock, SVC_LOCK_TIMEOUT) != 0) {
+		return -EBUSY;
+	}
+	gpio_ready_init();
+	rc = lines_set_mask(mask, values);
+	if (rc == 0) {
+		for (int i = 0; i < MAX_APPS; i++) {
+			line_active[i] &= ~mask;
+		}
+		line_active[id] |= mask & values;
+	}
+	(void)app_service_unlock(&line_lock);
+	return rc;
+#else
+	ARG_UNUSED(values);
+	return -ENODEV;
+#endif
+}
+
 int z_impl_app_svc_gpio_watch(int line, int on)
 {
 	if (!app_has_cap(APP_CAP_GPIO)) {
@@ -278,4 +354,10 @@ static inline int z_vrfy_app_svc_gpio_set(int line, int on)
 	return z_impl_app_svc_gpio_set(line, on);
 }
 #include <zephyr/syscalls/app_svc_gpio_set_mrsh.c>
+
+static inline int z_vrfy_app_svc_gpio_set_mask(uint32_t mask, uint32_t values)
+{
+	return z_impl_app_svc_gpio_set_mask(mask, values);
+}
+#include <zephyr/syscalls/app_svc_gpio_set_mask_mrsh.c>
 #endif
