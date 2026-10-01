@@ -240,6 +240,53 @@ removed application's region is unmapped, zeroed and returned to the pool by the
 taking any service lock, so the next application in the slot neither sees the old contents nor
 can reach the old region.
 
+Networking
+==========
+
+With :kconfig:option:`CONFIG_APP_PLATFORM_NET` the platform owns the network link, the sockets
+and the MQTT sessions, and each application reaches them through the ``app_svc_net_*``,
+``app_svc_udp_*``, ``app_svc_tcp_*`` and ``app_svc_mqtt_*`` services. An application owns one
+socket and one MQTT session, keyed by its slot, and both are closed when it is reclaimed.
+
+The link is chosen with the ``APP_PLATFORM_NET_LINK`` choice. On a Wi-Fi link, the default when
+:kconfig:option:`CONFIG_WIFI` is enabled, the platform associates the first Wi-Fi interface with
+the configured network and ``app_svc_net_ready()`` returns once it holds an address and the broker
+resolves. With :kconfig:option:`CONFIG_APP_PLATFORM_NET_LINK_IFACE` the platform configures no
+interface: the link is up once an interface that is up holds an IPv4 address, the default
+interface first, so Ethernet or loopback serve as well. The broker is then resolved when an
+application opens its MQTT session, and the Wi-Fi connect and disconnect services return
+``-ENOTSUP``.
+
+A supervisor net thread runs every socket operation, so the network stack never runs on an
+application's stack. It blocks in one ``zsock_poll()`` over an eventfd and the open sockets and
+MQTT sessions. An application request writes the eventfd and arriving data makes its socket
+readable, so either is served as soon as it is there rather than on a polling period, and a
+receive call that waits for data returns as soon as it is queued. The poll timeout is only the
+next MQTT keep-alive, or the Wi-Fi signal-strength refresh. A received datagram that finds the
+application's inbox full is dropped, while a stream is not read until the application drains its
+inbox, which leaves the flow control to TCP. The poll set needs
+:kconfig:option:`CONFIG_ZVFS_POLL_MAX` of at least one more than twice
+:kconfig:option:`CONFIG_APP_PLATFORM_MAX_APPS`, which the platform sets by default and checks at
+build time.
+
+Bulk calls
+==========
+
+Every service call crosses into the platform once, so work that repeats a call per item pays that
+crossing per item. Two services take the items in one call:
+
+* ``app_svc_gpio_set_mask()`` drives every line in a mask to the level given in a value, with
+  each line checked against the application's grant before any line changes. The lines change
+  under one hold of the service lock, so no other caller runs between them, and the lines of one
+  GPIO port change in one driver call.
+* ``app_svc_sensor_read_n()`` takes up to
+  :kconfig:option:`CONFIG_APP_PLATFORM_SENSOR_READ_N_MAX` readings of a sensor kind under one hold
+  of the device and writes them to the caller's buffer, which is checked once.
+
+A byte stream already has a bulk path: the ring service (``app_svc_ring_bind()``) maps a buffer
+into the application, which fills or drains it without a call and then moves the whole batch with
+one ``app_svc_ring_flush()`` or ``app_svc_ring_fill()``.
+
 Loading and verification
 ========================
 
