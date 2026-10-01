@@ -235,6 +235,10 @@ static const char *refusal_reason(int err)
 		return "older than the installed version or imports a forbidden symbol";
 	case -EBADMSG:
 		return "manifest malformed or not the installed image";
+	case -ENXIO:
+		return "signed with a key this firmware does not trust";
+	case -ECANCELED:
+		return "signed with a revoked key, or the configure hook refused it";
 	default:
 		return "launch failed";
 	}
@@ -516,7 +520,8 @@ static bool loads_here(const struct app_manifest *mf)
 
 /* Whether the installed manifest of @p name describes an image this firmware
  * refuses to load: one of a retired format, another interface major version or
- * another target.
+ * another target. An image signed with a revoked or unknown key does not count,
+ * so revoking a key never lets an older image replace a newer one.
  */
 static bool installed_cannot_load(const char *name)
 {

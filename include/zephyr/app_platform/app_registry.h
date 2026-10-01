@@ -147,8 +147,10 @@ int app_registry_autostart_all(app_registry_launch_t launch, void *user);
  * @param[out] err Receives 0 when the last autostart launched the application or
  *             none was attempted, or the negative errno its launch returned, for
  *             example -EPERM when a required capability is not allowed, -ENOEXEC
- *             when it was built for another interface major version or target and
- *             -ENOTSUP when its manifest format is retired.
+ *             when it was built for another interface major version or target,
+ *             -ENOTSUP when its manifest format is retired, -ENXIO when it is
+ *             signed with a key this firmware does not trust and -ECANCELED when
+ *             its signing key is revoked.
  *
  * @retval 0 Success.
  * @retval -ENOENT No application with this name is installed, or @p err is NULL.
@@ -325,7 +327,10 @@ int app_registry_load_staged_manifest(const char *name, union app_manifest_buf *
  * load the installed image, because its manifest has a retired format or names
  * another interface major version or target, and @p mf names this firmware's.
  * After a firmware rollback to an older interface major version this lets the
- * application be brought back to a version built for it.
+ * application be brought back to a version built for it. An installed image
+ * signed with a revoked or unknown key is not such an image: its version still
+ * bounds what may be installed, so revoking a key does not let an older image
+ * signed with another key replace it.
  *
  * @param name      Application name.
  * @param autostart Whether the platform launches it at boot.
