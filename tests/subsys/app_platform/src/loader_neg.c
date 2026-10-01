@@ -67,8 +67,7 @@ static const uint8_t forbidden_sig[] = {
 #include "forbidden_mod.sig.inc"
 };
 
-#define MANIFEST_V3_MAGIC 0x33464d41U
-#define MANIFEST_V3_LEN   124U
+#define MANIFEST_RETIRED_LEN 124U
 
 static int load_key(const struct app_manifest *mf, const uint8_t *key,
 		    size_t key_len, uint8_t *buf, size_t len, struct llext **ext)
@@ -380,22 +379,29 @@ ZTEST(manifest_format, test_longer_manifest_loads)
 	zassert_is_null(ext);
 }
 
-/* A manifest of the previous format, as an older firmware installed it, asks
- * for the application to be installed again.
+/* A manifest of a retired format, as an older firmware installed it, asks for
+ * the application to be installed again.
  */
-ZTEST(manifest_format, test_format_3_refused)
+ZTEST(manifest_format, test_retired_formats_refused)
 {
 	union app_manifest_buf mb;
 	struct llext *ext = NULL;
 
-	memset(&mb, 0, sizeof(mb));
-	memcpy(mb.raw, mod_manifest, MANIFEST_V3_LEN);
-	sys_put_le32(MANIFEST_V3_MAGIC, mb.raw);
+	for (uint32_t fmt = 1U; fmt < APP_MANIFEST_FORMAT; fmt++) {
+		memset(&mb, 0, sizeof(mb));
+		memcpy(mb.raw, mod_manifest, MANIFEST_RETIRED_LEN);
+		sys_put_le32(APP_MANIFEST_MAGIC_PREFIX | (((uint32_t)'0' + fmt) << 24), mb.raw);
+		zassert_equal(app_manifest_retired_format(mb.mf.magic), fmt);
 
-	zassert_equal(load_mf(&mb, MANIFEST_V3_LEN, mod_sig, &ext), -ENOTSUP);
-	zassert_is_null(ext);
-	zassert_equal(load_mf_file("oldapp", &mb, MANIFEST_V3_LEN, mod_sig, &ext), -ENOTSUP);
-	zassert_is_null(ext);
+		zassert_equal(load_mf(&mb, MANIFEST_RETIRED_LEN, mod_sig, &ext), -ENOTSUP,
+			      "format %u", fmt);
+		zassert_is_null(ext);
+		zassert_equal(load_mf_file("oldapp", &mb, MANIFEST_RETIRED_LEN, mod_sig, &ext),
+			      -ENOTSUP, "format %u", fmt);
+		zassert_is_null(ext);
+	}
+	zassert_equal(app_manifest_retired_format(APP_MANIFEST_MAGIC), 0U);
+	zassert_equal(app_manifest_retired_format(0x30464d41U), 0U);
 }
 
 /* A manifest shorter than the fields this firmware knows is refused even when
