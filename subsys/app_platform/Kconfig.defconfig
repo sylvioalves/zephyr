@@ -11,3 +11,16 @@ configdefault MAX_THREAD_BYTES
 	default 4
 
 endif # APP_PLATFORM && USERSPACE
+
+if APP_PLATFORM_NET
+
+# The net thread polls one eventfd plus a socket and an MQTT session per
+# application.
+configdefault ZVFS_POLL_MAX
+	default 8 if APP_PLATFORM_MAX_APPS <= 3
+	default 9 if APP_PLATFORM_MAX_APPS <= 4
+	default 17 if APP_PLATFORM_MAX_APPS <= 8
+	default 33 if APP_PLATFORM_MAX_APPS <= 16
+	default 65
+
+endif # APP_PLATFORM_NET

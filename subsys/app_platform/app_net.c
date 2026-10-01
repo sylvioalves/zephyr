@@ -25,6 +25,7 @@
 #include <zephyr/net/net_mgmt.h>
 #include <zephyr/net/socket.h>
 #include <zephyr/posix/fcntl.h>
+#include <zephyr/zvfs/eventfd.h>
 #include <zephyr/net/mqtt.h>
 #include "app_grants.h"
 #ifdef CONFIG_SETTINGS
@@ -98,6 +99,7 @@ struct app_sock {
 	bool                    used;
 	bool                    is_tcp;
 	int                     fd;
+	bool                    rx_eof;
 	struct sockaddr_in      peer;
 	struct k_mutex          rx_lock;
 	struct sock_msg         rx;
@@ -143,7 +145,19 @@ struct net_req_msg {
 
 static struct net_req reqs[MAX_SESSIONS];
 K_MSGQ_DEFINE(net_req_q, sizeof(struct net_req_msg), 2 * MAX_SESSIONS, 4);
-static K_SEM_DEFINE(net_wake, 0, 1);
+
+/* The net thread polls the wake descriptor and, per application, its socket
+ * and its MQTT session.
+ */
+#define POLL_SLOTS (1 + 2 * MAX_SESSIONS)
+
+BUILD_ASSERT(CONFIG_ZVFS_POLL_MAX >= POLL_SLOTS,
+	     "CONFIG_ZVFS_POLL_MAX is below 1 + 2 * CONFIG_APP_PLATFORM_MAX_APPS");
+
+/* Poll period of the net thread when it has no wake descriptor. */
+#define NET_FALLBACK_POLL_MS 20
+
+static int wake_fd = -1;
 
 struct pub_req {
 	int  id;
@@ -208,6 +222,14 @@ static void creds_save(void)
 static void creds_save(void) { }
 #endif
 
+/* Wake the net thread out of its poll. */
+static void net_wake(void)
+{
+	if (wake_fd >= 0) {
+		(void)zvfs_eventfd_write(wake_fd, 1);
+	}
+}
+
 /* Losing the address or the association is what tells the platform the shared
  * link is gone: without it link_ready would stay true after the access point
  * disappears, app_svc_wifi_status would keep reporting a live link and the net
@@ -222,6 +244,7 @@ static void link_lost(void)
 	link_ready = false;
 	link_failed = false;
 	broker_resolved = false;
+	net_wake();
 }
 
 static void ipv4_evt(struct net_mgmt_event_callback *cb, uint64_t ev,
@@ -619,6 +642,7 @@ static int sock_do_open(struct app_sock *sk, const struct net_req *r)
 
 	sk->fd = fd;
 	sk->is_tcp = r->tcp;
+	sk->rx_eof = false;
 	sk->peer = peer;
 	k_msgq_init(&sk->inbox, sk->inbox_buf, sizeof(struct sock_msg), 4);
 	sk->used = true;
@@ -705,13 +729,184 @@ static int net_call(int id)
 	if (k_msgq_put(&net_req_q, &m, K_NO_WAIT) != 0) {
 		return -EBUSY;
 	}
-	k_sem_give(&net_wake);
+	net_wake();
 	(void)k_sem_take(&r->done, K_FOREVER);
 	return r->rc;
 }
 
+static void net_publish_queued(void)
+{
+	struct pub_req req;
+
+	while (k_msgq_get(&net_pub_q, &req, K_NO_WAIT) == 0) {
+		if (req.id < 0 || req.id >= MAX_SESSIONS ||
+		    !sessions[req.id].connected) {
+			continue;
+		}
+		struct session *s = &sessions[req.id];
+		struct mqtt_publish_param p = { 0 };
+
+		p.message.topic.topic.utf8 = s->pub_topic;
+		p.message.topic.topic.size = strlen(s->pub_topic);
+		p.message.topic.qos = MQTT_QOS_0_AT_MOST_ONCE;
+		p.message.payload.data = (uint8_t *)req.payload;
+		p.message.payload.len = strlen(req.payload);
+
+		if (app_service_lock(&net_lock, K_FOREVER) != 0) {
+			continue;
+		}
+		int rc = mqtt_publish(&s->client, &p);
+
+		app_service_unlock(&net_lock);
+		printk("mqtt: '%s' published '%s' rc=%d\n",
+		       s->client_id, req.payload, rc);
+	}
+}
+
+enum poll_kind {
+	POLL_WAKE,
+	POLL_SOCK,
+	POLL_MQTT,
+};
+
+struct poll_ref {
+	enum poll_kind kind;
+	int            id;
+};
+
+static int min_timeout(int a, int b)
+{
+	if (a < 0) {
+		return b;
+	}
+	if (b < 0) {
+		return a;
+	}
+	return MIN(a, b);
+}
+
+/* Fill the poll set with the wake descriptor, every open socket that can take
+ * more data and every connected MQTT session, and return the poll timeout in
+ * milliseconds: the nearest MQTT keep-alive, or -1 to wait for an event. The
+ * reaper releases sockets and sessions under net_lock, so the set is built
+ * under it.
+ */
+static int net_poll_build(struct zsock_pollfd *fds, struct poll_ref *refs, int *nfds,
+			  int64_t rssi_next)
+{
+	int timeout = -1;
+	int n = 0;
+
+	fds[n] = (struct zsock_pollfd){ .fd = wake_fd, .events = ZSOCK_POLLIN };
+	refs[n++] = (struct poll_ref){ .kind = POLL_WAKE };
+	if (wake_fd < 0) {
+		timeout = NET_FALLBACK_POLL_MS;
+	}
+
+	if (app_service_lock(&net_lock, K_FOREVER) == 0) {
+		for (int i = 0; i < MAX_SESSIONS; i++) {
+			struct app_sock *sk = &socks[i];
+			struct session *s = &sessions[i];
+
+			if (sk->used && sk->fd >= 0 && !sk->rx_eof &&
+			    (!sk->is_tcp || k_msgq_num_free_get(&sk->inbox) > 0U)) {
+				fds[n] = (struct zsock_pollfd){ .fd = sk->fd,
+								.events = ZSOCK_POLLIN };
+				refs[n++] = (struct poll_ref){ .kind = POLL_SOCK, .id = i };
+			}
+			if (s->connected) {
+				fds[n] = (struct zsock_pollfd){
+					.fd = s->client.transport.tcp.sock,
+					.events = ZSOCK_POLLIN };
+				refs[n++] = (struct poll_ref){ .kind = POLL_MQTT, .id = i };
+				timeout = min_timeout(timeout,
+						      mqtt_keepalive_time_left(&s->client));
+			}
+		}
+		app_service_unlock(&net_lock);
+	}
+
+	if (IS_ENABLED(CONFIG_APP_PLATFORM_NET_LINK_WIFI) && link_ready) {
+		timeout = min_timeout(timeout,
+				      (int)CLAMP(rssi_next - k_uptime_get(), 0, INT32_MAX));
+	}
+	*nfds = n;
+	return timeout;
+}
+
+/* Move what a socket has ready into its inbox. A datagram that finds the inbox
+ * full is dropped; a stream is not read while its inbox is full. The end of a
+ * stream, or an error, is queued once as an empty message and the socket is
+ * not polled again.
+ */
+static void sock_pump(int id, int fd)
+{
+	static struct sock_msg m;
+	struct app_sock *sk = &socks[id];
+	struct sockaddr_in from = { 0 };
+	socklen_t fromlen = sizeof(from);
+	int n;
+
+	if (app_service_lock(&net_lock, K_FOREVER) != 0) {
+		return;
+	}
+	if (!sk->used || sk->fd != fd || sk->rx_eof) {
+		app_service_unlock(&net_lock);
+		return;
+	}
+	n = zsock_recvfrom(fd, m.data, sizeof(m.data), 0, (struct sockaddr *)&from,
+			   &fromlen);
+	if (n > 0) {
+		m.len = (uint16_t)n;
+		m.src_addr = from.sin_addr;
+		m.src_port = ntohs(from.sin_port);
+		(void)k_msgq_put(&sk->inbox, &m, K_NO_WAIT);
+	} else if (n == 0 || errno != EAGAIN) {
+		sk->rx_eof = true;
+		if (sk->is_tcp) {
+			m.len = 0;
+			(void)k_msgq_put(&sk->inbox, &m, K_NO_WAIT);
+		}
+	}
+	app_service_unlock(&net_lock);
+}
+
+static void mqtt_pump(int id, int fd)
+{
+	struct session *s = &sessions[id];
+
+	if (app_service_lock(&net_lock, K_FOREVER) != 0) {
+		return;
+	}
+	if (s->connected && s->client.transport.tcp.sock == fd) {
+		(void)mqtt_input(&s->client);
+	}
+	app_service_unlock(&net_lock);
+}
+
+static void mqtt_keep_alive(void)
+{
+	if (app_service_lock(&net_lock, K_FOREVER) != 0) {
+		return;
+	}
+	for (int i = 0; i < MAX_SESSIONS; i++) {
+		if (sessions[i].connected) {
+			(void)mqtt_live(&sessions[i].client);
+		}
+	}
+	app_service_unlock(&net_lock);
+}
+
+/* The supervisor net thread. It blocks in one poll over the wake descriptor,
+ * the applications' sockets and their MQTT sessions, so a request, a publish
+ * or arriving data is served as soon as it is there.
+ */
 static void net_thread(void *a, void *b, void *c)
 {
+	static struct zsock_pollfd fds[POLL_SLOTS];
+	static struct poll_ref refs[POLL_SLOTS];
+	int64_t rssi_next = 0;
+
 	ARG_UNUSED(a); ARG_UNUSED(b); ARG_UNUSED(c);
 
 #ifdef CONFIG_SETTINGS
@@ -725,7 +920,9 @@ static void net_thread(void *a, void *b, void *c)
 	}
 
 	for (;;) {
-		struct pub_req req;
+		zvfs_eventfd_t count;
+		int nfds;
+		int timeout;
 
 		if (disconnect_req) {
 			disconnect_req = false;
@@ -744,110 +941,37 @@ static void net_thread(void *a, void *b, void *c)
 			bring_link_up();
 		}
 
-		(void)k_sem_take(&net_wake, K_MSEC(500));
 		net_serve_requests();
+		net_publish_queued();
 
-		while (k_msgq_get(&net_pub_q, &req, K_NO_WAIT) == 0) {
-			if (req.id < 0 || req.id >= MAX_SESSIONS ||
-			    !sessions[req.id].connected) {
-				continue;
-			}
-			struct session *s = &sessions[req.id];
-			struct mqtt_publish_param p = { 0 };
-
-			p.message.topic.topic.utf8 = s->pub_topic;
-			p.message.topic.topic.size = strlen(s->pub_topic);
-			p.message.topic.qos = MQTT_QOS_0_AT_MOST_ONCE;
-			p.message.payload.data = (uint8_t *)req.payload;
-			p.message.payload.len = strlen(req.payload);
-
-			if (app_service_lock(&net_lock, K_FOREVER) != 0) {
-				continue;
-			}
-			int rc = mqtt_publish(&s->client, &p);
-
-			app_service_unlock(&net_lock);
-			printk("mqtt: '%s' published '%s' rc=%d\n",
-			       s->client_id, req.payload, rc);
+		timeout = net_poll_build(fds, refs, &nfds, rssi_next);
+		if (zsock_poll(fds, nfds, timeout) < 0) {
+			k_msleep(NET_FALLBACK_POLL_MS);
+			continue;
 		}
 
-		/* The reaper releases a session under net_lock, so the flag
-		 * and the socket it guards are read inside the same hold: a
-		 * session sampled as connected outside it can be torn down
-		 * before the socket is used. Polling with no timeout keeps the
-		 * hold short.
-		 */
-		for (int i = 0; i < MAX_SESSIONS; i++) {
-			struct session *s = &sessions[i];
-
-			if (app_service_lock(&net_lock, K_FOREVER) != 0) {
+		for (int i = 0; i < nfds; i++) {
+			if (fds[i].revents == 0) {
 				continue;
 			}
-			if (s->connected) {
-				struct zsock_pollfd fd = {
-					.fd = s->client.transport.tcp.sock,
-					.events = ZSOCK_POLLIN };
-
-				if (zsock_poll(&fd, 1, 0) > 0) {
-					mqtt_input(&s->client);
-				}
-				mqtt_live(&s->client);
-			}
-			app_service_unlock(&net_lock);
-		}
-
-		/* Pump each open raw socket: drain ready bytes into its inbox.
-		 * Held under net_lock for the same reason as the sessions
-		 * above: the descriptor must not be closed between the test
-		 * and the receive.
-		 */
-		for (int i = 0; i < MAX_SESSIONS; i++) {
-			struct app_sock *sk = &socks[i];
-
-			if (app_service_lock(&net_lock, K_FOREVER) != 0) {
-				continue;
-			}
-			if (!sk->used || sk->fd < 0) {
-				app_service_unlock(&net_lock);
-				continue;
-			}
-			struct zsock_pollfd fd = { .fd = sk->fd,
-						   .events = ZSOCK_POLLIN };
-
-			if (zsock_poll(&fd, 1, 0) <= 0) {
-				app_service_unlock(&net_lock);
-				continue;
-			}
-			static struct sock_msg m;
-			struct sockaddr_in from = { 0 };
-			socklen_t fromlen = sizeof(from);
-			int n = zsock_recvfrom(sk->fd, m.data, sizeof(m.data), 0,
-					       (struct sockaddr *)&from, &fromlen);
-			bool is_tcp = sk->is_tcp;
-			struct k_msgq *inbox = &sk->inbox;
-
-			app_service_unlock(&net_lock);
-
-			if (n > 0) {
-				m.len = (uint16_t)n;
-				m.src_addr = from.sin_addr;
-				m.src_port = ntohs(from.sin_port);
-				(void)k_msgq_put(inbox, &m, K_NO_WAIT);
-			} else if (n == 0 && is_tcp) {
-				/* Peer closed the stream: signal end with a
-				 * zero-length message so the reader sees it.
-				 */
-				m.len = 0;
-				(void)k_msgq_put(inbox, &m, K_NO_WAIT);
+			switch (refs[i].kind) {
+			case POLL_WAKE:
+				(void)zvfs_eventfd_read(wake_fd, &count);
+				break;
+			case POLL_SOCK:
+				sock_pump(refs[i].id, fds[i].fd);
+				break;
+			case POLL_MQTT:
+				mqtt_pump(refs[i].id, fds[i].fd);
+				break;
 			}
 		}
+		mqtt_keep_alive();
 
 		/* Refresh the cached signal strength roughly every two seconds.
 		 * Querying the interface here keeps the blocking mgmt call off the
 		 * application threads.
 		 */
-		static int64_t rssi_next;
-
 		if (IS_ENABLED(CONFIG_APP_PLATFORM_NET_LINK_WIFI) && link_ready &&
 		    k_uptime_get() >= rssi_next) {
 			rssi_next = k_uptime_get() + 2000;
@@ -860,7 +984,6 @@ static void net_thread(void *a, void *b, void *c)
 				link_rssi = (int8_t)st.rssi;
 			}
 		}
-		k_msleep(20);
 	}
 }
 
@@ -882,6 +1005,7 @@ int z_impl_app_svc_net_ready(void)
 	}
 	link_started = true;
 	app_service_unlock(&net_lock);
+	net_wake();
 
 	/* Wait for the net thread's own budget to run out, not less: it makes
 	 * WIFI_CONNECT_TRIES attempts, each up to WIFI_IP_WAIT_S plus the pause
@@ -980,7 +1104,7 @@ int z_impl_app_svc_mqtt_publish(const char *payload)
 
 	int rc = k_msgq_put(&net_pub_q, &req, K_NO_WAIT);
 
-	k_sem_give(&net_wake);
+	net_wake();
 	return rc;
 }
 
@@ -1041,6 +1165,7 @@ int z_impl_app_svc_wifi_connect(const char *ssid, const char *psk)
 	k_sem_reset(&link_change_sem);
 	reconnect_req = true;
 	app_service_unlock(&net_lock);
+	net_wake();
 
 	(void)k_sem_take(&link_change_sem, K_SECONDS(90));
 	return link_ready ? 0 : -EIO;
@@ -1061,6 +1186,7 @@ int z_impl_app_svc_wifi_disconnect(void)
 	k_sem_reset(&link_change_sem);
 	disconnect_req = true;
 	app_service_unlock(&net_lock);
+	net_wake();
 
 	(void)k_sem_take(&link_change_sem, K_SECONDS(10));
 	return 0;
@@ -1219,9 +1345,20 @@ static int sock_recv(bool tcp, void *buf, size_t cap, uint32_t timeout_ms,
 	if (k_mutex_lock(&sk->rx_lock, K_MSEC(timeout_ms)) != 0) {
 		return -EAGAIN;
 	}
+	if (tcp && sk->rx_eof && k_msgq_num_used_get(&sk->inbox) == 0U) {
+		k_mutex_unlock(&sk->rx_lock);
+		return 0;
+	}
+
+	bool was_full = (k_msgq_num_free_get(&sk->inbox) == 0U);
+
 	if (k_msgq_get(&sk->inbox, &sk->rx, sys_timepoint_timeout(end)) != 0) {
 		k_mutex_unlock(&sk->rx_lock);
 		return -EAGAIN;
+	}
+	/* The net thread stops reading a stream whose inbox is full. */
+	if (was_full) {
+		net_wake();
 	}
 
 	if (src_addr != NULL) {
@@ -1361,10 +1498,16 @@ static void net_release(int id)
 	k_mutex_init(&reqs[id].lock);
 	k_sem_init(&reqs[id].done, 0, 1);
 	app_service_unlock(&net_lock);
+	net_wake();
 }
 
 static int net_service_init(void)
 {
+	wake_fd = zvfs_eventfd(0, ZVFS_EFD_NONBLOCK);
+	if (wake_fd < 0) {
+		printk("net: no wake descriptor, polling every %d ms\n",
+		       NET_FALLBACK_POLL_MS);
+	}
 	for (int i = 0; i < MAX_SESSIONS; i++) {
 		k_mutex_init(&socks[i].rx_lock);
 		k_mutex_init(&reqs[i].lock);

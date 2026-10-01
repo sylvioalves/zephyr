@@ -459,6 +459,7 @@ config APP_PLATFORM_NET
 	depends on NETWORKING && MQTT_LIB
 	select NET_MGMT
 	select NET_MGMT_EVENT
+	select ZVFS_EVENTFD
 	help
 	  Bring up the network link once in the platform and give
 	  each application its own MQTT session, reached through capability-
@@ -490,6 +491,12 @@ config APP_PLATFORM_NET_LINK_IFACE
 	  resolved when an application opens a session.
 
 endchoice
+
+config ZVFS_EVENTFD_ADD_SIZE_APP_PLATFORM_NET
+	int
+	default 1
+	help
+	  The net thread waits for application requests on one eventfd.
 
 config APP_PLATFORM_NET_WIFI_SSID
 	string "Wi-Fi SSID"
