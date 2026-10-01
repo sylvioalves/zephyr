@@ -252,6 +252,21 @@ config APP_PLATFORM_DEV_KEY_FILE
 	  directory. The signing script uses the same file when it is given
 	  no other key.
 
+config APP_PLATFORM_EDK
+	bool "Application module development kit"
+	depends on APP_PLATFORM_LOADER
+	default y
+	help
+	  Add the app_platform_edk build target, which packs into
+	  zephyr/app-platform-edk.tar.xz what an application module is
+	  built, checked and signed with outside the tree: the module SDK
+	  headers without kernel headers, the module compiler flags of this
+	  target, the interface lock, the importable symbols, the firmware
+	  facts and public key table the signer uses, the signer and a CMake
+	  helper. A module built with the kit loads on this firmware and on
+	  later builds with the same interface major version and target
+	  fingerprint. The toolchain is not part of the kit.
+
 config LLEXT_EXPORT_SYMBOL_GROUP_APP_ABI
 	bool "Export the application module interface"
 	depends on LLEXT

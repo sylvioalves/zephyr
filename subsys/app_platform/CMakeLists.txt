@@ -189,6 +189,76 @@ ${signing_key_facts}")
   add_custom_target(app_platform_abi)
   add_dependencies(app_platform_abi app_platform_exports)
   add_dependencies(${ZEPHYR_CURRENT_LIBRARY} app_platform_abi)
+
+  # The module development kit: west build -t app_platform_edk. The module
+  # compiler flags are taken from the compile command of a probe module, which
+  # the build never links, without the host paths the LLEXT EDK also removes.
+  if(CONFIG_APP_PLATFORM_EDK)
+    set(APP_PLATFORM_EDK_FILE ${ZEPHYR_BINARY_DIR}/app-platform-edk.tar.xz CACHE INTERNAL "")
+    set(edk_dir ${CMAKE_CURRENT_SOURCE_DIR}/edk)
+    set(edk_scripts ${CMAKE_CURRENT_SOURCE_DIR}/cmake/sign_module.py ${keys_script}
+      ${edk_dir}/requirements.txt)
+    set(edk_templates ${edk_dir}/README.txt ${edk_dir}/app_edk.cmake ${edk_dir}/toolchain.cmake)
+    set(edk_script ${CMAKE_CURRENT_SOURCE_DIR}/cmake/gen_app_edk.py)
+
+    app_platform_add_module(app_platform_edk_probe
+      OUTPUT ${CMAKE_CURRENT_BINARY_DIR}/app_platform_edk_probe.llext
+      SOURCES ${edk_dir}/probe.c)
+
+    set(edk_args)
+    foreach(flag ${LLEXT_EDK_REMOVE_FLAGS})
+      list(APPEND edk_args --remove-flag=${flag})
+    endforeach()
+    foreach(flag ${LLEXT_APPEND_FLAGS})
+      list(APPEND edk_args --link-flag=${flag})
+    endforeach()
+    if(DEFINED ZEPHYR_SDK_INSTALL_DIR)
+      list(APPEND edk_args --sdk-dir ${ZEPHYR_SDK_INSTALL_DIR})
+    endif()
+    if("${BOARD_QUALIFIERS}" STREQUAL "")
+      set(edk_board ${BOARD})
+    else()
+      set(edk_board ${BOARD}/${BOARD_QUALIFIERS})
+    endif()
+    if(CONFIG_LLEXT_TYPE_ELF_OBJECT)
+      set(llext_type object)
+    elseif(CONFIG_LLEXT_TYPE_ELF_RELOCATABLE)
+      set(llext_type relocatable)
+    else()
+      set(llext_type sharedlib)
+    endif()
+
+    add_custom_command(
+      OUTPUT ${APP_PLATFORM_EDK_FILE}
+      COMMAND ${PYTHON_EXECUTABLE} ${edk_script}
+        --out ${APP_PLATFORM_EDK_FILE}
+        --name app-platform-edk
+        --cc ${CMAKE_C_COMPILER}
+        --compile-commands ${CMAKE_BINARY_DIR}/compile_commands.json
+        --probe ${edk_dir}/probe.c
+        --autoconf ${AUTOCONF_H}
+        --zephyr-base ${ZEPHYR_BASE}
+        --binary-dir ${ZEPHYR_BINARY_DIR}
+        --abi-file ${APP_PLATFORM_ABI_FILE}
+        --imports ${abi_allowed_txt}
+        --keys ${keys_json}
+        --lock ${abi_lock}
+        --scripts ${edk_scripts}
+        --templates ${edk_templates}
+        --fact=board=${edk_board}
+        --fact=arch=${ARCH}
+        --fact=llext_type=${llext_type}
+        --fact=toolchain_variant=${ZEPHYR_TOOLCHAIN_VARIANT}
+        --fact=triple=${CROSS_COMPILE_TARGET}
+        --fact=compiler_version=${CMAKE_C_COMPILER_VERSION}
+        --fact=sdk_version=${SDK_VERSION}
+        ${edk_args}
+      DEPENDS ${edk_script} ${edk_scripts} ${edk_templates} ${edk_dir}/probe.c ${abi_lock}
+        ${abi_outputs} ${keys_json} ${APP_PLATFORM_ABI_FILE} ${AUTOCONF_H} app_platform_abi
+      COMMAND_EXPAND_LISTS
+    )
+    add_custom_target(app_platform_edk DEPENDS ${APP_PLATFORM_EDK_FILE})
+  endif()
 endif()
 
 zephyr_library_link_libraries_ifdef(CONFIG_FILE_SYSTEM_LITTLEFS LITTLEFS)
