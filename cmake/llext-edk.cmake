@@ -126,6 +126,7 @@ function(edk_write_var target var_name var_value)
         #   set(var "value1;value2;...")
         #
         set(DASHIMACROS "-imacros\${CMAKE_CURRENT_LIST_DIR}/")
+        set(DASHINCLUDE "-include\${CMAKE_CURRENT_LIST_DIR}/")
         set(DASHI "-I\${CMAKE_CURRENT_LIST_DIR}/")
         edk_escape(${target} "${var_value}" var_value)
         string(CONFIGURE "${var_value}" exp_var_value @ONLY)
@@ -137,6 +138,7 @@ function(edk_write_var target var_name var_value)
         #   var = "value1" "value2" ...
         #
         set(DASHIMACROS "-imacros\$(${install_dir_var})/")
+        set(DASHINCLUDE "-include\$(${install_dir_var})/")
         set(DASHI "-I\$(${install_dir_var})/")
         edk_escape(${target} "${var_value}" var_value)
         string(CONFIGURE "${var_value}" exp_var_value @ONLY)
@@ -344,39 +346,46 @@ if(CONFIG_LLEXT_EDK_HEADERS_SELECTED)
   set(llext_edk_c_incs)
 endif()
 
-set(make_relative FALSE)
+set(make_relative)
 foreach(flag ${llext_edk_cflags})
-    # Detect all combinations of 'imacros' flag:
+    # Detect all combinations of 'imacros' and 'include' flags:
     # - with one or two preceding dashes
     # - separated from the argument, joined by '=', or joined (no separator)
-    if(flag MATCHES "^--?imacros$")
-        # imacros followed by a space, convert next argument
-        set(make_relative TRUE)
+    if(flag MATCHES "^--?(imacros|include)$")
+        # flag followed by a space, convert next argument
+        set(make_relative ${CMAKE_MATCH_1})
         continue()
-    elseif(flag MATCHES "^--?imacros=?([^=].*)$")
-        # imacros=<stuff> or imacros<stuff>, immediately convert <stuff>
-        set(flag ${CMAKE_MATCH_1})
-        set(make_relative TRUE)
+    elseif(flag MATCHES "^--?(imacros|include)=?([^=].*)$")
+        # flag=<stuff> or flag<stuff>, immediately convert <stuff>
+        set(make_relative ${CMAKE_MATCH_1})
+        set(flag ${CMAKE_MATCH_2})
     endif()
 
     if(make_relative)
-        set(make_relative FALSE)
         cmake_path(GET flag PARENT_PATH parent)
         cmake_path(GET flag FILENAME name)
         relative_dir(${parent} dest bindir)
         cmake_path(RELATIVE_PATH dest BASE_DIRECTORY ${llext_edk} OUTPUT_VARIABLE dest_rel)
-        if(bindir)
-            list(APPEND imacros_gen "@DASHIMACROS@${dest_rel}/${name}")
+        if(make_relative STREQUAL "include")
+            set(placeholder "@DASHINCLUDE@")
+            set(list_name includes)
         else()
-            list(APPEND imacros "@DASHIMACROS@${dest_rel}/${name}")
+            set(placeholder "@DASHIMACROS@")
+            set(list_name imacros)
         endif()
+        if(bindir)
+            list(APPEND ${list_name}_gen "${placeholder}${dest_rel}/${name}")
+        else()
+            list(APPEND ${list_name} "${placeholder}${dest_rel}/${name}")
+        endif()
+        set(make_relative)
     else()
         list(APPEND new_cflags ${flag})
     endif()
 endforeach()
 set(llext_edk_cflags ${new_cflags})
 
-list(APPEND base_flags ${llext_edk_cflags} ${imacros})
+list(APPEND base_flags ${llext_edk_cflags} ${imacros} ${includes})
 
 file(MAKE_DIRECTORY ${llext_edk_inc})
 foreach(dir ${llext_edk_c_incs})
@@ -400,7 +409,7 @@ foreach(dir ${llext_edk_c_incs})
     list(APPEND all_inc_flags "@DASHI@${dest_rel}")
 endforeach()
 
-list(APPEND all_flags ${base_flags} ${imacros_gen} ${all_inc_flags})
+list(APPEND all_flags ${base_flags} ${imacros_gen} ${includes_gen} ${all_inc_flags})
 
 if(CONFIG_LLEXT_EDK_USERSPACE_ONLY AND NOT CONFIG_LLEXT_EDK_HEADERS_SELECTED)
     # Copy syscall headers from edk directory, as they were regenerated there.
