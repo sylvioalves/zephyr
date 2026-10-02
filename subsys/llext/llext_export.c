@@ -106,6 +106,19 @@ EXPORT_GROUP_SYMBOL(LIBC, __umodsi3);
 #endif /* !CONFIG_RISCV_ISA_EXT_M */
 #endif /* CONFIG_RISCV && !CONFIG_64BIT */
 
+#if defined(CONFIG_XTENSA)
+/* Xtensa lowers 64-bit division and modulo to these run-time helpers. */
+extern void __divdi3(void);
+extern void __udivdi3(void);
+extern void __moddi3(void);
+extern void __umoddi3(void);
+
+EXPORT_GROUP_SYMBOL(LIBC, __divdi3);
+EXPORT_GROUP_SYMBOL(LIBC, __udivdi3);
+EXPORT_GROUP_SYMBOL(LIBC, __moddi3);
+EXPORT_GROUP_SYMBOL(LIBC, __umoddi3);
+#endif /* CONFIG_XTENSA */
+
 /* These symbols are used if CCAC is given the flag -Os */
 #ifdef __CCAC__
 extern void __ac_mc_va(void);
