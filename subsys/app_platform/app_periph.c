@@ -28,20 +28,20 @@
 #define PWM_NAME(alias_node) \
 	DT_PROP_OR(alias_node, label, DT_NODE_FULL_NAME(alias_node))
 
+/* Channels come from the aliases app-pwm0 to app-pwm7. */
+#define PWM_SPEC_N(n, _)                                                                   \
+	IF_ENABLED(DT_HAS_ALIAS(app_pwm##n), (PWM_DT_SPEC_GET(DT_ALIAS(app_pwm##n)),))
+#define PWM_NAME_N(n, _)                                                                   \
+	IF_ENABLED(DT_HAS_ALIAS(app_pwm##n), (PWM_NAME(DT_ALIAS(app_pwm##n)),))
+
 #if DT_HAS_ALIAS(app_pwm0)
 static const struct pwm_dt_spec pwm_ch[] = {
-	PWM_DT_SPEC_GET(DT_ALIAS(app_pwm0)),
-#if DT_HAS_ALIAS(app_pwm1)
-	PWM_DT_SPEC_GET(DT_ALIAS(app_pwm1)),
-#endif
+	LISTIFY(8, PWM_SPEC_N, ())
 };
 #define PWM_COUNT ARRAY_SIZE(pwm_ch)
 
 static const char *const pwm_name[] = {
-	PWM_NAME(DT_ALIAS(app_pwm0)),
-#if DT_HAS_ALIAS(app_pwm1)
-	PWM_NAME(DT_ALIAS(app_pwm1)),
-#endif
+	LISTIFY(8, PWM_NAME_N, ())
 };
 #else
 #define PWM_COUNT 0
@@ -98,6 +98,58 @@ int z_impl_app_svc_pwm_set(int ch, uint32_t permille)
 	ARG_UNUSED(permille);
 	return -ENODEV;
 #endif
+}
+
+int z_impl_app_svc_pwm_set_ns(int ch, uint32_t period_ns, uint32_t pulse_ns, uint8_t flags)
+{
+	if (!app_has_cap(APP_CAP_PWM)) {
+		return -EPERM;
+	}
+
+	int id = app_platform_id_current();
+
+	if (id < 0 || id >= MAX_APPS || ch < 0 || ch >= (int)PWM_COUNT ||
+	    period_ns == 0U || pulse_ns > period_ns || (flags & ~APP_PWM_INVERTED) != 0U) {
+		return -EINVAL;
+	}
+	if ((pwm_grant[id] & BIT(ch)) == 0U) {
+		return -EACCES;
+	}
+#if DT_HAS_ALIAS(app_pwm0)
+	if (!pwm_is_ready_dt(&pwm_ch[ch])) {
+		return -ENODEV;
+	}
+
+	pwm_flags_t pf = pwm_ch[ch].flags;
+	int rc;
+
+	if ((flags & APP_PWM_INVERTED) != 0U) {
+		pf ^= PWM_POLARITY_INVERTED;
+	}
+	if (app_service_lock(&pwm_lock, SVC_LOCK_TIMEOUT) != 0) {
+		return -EBUSY;
+	}
+	rc = pwm_set(pwm_ch[ch].dev, pwm_ch[ch].channel, period_ns, pulse_ns, pf);
+	if (rc == 0) {
+		for (int i = 0; i < MAX_APPS; i++) {
+			pwm_driven[i] &= ~BIT(ch);
+		}
+		pwm_driven[id] |= BIT(ch);
+	}
+	(void)app_service_unlock(&pwm_lock);
+	return rc;
+#else
+	ARG_UNUSED(pulse_ns);
+	return -ENODEV;
+#endif
+}
+
+int z_impl_app_svc_pwm_count(void)
+{
+	if (!app_has_cap(APP_CAP_PWM)) {
+		return -EPERM;
+	}
+	return (int)PWM_COUNT;
 }
 
 int z_impl_app_svc_pwm_find(const char *name)
@@ -161,6 +213,38 @@ void app_platform_clear_periph_grants(int id)
 }
 #if ADC_HAS_CH
 static bool adc_ready;
+
+/* Take one sample of a channel, in a buffer wide enough for its resolution. */
+static int adc_sample(int ch, int32_t *out)
+{
+	union {
+		int16_t s16;
+		int32_t s32;
+	} buf = { 0 };
+	bool wide = adc_ch[ch].resolution > 16U;
+	struct adc_sequence seq = {
+		.buffer = &buf,
+		.buffer_size = wide ? sizeof(buf.s32) : sizeof(buf.s16),
+	};
+	int rc;
+
+	if (!adc_ready) {
+		for (int i = 0; i < (int)ADC_COUNT; i++) {
+			if (adc_is_ready_dt(&adc_ch[i])) {
+				adc_channel_setup_dt(&adc_ch[i]);
+			}
+		}
+		adc_ready = true;
+	}
+	rc = adc_sequence_init_dt(&adc_ch[ch], &seq);
+	if (rc == 0) {
+		rc = adc_read_dt(&adc_ch[ch], &seq);
+	}
+	if (rc == 0) {
+		*out = wide ? buf.s32 : buf.s16;
+	}
+	return rc;
+}
 #endif
 
 void app_platform_grant_adc(int id, uint32_t ch_mask)
@@ -185,29 +269,54 @@ int z_impl_app_svc_adc_read(int ch)
 		return -EACCES;
 	}
 #if ADC_HAS_CH
-	if (!adc_ready) {
-		for (int i = 0; i < (int)ADC_COUNT; i++) {
-			if (adc_is_ready_dt(&adc_ch[i])) {
-				adc_channel_setup_dt(&adc_ch[i]);
-			}
-		}
-		adc_ready = true;
-	}
+	int32_t sample;
 
-	int16_t sample = 0;
-	struct adc_sequence seq = {
-		.buffer = &sample,
-		.buffer_size = sizeof(sample),
-	};
-
-	if (adc_sequence_init_dt(&adc_ch[ch], &seq) != 0 ||
-	    adc_read_dt(&adc_ch[ch], &seq) != 0) {
+	if (adc_sample(ch, &sample) != 0) {
 		return -EIO;
 	}
 	return (int)sample;
 #else
 	return -ENODEV;
 #endif
+}
+
+int z_impl_app_svc_adc_read_mv(int ch, int32_t *mv)
+{
+	if (!app_has_cap(APP_CAP_ADC)) {
+		return -EPERM;
+	}
+
+	int id = app_platform_id_current();
+
+	if (id < 0 || id >= MAX_APPS || ch < 0 || ch >= (int)ADC_COUNT) {
+		return -EINVAL;
+	}
+	if ((adc_grant[id] & BIT(ch)) == 0U) {
+		return -EACCES;
+	}
+#if ADC_HAS_CH
+	int32_t val;
+	int rc = adc_sample(ch, &val);
+
+	if (rc == 0) {
+		rc = adc_raw_to_millivolts_dt(&adc_ch[ch], &val);
+	}
+	if (rc == 0) {
+		*mv = val;
+	}
+	return rc;
+#else
+	ARG_UNUSED(mv);
+	return -ENODEV;
+#endif
+}
+
+int z_impl_app_svc_adc_count(void)
+{
+	if (!app_has_cap(APP_CAP_ADC)) {
+		return -EPERM;
+	}
+	return (int)ADC_COUNT;
 }
 
 #ifdef CONFIG_USERSPACE
@@ -233,4 +342,30 @@ static inline int z_vrfy_app_svc_adc_read(int ch)
 	return z_impl_app_svc_adc_read(ch);
 }
 #include <zephyr/syscalls/app_svc_adc_read_mrsh.c>
+
+static inline int z_vrfy_app_svc_adc_read_mv(int ch, int32_t *mv)
+{
+	K_OOPS(K_SYSCALL_MEMORY_WRITE(mv, sizeof(*mv)));
+	return z_impl_app_svc_adc_read_mv(ch, mv);
+}
+#include <zephyr/syscalls/app_svc_adc_read_mv_mrsh.c>
+
+static inline int z_vrfy_app_svc_adc_count(void)
+{
+	return z_impl_app_svc_adc_count();
+}
+#include <zephyr/syscalls/app_svc_adc_count_mrsh.c>
+
+static inline int z_vrfy_app_svc_pwm_set_ns(int ch, uint32_t period_ns, uint32_t pulse_ns,
+					    uint8_t flags)
+{
+	return z_impl_app_svc_pwm_set_ns(ch, period_ns, pulse_ns, flags);
+}
+#include <zephyr/syscalls/app_svc_pwm_set_ns_mrsh.c>
+
+static inline int z_vrfy_app_svc_pwm_count(void)
+{
+	return z_impl_app_svc_pwm_count();
+}
+#include <zephyr/syscalls/app_svc_pwm_count_mrsh.c>
 #endif

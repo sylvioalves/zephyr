@@ -1503,6 +1503,36 @@ __syscall int app_svc_file_close(int handle);
 __syscall int app_svc_pwm_set(int ch, uint32_t permille);
 
 /**
+ * @brief Set the period, pulse width and polarity of a granted PWM channel.
+ *        Needs @ref APP_CAP_PWM.
+ *
+ * The channel returns to its devicetree period, polarity and a zero pulse
+ * when the application is reclaimed.
+ *
+ * @param ch Channel index below @ref app_svc_pwm_count.
+ * @param period_ns Period in nanoseconds.
+ * @param pulse_ns Active time in nanoseconds, at most @p period_ns.
+ * @param flags APP_PWM_INVERTED, or 0.
+ *
+ * @retval 0 Success.
+ * @retval -EPERM The application does not hold @ref APP_CAP_PWM.
+ * @retval -EINVAL @p ch, the times or @p flags out of range.
+ * @retval -EACCES The channel was not granted.
+ * @retval -ENOTSUP The controller cannot produce the period.
+ * @retval -EBUSY The service stayed locked.
+ * @retval -ENODEV The channel's controller is not ready.
+ */
+__syscall int app_svc_pwm_set_ns(int ch, uint32_t period_ns, uint32_t pulse_ns, uint8_t flags);
+
+/**
+ * @brief Number of PWM channels exposed to applications. Needs
+ *        @ref APP_CAP_PWM.
+ *
+ * @return The channel count, or -EPERM without @ref APP_CAP_PWM.
+ */
+__syscall int app_svc_pwm_count(void);
+
+/**
  * @brief Resolve a PWM channel's devicetree name to its index. Needs @ref
  *        APP_CAP_PWM. Resolve once and pass the index to @ref app_svc_pwm_set.
  *
@@ -1524,6 +1554,31 @@ void app_platform_grant_pwm(int id, uint32_t ch_mask);
  * @retval -EACCES with the capability but without a grant for this channel.
  */
 __syscall int app_svc_adc_read(int ch);
+
+/**
+ * @brief Read a granted ADC channel in millivolts. Needs @ref APP_CAP_ADC.
+ *
+ * Converts the raw sample with the channel's devicetree reference and gain.
+ *
+ * @param ch Channel index below @ref app_svc_adc_count.
+ * @param mv Receives the reading in millivolts.
+ *
+ * @retval 0 Success.
+ * @retval -EPERM The application does not hold @ref APP_CAP_ADC.
+ * @retval -EINVAL @p ch out of range.
+ * @retval -EACCES The channel was not granted.
+ * @retval -ENOTSUP The channel's reference voltage is unknown.
+ * @retval -ENODEV The board exposes no application ADC channel.
+ */
+__syscall int app_svc_adc_read_mv(int ch, int32_t *mv);
+
+/**
+ * @brief Number of ADC channels exposed to applications. Needs
+ *        @ref APP_CAP_ADC.
+ *
+ * @return The channel count, or -EPERM without @ref APP_CAP_ADC.
+ */
+__syscall int app_svc_adc_count(void);
 
 /** @brief Grant an application a set of ADC channels. */
 void app_platform_grant_adc(int id, uint32_t ch_mask);

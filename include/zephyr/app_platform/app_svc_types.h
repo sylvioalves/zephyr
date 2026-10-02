@@ -113,6 +113,9 @@ struct app_i2c_msg {
 	uint8_t  flags; /**< APP_I2C_MSG_* bits */
 };
 
+/** @ref app_svc_pwm_set_ns flag: invert the channel's devicetree polarity. */
+#define APP_PWM_INVERTED 0x01U
+
 /** Bit of an @ref app_event_kind in an @ref app_svc_event_subscribe mask. */
 #define APP_EVENT_BIT(kind) (1UL << (kind))
 

@@ -18,6 +18,7 @@
 #include <zephyr/app_platform/app_services.h>
 #include <zephyr/app_platform/app_caps.h>
 #include <zephyr/drivers/dac/dac_emul.h>
+#include <zephyr/drivers/adc/adc_emul.h>
 #include <zephyr/drivers/gpio/gpio_emul.h>
 #include <zephyr/drivers/pwm/pwm_fake.h>
 #include <zephyr/drivers/regulator.h>
@@ -1413,6 +1414,70 @@ ZTEST(devices, test_uart_rx_buffered_with_event)
 	zassert_equal(uart_rx_rc, 0, "receive by event failed (%d)", uart_rx_rc);
 	zassert_ok(uart_config_get(uart, &cfg));
 	zassert_equal(cfg.flow_ctrl, UART_CFG_FLOW_CTRL_NONE, "flow control kept after reclaim");
+}
+
+static void adc_mv_read(void *a)
+{
+	ARG_UNUSED(a);
+
+	int32_t mv = 0;
+	int rc = (app_svc_adc_count() == 1) ? 0 : -ENOENT;
+
+	if (rc == 0) {
+		rc = app_svc_adc_read_mv(0, &mv);
+	}
+	if (rc == 0 && (mv < 1640 || mv > 1660)) {
+		rc = -ERANGE;
+	}
+	if (rc == 0 && app_svc_adc_read_mv(1, &mv) != -EINVAL) {
+		rc = -EBADMSG;
+	}
+	report_rc = rc;
+	report_done = 1;
+}
+
+ZTEST(devices, test_adc_reads_millivolts)
+{
+	const struct device *adc = DEVICE_DT_GET(DT_NODELABEL(adc_emul));
+
+	zassert_ok(adc_emul_const_value_set(adc, 0, 1650));
+	for (int i = 0; i < CONFIG_APP_PLATFORM_MAX_APPS; i++) {
+		app_platform_grant_adc(i, BIT(0));
+	}
+	expect_rc("a_mv", adc_mv_read, APP_CAP_LOG | APP_CAP_ADC, 0);
+}
+
+static void pwm_period_inverted(void *a)
+{
+	ARG_UNUSED(a);
+
+	int rc = (app_svc_pwm_count() == 1) ? 0 : -ENOENT;
+
+	if (rc == 0) {
+		rc = app_svc_pwm_set_ns(0, 2000000U, 500000U, APP_PWM_INVERTED);
+	}
+	if (rc == 0 && app_svc_pwm_set_ns(0, 1000U, 2000U, 0U) != -EINVAL) {
+		rc = -EBADMSG;
+	}
+	report_rc = rc;
+	report_done = 1;
+}
+
+ZTEST(devices, test_pwm_period_and_polarity)
+{
+	RESET_FAKE(fake_pwm_set_cycles);
+	for (int i = 0; i < CONFIG_APP_PLATFORM_MAX_APPS; i++) {
+		app_platform_grant_pwm(i, BIT(0));
+	}
+	expect_rc("p_ns", pwm_period_inverted, APP_CAP_LOG | APP_CAP_PWM, 0);
+	zassert_equal(fake_pwm_set_cycles_fake.call_count, 2U);
+	zassert_equal(fake_pwm_set_cycles_fake.arg2_history[0], 2000U);
+	zassert_equal(fake_pwm_set_cycles_fake.arg3_history[0], 500U);
+	zassert_equal(fake_pwm_set_cycles_fake.arg4_history[0] & PWM_POLARITY_INVERTED,
+		      PWM_POLARITY_INVERTED);
+	zassert_equal(fake_pwm_set_cycles_fake.arg2_history[1], 1000U, "period not restored");
+	zassert_equal(fake_pwm_set_cycles_fake.arg3_history[1], 0U);
+	zassert_equal(fake_pwm_set_cycles_fake.arg4_history[1] & PWM_POLARITY_INVERTED, 0U);
 }
 
 static void led_set_held(void *a)

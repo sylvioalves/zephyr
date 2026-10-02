@@ -367,3 +367,8 @@ const APP_UART_ERR_PARITY 0x2
 const APP_UART_ERR_FRAMING 0x4
 const APP_UART_ERR_BREAK 0x8
 const APP_UART_ERR_RX_DROPPED 0x10
+func pwm_set_ns 1 svc int (int, uint32_t, uint32_t, uint8_t)
+func pwm_count 1 svc int (void)
+func adc_read_mv 1 svc int (int, int32_t *)
+func adc_count 1 svc int (void)
+const APP_PWM_INVERTED 0x1

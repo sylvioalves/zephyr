@@ -129,7 +129,12 @@ file_seek         1 svc APP_PLATFORM_FS        int (int handle, int32_t off, int
 file_close        1 svc APP_PLATFORM_FS        int (int handle)
 pwm_set           1 svc APP_PLATFORM_PERIPH    int (int ch, uint32_t permille)
 pwm_find          1 svc APP_PLATFORM_PERIPH    int (const char *name)
+pwm_set_ns        1 svc APP_PLATFORM_PERIPH    int (int ch, uint32_t period_ns, uint32_t pulse_ns,
+                                                    uint8_t flags)
+pwm_count         1 svc APP_PLATFORM_PERIPH    int (void)
 adc_read          1 svc APP_PLATFORM_PERIPH    int (int ch)
+adc_read_mv       1 svc APP_PLATFORM_PERIPH    int (int ch, int32_t *mv)
+adc_count         1 svc APP_PLATFORM_PERIPH    int (void)
 led_set           1 svc APP_PLATFORM_IO        int (int pin, int on)
 led_count         1 svc APP_PLATFORM_IO        int (void)
 led_find          1 svc APP_PLATFORM_IO        int (const char *name)
