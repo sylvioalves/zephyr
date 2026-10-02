@@ -551,6 +551,9 @@ static void clear_grants(int id)
 	if (IS_ENABLED(CONFIG_APP_PLATFORM_BUS)) {
 		app_platform_clear_bus_grants(id);
 	}
+	if (IS_ENABLED(CONFIG_APP_PLATFORM_CAN)) {
+		app_platform_clear_can(id);
+	}
 	if (IS_ENABLED(CONFIG_APP_PLATFORM_SERVICES)) {
 		app_platform_clear_flash_grants(id);
 		app_platform_clear_ipc(id);

@@ -24,6 +24,7 @@
 #include <zephyr/drivers/led_strip.h>
 #include <zephyr/drivers/display.h>
 #include <zephyr/drivers/uart.h>
+#include <zephyr/drivers/can.h>
 #include <zephyr/drivers/uart/serial_test.h>
 #include <zephyr/fs/fs.h>
 #include <zephyr/fs/littlefs.h>
@@ -815,6 +816,160 @@ ZTEST(devices, test_uart_config_owned_until_reclaim)
 	release_held("u_own");
 	zassert_ok(uart_config_get(uart, &cfg));
 	zassert_mem_equal(&cfg, &boot, sizeof(cfg), "owner's reclaim kept its settings");
+}
+
+static void can_ext_roundtrip(void *a)
+{
+	ARG_UNUSED(a);
+
+	struct app_can_frame tx = {
+		.id = 0x1abcde0U, .flags = APP_CAN_FRAME_EXT, .dlc = 3,
+		.data = { 1, 2, 3 },
+	};
+	struct app_can_frame rx;
+	int rc = app_svc_can_send_frame(&tx);
+
+	if (rc == 0) {
+		rc = app_svc_can_recv_frame(&rx, 500);
+	}
+	if (rc == 0 && (rx.id != tx.id || rx.flags != tx.flags || rx.dlc != 3 ||
+			memcmp(rx.data, tx.data, 3) != 0)) {
+		rc = -EBADMSG;
+	}
+	report_rc = rc;
+	report_done = 1;
+}
+
+static void can_bad_ids(void *a)
+{
+	ARG_UNUSED(a);
+
+	struct app_can_frame f = { .id = 0x20000000U, .flags = APP_CAN_FRAME_EXT };
+	uint8_t b = 0;
+	int rc = 0;
+
+	if (app_svc_can_send(0x800U, &b, 1) != -EINVAL) {
+		rc = 1;
+	} else if (app_svc_can_send_frame(&f) != -EINVAL) {
+		rc = 2;
+	} else if (app_svc_can_filter_add(0x800U, 0x7ffU, 0U) != -EINVAL) {
+		rc = 3;
+	} else if (app_svc_can_filter_remove(0) != -ENOENT) {
+		rc = 4;
+	}
+	report_rc = rc;
+	report_done = 1;
+}
+
+static void can_filter_one(void *a)
+{
+	ARG_UNUSED(a);
+
+	uint8_t b = 0x5a;
+	uint32_t id = 0;
+	uint8_t got;
+	int rc = app_svc_can_filter_add(0x100U, 0x7ffU, 0U);
+
+	if (rc >= 0) {
+		rc = app_svc_can_send(0x200U, &b, 1);
+	}
+	if (rc == 0) {
+		rc = app_svc_can_send(0x100U, &b, 1);
+	}
+	if (rc == 0) {
+		rc = app_svc_can_recv(&id, &got, 1, 500);
+		rc = (rc == 1 && id == 0x100U) ? 0 : -EBADMSG;
+	}
+	if (rc == 0 && app_svc_can_recv(&id, &got, 1, 50) != -EAGAIN) {
+		rc = -EEXIST;
+	}
+	report_rc = rc;
+	report_done = 1;
+}
+
+K_APP_DMEM(report_part) volatile int can_got_rc;
+K_APP_DMEM(report_part) volatile uint32_t can_got_id;
+
+static void can_filtered_listener(void *a)
+{
+	ARG_UNUSED(a);
+
+	struct app_can_frame f;
+	int rc = app_svc_can_filter_add(0x300U, 0x7ffU, 0U);
+
+	report_rc = (rc >= 0) ? 0 : rc;
+	report_done = 1;
+	holding = 1;
+	rc = app_svc_can_recv_frame(&f, 2000);
+	can_got_id = f.id;
+	can_got_rc = rc;
+	while (release == 0) {
+		k_msleep(1);
+	}
+}
+
+static void can_sender(void *a)
+{
+	ARG_UNUSED(a);
+
+	uint8_t b = 1;
+	int rc = app_svc_can_send(0x123U, &b, 1);
+
+	if (rc == 0) {
+		rc = app_svc_can_send(0x300U, &b, 1);
+	}
+	report_rc = rc;
+	report_done = 1;
+}
+
+static void can_status_ok(void *a)
+{
+	ARG_UNUSED(a);
+
+	struct app_can_status st;
+	int rc = app_svc_can_status(&st);
+
+	if (rc == 0 && (st.state != APP_CAN_ERROR_ACTIVE || st.last_tx_error != 0)) {
+		rc = -EBADMSG;
+	}
+	report_rc = rc;
+	report_done = 1;
+}
+
+static void can_no_cap(void *a)
+{
+	ARG_UNUSED(a);
+
+	struct app_can_status st;
+
+	report_rc = app_svc_can_status(&st);
+	report_done = 1;
+}
+
+ZTEST(devices, test_can_frames_and_status)
+{
+	const struct device *can = DEVICE_DT_GET(DT_CHOSEN(zephyr_canbus));
+
+	expect_rc("c_ext", can_ext_roundtrip, APP_CAP_LOG | APP_CAP_CAN, 0);
+	zassert_equal(can_get_mode(can), CAN_MODE_LOOPBACK);
+	expect_rc("c_bad", can_bad_ids, APP_CAP_LOG | APP_CAP_CAN, 0);
+	expect_rc("c_st", can_status_ok, APP_CAP_LOG | APP_CAP_CAN, 0);
+	expect_rc("c_nocap", can_no_cap, APP_CAP_LOG, -EPERM);
+}
+
+ZTEST(devices, test_can_filters_route_frames)
+{
+	expect_rc("c_flt", can_filter_one, APP_CAP_LOG | APP_CAP_CAN, 0);
+
+	can_got_rc = -9999;
+	launch_held("c_lis", can_filtered_listener, APP_CAP_LOG | APP_CAP_CAN);
+	expect_rc("c_snd", can_sender, APP_CAP_LOG | APP_CAP_CAN, 0);
+	for (int i = 0; i < 400 && can_got_rc == -9999; i++) {
+		k_msleep(5);
+	}
+	zassert_equal(can_got_rc, 0, "listener got no frame (%d)", can_got_rc);
+	zassert_equal(can_got_id, 0x300U, "filter let 0x%x through", can_got_id);
+	release_held("c_lis");
 }
 
 static void led_set_held(void *a)

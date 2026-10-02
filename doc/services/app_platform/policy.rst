@@ -210,8 +210,9 @@ Buses
        per-application grant.
    * - CAN
      - Brokered connection
-     - One bus and one receive queue shared by every application holding
-       ``APP_CAP_CAN``, with no per-application identifier filter.
+     - One bus shared by every application holding ``APP_CAP_CAN``. Each
+       application receives the frames matching its own identifier filters into
+       its own queue.
    * - GPIO
      - Scoped
      - An allowlist of lines, never every pin.

@@ -299,3 +299,26 @@ field app_ble_chrc.writable offset 18 size 1
 field app_ble_chrc.notifiable offset 19 size 1
 func gpio_set_mask 1 svc int (uint32_t, uint32_t)
 func sensor_read_n 1 svc int (int, int32_t *, size_t)
+func can_send_frame 1 svc int (const struct app_can_frame *)
+func can_recv_frame 1 svc int (struct app_can_frame *, int32_t)
+func can_filter_add 1 svc int (uint32_t, uint32_t, uint8_t)
+func can_filter_remove 1 svc int (int)
+func can_status 1 svc int (struct app_can_status *)
+const APP_CAN_FRAME_EXT 0x1
+const APP_CAN_FRAME_RTR 0x2
+enum app_can_state.APP_CAN_ERROR_ACTIVE 0x0
+enum app_can_state.APP_CAN_ERROR_WARNING 0x1
+enum app_can_state.APP_CAN_ERROR_PASSIVE 0x2
+enum app_can_state.APP_CAN_BUS_OFF 0x3
+enum app_can_state.APP_CAN_STOPPED 0x4
+struct app_can_frame size 16
+field app_can_frame.id offset 0 size 4
+field app_can_frame.flags offset 4 size 1
+field app_can_frame.dlc offset 5 size 1
+field app_can_frame.data offset 6 size 8
+struct app_can_status size 12
+field app_can_status.state offset 0 size 1
+field app_can_status.tx_err_cnt offset 1 size 1
+field app_can_status.rx_err_cnt offset 2 size 1
+field app_can_status.last_tx_error offset 4 size 4
+field app_can_status.rx_dropped offset 8 size 4

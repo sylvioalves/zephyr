@@ -164,4 +164,37 @@ struct app_ble_chrc {
 
 /** @} */
 
+/** @ref app_can_frame::flags bit: 29-bit extended identifier. */
+#define APP_CAN_FRAME_EXT 0x01U
+/** @ref app_can_frame::flags bit: remote transmission request, no payload. */
+#define APP_CAN_FRAME_RTR 0x02U
+
+/** One classic CAN frame, for @ref app_svc_can_send_frame and
+ *  @ref app_svc_can_recv_frame.
+ */
+struct app_can_frame {
+	uint32_t id;      /**< 11-bit identifier, or 29-bit with APP_CAN_FRAME_EXT */
+	uint8_t  flags;   /**< APP_CAN_FRAME_* bits */
+	uint8_t  dlc;     /**< payload length, 0 to 8 */
+	uint8_t  data[8]; /**< payload */
+};
+
+/** Controller states reported by @ref app_svc_can_status. */
+enum app_can_state {
+	APP_CAN_ERROR_ACTIVE = 0, /**< normal operation */
+	APP_CAN_ERROR_WARNING,    /**< an error counter passed the warning level */
+	APP_CAN_ERROR_PASSIVE,    /**< an error counter passed 127 */
+	APP_CAN_BUS_OFF,          /**< the controller left the bus */
+	APP_CAN_STOPPED,          /**< the controller is stopped */
+};
+
+/** Bus and per-application receive status, filled by @ref app_svc_can_status. */
+struct app_can_status {
+	uint8_t  state;         /**< one of @ref app_can_state */
+	uint8_t  tx_err_cnt;    /**< controller transmit error counter */
+	uint8_t  rx_err_cnt;    /**< controller receive error counter */
+	int32_t  last_tx_error; /**< errno of the last failed send since the last call, or 0 */
+	uint32_t rx_dropped;    /**< frames dropped because the queue was full */
+};
+
 #endif /* ZEPHYR_INCLUDE_APP_PLATFORM_SVC_TYPES_H_ */

@@ -808,9 +808,34 @@ config APP_PLATFORM_CAN
 	depends on APP_PLATFORM_SERVICES
 	depends on CAN
 	help
-	  Expose CAN messaging as a capability-gated service. The controller
-	  runs in loopback so an application can send and receive frames on a
-	  single board, without holding the bus.
+	  Expose CAN messaging as a capability-gated service. The platform
+	  starts the controller at the bitrate of its devicetree node and runs
+	  it on the bus. Each application receives the frames that match its
+	  own filters into its own queue, without holding the bus.
+
+if APP_PLATFORM_CAN
+
+config APP_PLATFORM_CAN_LOOPBACK
+	bool "Run the CAN controller in loopback"
+	help
+	  Run the controller in loopback mode, so frames an application sends
+	  come back to be received on the same board without a transceiver or
+	  another node. For single-board testing only.
+
+config APP_PLATFORM_CAN_FILTERS
+	int "CAN receive filters per application"
+	default 4
+	range 1 16
+
+config APP_PLATFORM_CAN_RX_DEPTH
+	int "CAN frames queued per application"
+	default 8
+	range 1 64
+	help
+	  How many received frames one application may fall behind before
+	  further frames for it are dropped and counted.
+
+endif # APP_PLATFORM_CAN
 
 config APP_PLATFORM_DMA
 	bool "Shared memory-to-memory DMA service"

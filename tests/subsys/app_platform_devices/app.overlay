@@ -189,7 +189,13 @@
 		status = "okay";
 	};
 
+	app_can: can_loopback {
+		compatible = "zephyr,can-loopback";
+		status = "okay";
+	};
+
 	chosen {
+		zephyr,canbus = &app_can;
 		app,uart = &app_uart;
 		zephyr,eeprom = &i2c_eeprom;
 		zephyr,rtc = &rtc_emul;

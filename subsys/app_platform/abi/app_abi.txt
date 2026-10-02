@@ -183,6 +183,11 @@ radio_recv        1 svc APP_PLATFORM_RADIO     int (void *buf, size_t len, uint3
 can_send          1 svc APP_PLATFORM_CAN       int (uint32_t id, const uint8_t *buf, size_t len)
 can_recv          1 svc APP_PLATFORM_CAN       int (uint32_t *id_out, uint8_t *buf, size_t cap,
                                                     uint32_t timeout_ms)
+can_send_frame    1 svc APP_PLATFORM_CAN       int (const struct app_can_frame *frame)
+can_recv_frame    1 svc APP_PLATFORM_CAN       int (struct app_can_frame *frame, int32_t timeout_ms)
+can_filter_add    1 svc APP_PLATFORM_CAN       int (uint32_t id, uint32_t mask, uint8_t flags)
+can_filter_remove 1 svc APP_PLATFORM_CAN       int (int filter)
+can_status        1 svc APP_PLATFORM_CAN       int (struct app_can_status *out)
 dma_copy          1 svc APP_PLATFORM_DMA       int (const uint8_t *src, uint8_t *dst, size_t len)
 psram_map         1 svc APP_PLATFORM_PSRAM     int (size_t size, uintptr_t *out_addr,
                                                     size_t *out_size)

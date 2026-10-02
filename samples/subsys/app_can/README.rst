@@ -8,8 +8,9 @@ Overview
 
 Launches an application that sends CAN frames and reads them back through
 platform services, never touching the controller itself. The platform owns the
-controller and runs it in loopback with self-test enabled, so the frames come
-back on a single board and no transceiver has to be wired up. A payload longer
+controller, and the sample sets :kconfig:option:`CONFIG_APP_PLATFORM_CAN_LOOPBACK`
+so it runs in loopback and the frames come back on a single board without a
+transceiver. A payload longer
 than a classic CAN frame is refused rather than truncated.
 
 A second application is launched without ``APP_CAP_CAN``. It calls the same two

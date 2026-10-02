@@ -2161,18 +2161,24 @@ __syscall int app_svc_radio_recv(void *buf, size_t len, uint32_t timeout_ms);
 /**
  * @brief Send a CAN frame. Needs @ref APP_CAP_CAN.
  *
- * The controller runs in loopback, so a sent frame can be received back on the
- * same board. The application never holds the bus.
+ * Sends a data frame with an 11-bit identifier. The frame is queued to the
+ * controller and the call returns without waiting for the bus to acknowledge
+ * it; a later transmit failure is reported by @ref app_svc_can_status. The
+ * application never holds the bus.
  *
- * @param id  CAN identifier.
+ * @param id  11-bit CAN identifier.
  * @param buf Up to 8 payload bytes.
  * @param len Payload length.
- * @retval 0 on success, -EPERM without the capability, negative errno otherwise.
+ * @retval 0 on success, -EPERM without the capability, -EINVAL on an identifier
+ *         or length out of range, negative errno otherwise.
  */
 __syscall int app_svc_can_send(uint32_t id, const uint8_t *buf, size_t len);
 
 /**
  * @brief Receive a CAN frame. Needs @ref APP_CAP_CAN.
+ *
+ * Takes the next frame from the application's own queue; see
+ * @ref app_svc_can_filter_add for which frames reach it.
  *
  * @param id_out     Receives the frame identifier.
  * @param buf        Receives the payload.
@@ -2183,6 +2189,88 @@ __syscall int app_svc_can_send(uint32_t id, const uint8_t *buf, size_t len);
  */
 __syscall int app_svc_can_recv(uint32_t *id_out, uint8_t *buf, size_t cap,
 			       uint32_t timeout_ms);
+
+/**
+ * @brief Send a CAN frame with an extended identifier or as a remote request.
+ *        Needs @ref APP_CAP_CAN.
+ *
+ * As @ref app_svc_can_send, for any frame @ref app_can_frame describes.
+ *
+ * @param frame Frame to send.
+ *
+ * @retval 0 Queued to the controller.
+ * @retval -EPERM The application does not hold @ref APP_CAP_CAN.
+ * @retval -EINVAL Identifier, flags or length out of range.
+ * @retval -ENODEV The board exposes no CAN controller.
+ * @retval -EAGAIN The controller stayed full for 100 ms.
+ * @retval -ENETDOWN The controller is stopped or off the bus.
+ */
+__syscall int app_svc_can_send_frame(const struct app_can_frame *frame);
+
+/**
+ * @brief Receive the next CAN frame from the application's queue. Needs
+ *        @ref APP_CAP_CAN.
+ *
+ * @param frame Receives the frame.
+ * @param timeout_ms Milliseconds to wait, 0 to poll, negative to wait forever.
+ *
+ * @retval 0 A frame was received.
+ * @retval -EPERM The application does not hold @ref APP_CAP_CAN.
+ * @retval -EAGAIN No frame arrived in time.
+ * @retval -ENODEV The board exposes no CAN controller.
+ */
+__syscall int app_svc_can_recv_frame(struct app_can_frame *frame, int32_t timeout_ms);
+
+/**
+ * @brief Receive only the CAN frames that match a filter. Needs
+ *        @ref APP_CAP_CAN.
+ *
+ * An application with no filter receives every frame on the bus. Once it adds
+ * one, it receives only frames that match at least one of its filters. A frame
+ * matches when its identifier equals @p id in every bit set in @p mask and its
+ * identifier type matches @p flags. With APP_CAN_FRAME_RTR set in @p flags,
+ * only remote requests match.
+ *
+ * @param id Identifier to match.
+ * @param mask Identifier bits that must match.
+ * @param flags APP_CAN_FRAME_EXT to match extended identifiers, APP_CAN_FRAME_RTR
+ *              to match only remote requests.
+ *
+ * @retval >=0 Filter handle for @ref app_svc_can_filter_remove.
+ * @retval -EPERM The application does not hold @ref APP_CAP_CAN.
+ * @retval -EINVAL @p id, @p mask or @p flags out of range.
+ * @retval -ENOSPC The application already holds
+ *         @kconfig{CONFIG_APP_PLATFORM_CAN_FILTERS} filters.
+ * @retval -ENODEV The board exposes no CAN controller.
+ */
+__syscall int app_svc_can_filter_add(uint32_t id, uint32_t mask, uint8_t flags);
+
+/**
+ * @brief Remove a CAN receive filter. Needs @ref APP_CAP_CAN.
+ *
+ * @param filter Handle returned by @ref app_svc_can_filter_add.
+ *
+ * @retval 0 Removed.
+ * @retval -EPERM The application does not hold @ref APP_CAP_CAN.
+ * @retval -EINVAL @p filter out of range.
+ * @retval -ENOENT No such filter is installed.
+ * @retval -ENODEV The board exposes no CAN controller.
+ */
+__syscall int app_svc_can_filter_remove(int filter);
+
+/**
+ * @brief Read the CAN controller state and the application's error status.
+ *        Needs @ref APP_CAP_CAN.
+ *
+ * Reading clears @ref app_can_status::last_tx_error.
+ *
+ * @param out Receives the status.
+ *
+ * @retval 0 Success.
+ * @retval -EPERM The application does not hold @ref APP_CAP_CAN.
+ * @retval -ENODEV The board exposes no CAN controller.
+ */
+__syscall int app_svc_can_status(struct app_can_status *out);
 
 /**
  * @brief Copy a buffer through the DMA engine. Needs @ref APP_CAP_DMA.
