@@ -1979,7 +1979,10 @@ __syscall int app_svc_uart_write(const uint8_t *buf, size_t len);
 /**
  * @brief Read available bytes from the secondary UART. Needs @ref APP_CAP_UART.
  *
- * Polled and non-blocking: returns however many bytes are ready, up to @p len.
+ * Non-blocking: returns however many bytes are ready, up to @p len. With
+ * interrupt-driven UART support, bytes received since the first call wait in a
+ * buffer of @kconfig{CONFIG_APP_PLATFORM_UART_RX_BUF} bytes, and an
+ * @ref APP_EVENT_UART_RX notification announces them.
  *
  * @param buf Receives the bytes.
  * @param len Buffer size (bounded by the platform).
@@ -2025,6 +2028,32 @@ __syscall int app_svc_uart_configure(uint32_t baud, uint8_t parity,
  * @retval -ENODEV when no secondary UART is chosen.
  */
 __syscall int app_svc_uart_close(void);
+
+/**
+ * @brief Turn RTS/CTS flow control of the secondary UART on or off. Needs
+ *        @ref APP_CAP_UART.
+ *
+ * Owned and restored as the settings of @ref app_svc_uart_configure.
+ *
+ * @param rtscts Non-zero to enable RTS/CTS.
+ *
+ * @retval 0 Success.
+ * @retval -EPERM The application does not hold @ref APP_CAP_UART.
+ * @retval -EBUSY Another application owns the settings.
+ * @retval -ENOTSUP The port has no flow-control lines or cannot change at
+ *         runtime.
+ * @retval -ENODEV No secondary UART is chosen.
+ */
+__syscall int app_svc_uart_set_flow(int rtscts);
+
+/**
+ * @brief Read and clear the receive errors of the secondary UART. Needs
+ *        @ref APP_CAP_UART.
+ *
+ * @return APP_UART_ERR_* bits seen since the last call, or -EPERM without
+ *         @ref APP_CAP_UART, or -ENODEV when no secondary UART is chosen.
+ */
+__syscall int app_svc_uart_errors(void);
 
 /**
  * @brief Bind a bulk-transfer ring into the application's memory. Needs

@@ -360,3 +360,10 @@ const APP_I2C_MSGS_MAX 0x8
 struct app_i2c_msg size 4
 field app_i2c_msg.len offset 0 size 2
 field app_i2c_msg.flags offset 2 size 1
+func uart_set_flow 1 svc int (int)
+func uart_errors 1 svc int (void)
+const APP_UART_ERR_OVERRUN 0x1
+const APP_UART_ERR_PARITY 0x2
+const APP_UART_ERR_FRAMING 0x4
+const APP_UART_ERR_BREAK 0x8
+const APP_UART_ERR_RX_DROPPED 0x10

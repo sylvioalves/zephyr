@@ -24,6 +24,7 @@
 #include <zephyr/drivers/led_strip.h>
 #include <zephyr/drivers/display.h>
 #include <zephyr/drivers/uart.h>
+#include <zephyr/drivers/serial/uart_emul.h>
 #include <zephyr/drivers/can.h>
 #include <zephyr/drivers/i2c.h>
 #include <zephyr/drivers/uart/serial_test.h>
@@ -1357,6 +1358,61 @@ ZTEST(devices, test_i2c_transfer_list_and_speed)
 	expect_rc_i2c("i_lst", i2c_list_and_speed, 0x57, 0);
 	zassert_ok(i2c_get_config(bus, &cfg));
 	zassert_equal(I2C_SPEED_GET(cfg), I2C_SPEED_STANDARD, "speed %u", I2C_SPEED_GET(cfg));
+}
+
+K_APP_DMEM(report_part) volatile int uart_rx_rc;
+
+static void uart_rx_by_event(void *a)
+{
+	ARG_UNUSED(a);
+
+	uint8_t buf[8];
+	struct app_event evt;
+	int rc = app_svc_event_subscribe(APP_EVENT_BIT(APP_EVENT_UART_RX));
+
+	if (rc == 0) {
+		rc = app_svc_uart_set_flow(1);
+	}
+	if (rc == 0) {
+		rc = app_svc_uart_read(buf, sizeof(buf));
+	}
+	report_rc = rc;
+	report_done = 1;
+	holding = 1;
+	rc = app_svc_event_wait(&evt, 1000);
+	if (rc == 0 && evt.kind != APP_EVENT_UART_RX) {
+		rc = -EBADMSG;
+	}
+	if (rc == 0) {
+		rc = app_svc_uart_read(buf, sizeof(buf));
+		rc = (rc == 5 && memcmp(buf, "hello", 5) == 0) ? 0 : -EIO;
+	}
+	if (rc == 0 && app_svc_uart_errors() != 0) {
+		rc = -EPROTO;
+	}
+	uart_rx_rc = rc;
+	while (release == 0) {
+		k_msleep(1);
+	}
+}
+
+ZTEST(devices, test_uart_rx_buffered_with_event)
+{
+	const struct device *uart = DEVICE_DT_GET(DT_CHOSEN(app_uart));
+	struct uart_config cfg;
+
+	uart_rx_rc = -9999;
+	launch_held("u_rx", uart_rx_by_event, APP_CAP_LOG | APP_CAP_UART | APP_CAP_INPUT);
+	zassert_ok(uart_config_get(uart, &cfg));
+	zassert_equal(cfg.flow_ctrl, UART_CFG_FLOW_CTRL_RTS_CTS, "flow control not set");
+	uart_emul_put_rx_data(uart, (const uint8_t *)"hello", 5);
+	for (int i = 0; i < 400 && uart_rx_rc == -9999; i++) {
+		k_msleep(5);
+	}
+	release_held("u_rx");
+	zassert_equal(uart_rx_rc, 0, "receive by event failed (%d)", uart_rx_rc);
+	zassert_ok(uart_config_get(uart, &cfg));
+	zassert_equal(cfg.flow_ctrl, UART_CFG_FLOW_CTRL_NONE, "flow control kept after reclaim");
 }
 
 static void led_set_held(void *a)

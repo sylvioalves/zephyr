@@ -277,7 +277,7 @@ int z_impl_app_svc_ring_fill(void)
 	 * an empty one, and never write past the checked capacity.
 	 */
 	while (((head + 1U) % r->cap) != tail &&
-	       uart_poll_in(ring_uart, &c) == 0) {
+	       app_platform_uart_getc(&c) == 0) {
 		data[head] = c;
 		head = (head + 1U) % r->cap;
 		got++;

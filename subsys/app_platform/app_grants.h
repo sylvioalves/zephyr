@@ -156,6 +156,8 @@ static inline void app_platform_clear_can(int id)
 #endif
 
 #ifdef CONFIG_APP_PLATFORM_BUS
+/* Take one received byte of the secondary UART, 0 on success. */
+int app_platform_uart_getc(unsigned char *c);
 void app_platform_clear_bus_grants(int id);
 #else
 static inline void app_platform_clear_bus_grants(int id)

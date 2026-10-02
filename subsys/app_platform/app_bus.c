@@ -21,9 +21,11 @@
 #include <zephyr/drivers/spi.h>
 #include <zephyr/drivers/gpio.h>
 #include <zephyr/drivers/uart.h>
+#include <zephyr/sys/ring_buffer.h>
 #include <zephyr/logging/log.h>
 #include <errno.h>
 
+#include "app_events.h"
 #include "app_grants.h"
 
 LOG_MODULE_DECLARE(app_platform, CONFIG_APP_PLATFORM_LOG_LEVEL);
@@ -480,10 +482,88 @@ int z_impl_app_svc_spi_configure(uint32_t freq_hz, uint8_t flags, uint8_t word_b
 #endif
 }
 
-/* ---- UART (secondary, polled) ---- */
+/* ---- UART (secondary) ---- */
 
 #if DT_HAS_CHOSEN(app_uart)
 static const struct device *const uart_dev = DEVICE_DT_GET(DT_CHOSEN(app_uart));
+static SVC_LOCK_DEFINE(uart_lock);
+/* Applications that used the port, told when bytes arrive. */
+static atomic_t uart_users;
+static atomic_t uart_errs;
+#endif
+
+#if DT_HAS_CHOSEN(app_uart) && defined(CONFIG_UART_INTERRUPT_DRIVEN)
+/* Once an application uses the port, received bytes are taken by the interrupt
+ * into a buffer, so none are lost between two reads of the application.
+ */
+RING_BUF_DECLARE(uart_rx_rb, CONFIG_APP_PLATFORM_UART_RX_BUF);
+static struct k_spinlock uart_rx_lock;
+static bool uart_irq_on;
+
+static void uart_isr(const struct device *dev, void *user_data)
+{
+	ARG_UNUSED(user_data);
+
+	uint8_t buf[16];
+
+	uart_irq_update(dev);
+	while (uart_irq_rx_ready(dev) > 0) {
+		int n = uart_fifo_read(dev, buf, sizeof(buf));
+
+		if (n <= 0) {
+			break;
+		}
+
+		k_spinlock_key_t key = k_spin_lock(&uart_rx_lock);
+		uint32_t put = ring_buf_put(&uart_rx_rb, buf, (uint32_t)n);
+
+		k_spin_unlock(&uart_rx_lock, key);
+		if (put < (uint32_t)n) {
+			atomic_or(&uart_errs, APP_UART_ERR_RX_DROPPED);
+		}
+		for (int id = 0; id < MAX_APPS; id++) {
+			if (atomic_test_bit(&uart_users, id)) {
+				app_events_notify(id, APP_EVENT_UART_RX, 0U);
+			}
+		}
+	}
+}
+#endif
+
+#if DT_HAS_CHOSEN(app_uart)
+/* Register the calling application as a user and start interrupt reception. */
+static void uart_join(void)
+{
+	int id = app_platform_id_current();
+
+	if (id >= 0 && id < MAX_APPS) {
+		atomic_set_bit(&uart_users, id);
+	}
+#ifdef CONFIG_UART_INTERRUPT_DRIVEN
+	if (!uart_irq_on && app_service_lock(&uart_lock, SVC_LOCK_TIMEOUT) == 0) {
+		if (!uart_irq_on &&
+		    uart_irq_callback_user_data_set(uart_dev, uart_isr, NULL) == 0) {
+			uart_irq_rx_enable(uart_dev);
+			uart_irq_on = true;
+		}
+		(void)app_service_unlock(&uart_lock);
+	}
+#endif
+}
+
+int app_platform_uart_getc(unsigned char *c)
+{
+#ifdef CONFIG_UART_INTERRUPT_DRIVEN
+	if (uart_irq_on) {
+		k_spinlock_key_t key = k_spin_lock(&uart_rx_lock);
+		uint32_t n = ring_buf_get(&uart_rx_rb, c, 1);
+
+		k_spin_unlock(&uart_rx_lock, key);
+		return (n == 1U) ? 0 : -1;
+	}
+#endif
+	return uart_poll_in(uart_dev, c);
+}
 #endif
 
 #if DT_HAS_CHOSEN(app_uart)
@@ -495,7 +575,6 @@ static const struct device *const uart_dev = DEVICE_DT_GET(DT_CHOSEN(app_uart));
 static struct uart_config uart_boot_cfg;
 static bool uart_boot_cfg_valid;
 static int uart_cfg_owner = -1;
-static SVC_LOCK_DEFINE(uart_lock);
 
 static void uart_save_boot_cfg(void)
 {
@@ -509,6 +588,9 @@ static void uart_save_boot_cfg(void)
 
 static void uart_restore_boot_cfg(int id)
 {
+	if (id >= 0 && id < MAX_APPS) {
+		atomic_clear_bit(&uart_users, id);
+	}
 	if (app_service_lock(&uart_lock, SVC_LOCK_TIMEOUT) != 0) {
 		return;
 	}
@@ -642,6 +724,7 @@ int z_impl_app_svc_uart_write(const uint8_t *buf, size_t len)
 	if (!device_is_ready(uart_dev)) {
 		return -ENODEV;
 	}
+	uart_join();
 	for (size_t i = 0; i < len; i++) {
 		uart_poll_out(uart_dev, buf[i]);
 	}
@@ -665,13 +748,76 @@ int z_impl_app_svc_uart_read(uint8_t *buf, size_t len)
 		return -ENODEV;
 	}
 	size_t n = 0;
+	int err;
 
-	while (n < len && uart_poll_in(uart_dev, &buf[n]) == 0) {
+	uart_join();
+	while (n < len && app_platform_uart_getc(&buf[n]) == 0) {
 		n++;
+	}
+	err = uart_err_check(uart_dev);
+	if (err > 0) {
+		atomic_or(&uart_errs, err & (APP_UART_ERR_OVERRUN | APP_UART_ERR_PARITY |
+					     APP_UART_ERR_FRAMING | APP_UART_ERR_BREAK));
 	}
 	return (int)n;
 #else
 	ARG_UNUSED(buf);
+	return -ENODEV;
+#endif
+}
+
+int z_impl_app_svc_uart_set_flow(int rtscts)
+{
+	if (!app_has_cap(APP_CAP_UART)) {
+		return -EPERM;
+	}
+#if DT_HAS_CHOSEN(app_uart)
+	struct uart_config cfg;
+	int id = app_platform_id_current();
+	int err;
+
+	if (!device_is_ready(uart_dev)) {
+		return -ENODEV;
+	}
+	if (app_service_lock(&uart_lock, SVC_LOCK_TIMEOUT) != 0) {
+		return -EBUSY;
+	}
+	if (uart_cfg_owner >= 0 && uart_cfg_owner != id) {
+		(void)app_service_unlock(&uart_lock);
+		return -EBUSY;
+	}
+	uart_save_boot_cfg();
+	err = uart_config_get(uart_dev, &cfg);
+	if (err == 0) {
+		cfg.flow_ctrl = (rtscts != 0) ? UART_CFG_FLOW_CTRL_RTS_CTS
+					      : UART_CFG_FLOW_CTRL_NONE;
+		err = uart_configure(uart_dev, &cfg);
+	}
+	if (err == 0) {
+		uart_cfg_owner = id;
+	}
+	(void)app_service_unlock(&uart_lock);
+	return err;
+#else
+	ARG_UNUSED(rtscts);
+	return -ENODEV;
+#endif
+}
+
+int z_impl_app_svc_uart_errors(void)
+{
+	if (!app_has_cap(APP_CAP_UART)) {
+		return -EPERM;
+	}
+#if DT_HAS_CHOSEN(app_uart)
+	int err = uart_err_check(uart_dev);
+
+	if (err > 0) {
+		atomic_or(&uart_errs, err & (APP_UART_ERR_OVERRUN | APP_UART_ERR_PARITY |
+					     APP_UART_ERR_FRAMING | APP_UART_ERR_BREAK));
+	}
+	return (int)atomic_clear(&uart_errs);
+#else
 	return -ENODEV;
 #endif
 }
@@ -776,6 +922,18 @@ static inline int z_vrfy_app_svc_uart_close(void)
 	return z_impl_app_svc_uart_close();
 }
 #include <zephyr/syscalls/app_svc_uart_close_mrsh.c>
+
+static inline int z_vrfy_app_svc_uart_set_flow(int rtscts)
+{
+	return z_impl_app_svc_uart_set_flow(rtscts);
+}
+#include <zephyr/syscalls/app_svc_uart_set_flow_mrsh.c>
+
+static inline int z_vrfy_app_svc_uart_errors(void)
+{
+	return z_impl_app_svc_uart_errors();
+}
+#include <zephyr/syscalls/app_svc_uart_errors_mrsh.c>
 #endif
 
 #if DT_HAS_CHOSEN(app_uart)

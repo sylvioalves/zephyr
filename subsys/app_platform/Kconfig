@@ -738,6 +738,15 @@ config APP_PLATFORM_BUS_XFER_MAX
 	  FIFO be drained in one transfer, at the cost of holding the bus
 	  longer against other applications.
 
+config APP_PLATFORM_UART_RX_BUF
+	int "Secondary UART receive buffer"
+	default 256
+	range 32 4096
+	depends on UART_INTERRUPT_DRIVEN
+	help
+	  Bytes the secondary UART keeps for applications between reads, when
+	  the port is read through interrupts.
+
 config APP_PLATFORM_I2C_ADDRS
 	int "I2C addresses per application"
 	default 4

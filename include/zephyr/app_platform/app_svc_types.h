@@ -190,6 +190,17 @@ enum app_uart_parity {
 	APP_UART_PARITY_EVEN,
 };
 
+/** @ref app_svc_uart_errors bit: the receiver overran. */
+#define APP_UART_ERR_OVERRUN    0x01U
+/** @ref app_svc_uart_errors bit: a byte had a parity error. */
+#define APP_UART_ERR_PARITY     0x02U
+/** @ref app_svc_uart_errors bit: a byte had a framing error. */
+#define APP_UART_ERR_FRAMING    0x04U
+/** @ref app_svc_uart_errors bit: a break was received. */
+#define APP_UART_ERR_BREAK      0x08U
+/** @ref app_svc_uart_errors bit: the receive buffer was full and bytes were lost. */
+#define APP_UART_ERR_RX_DROPPED 0x10U
+
 /**
  * @brief Header at the front of a ring bound with @ref app_svc_ring_bind.
  *

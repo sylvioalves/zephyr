@@ -164,6 +164,8 @@ uart_read         1 svc APP_PLATFORM_BUS       int (uint8_t *buf, size_t len)
 uart_configure    1 svc APP_PLATFORM_BUS       int (uint32_t baud, uint8_t parity,
                                                     uint8_t stop_bits, uint8_t data_bits)
 uart_close        1 svc APP_PLATFORM_BUS       int (void)
+uart_set_flow     1 svc APP_PLATFORM_BUS       int (int rtscts)
+uart_errors       1 svc APP_PLATFORM_BUS       int (void)
 ring_bind         1 svc APP_PLATFORM_RING      int (size_t bytes, uintptr_t *out_addr,
                                                     size_t *out_cap)
 ring_unbind       1 svc APP_PLATFORM_RING      int (void)
