@@ -1511,6 +1511,36 @@ __syscall int app_svc_file_seek(int handle, int32_t off, int whence);
 __syscall int app_svc_file_close(int handle);
 
 /**
+ * @brief Delete a file in the application's own directory. Needs
+ *        @ref APP_CAP_FS.
+ *
+ * @param path Path relative to the application's directory.
+ *
+ * @retval 0 Deleted.
+ * @retval -EPERM The application does not hold @ref APP_CAP_FS.
+ * @retval -EACCES @p path leaves the application's directory.
+ * @retval -ENOENT No such file.
+ * @retval -EBUSY The file is open.
+ * @retval -ENAMETOOLONG @p path is too long.
+ */
+__syscall int app_svc_file_delete(const char *path);
+
+/**
+ * @brief Size of a file in the application's own directory. Needs
+ *        @ref APP_CAP_FS.
+ *
+ * @param path Path relative to the application's directory.
+ *
+ * @retval >=0 The size in bytes.
+ * @retval -EPERM The application does not hold @ref APP_CAP_FS.
+ * @retval -EACCES @p path leaves the application's directory.
+ * @retval -ENOENT No such file.
+ * @retval -EISDIR @p path is a directory.
+ * @retval -ENAMETOOLONG @p path is too long.
+ */
+__syscall int app_svc_file_size(const char *path);
+
+/**
  * @brief Set a PWM channel duty cycle in per-mille. Needs @ref APP_CAP_PWM and a
  *        per-channel grant (@ref app_platform_grant_pwm).
  *

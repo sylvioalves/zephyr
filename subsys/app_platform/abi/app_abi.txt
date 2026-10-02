@@ -128,6 +128,8 @@ file_write        1 svc APP_PLATFORM_FS        int (int handle, const void *data
 file_read         1 svc APP_PLATFORM_FS        int (int handle, void *buf, size_t len)
 file_seek         1 svc APP_PLATFORM_FS        int (int handle, int32_t off, int whence)
 file_close        1 svc APP_PLATFORM_FS        int (int handle)
+file_delete       1 svc APP_PLATFORM_FS        int (const char *path)
+file_size         1 svc APP_PLATFORM_FS        int (const char *path)
 pwm_set           1 svc APP_PLATFORM_PERIPH    int (int ch, uint32_t permille)
 pwm_find          1 svc APP_PLATFORM_PERIPH    int (const char *name)
 pwm_set_ns        1 svc APP_PLATFORM_PERIPH    int (int ch, uint32_t period_ns, uint32_t pulse_ns,

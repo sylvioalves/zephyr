@@ -2009,6 +2009,44 @@ ZTEST(devices, test_fs_gate_and_confinement)
 	expect_rc("f_rt", fs_roundtrip, APP_CAP_LOG | APP_CAP_FS, 0);
 }
 
+static void fs_delete_and_size(void *a)
+{
+	ARG_UNUSED(a);
+
+	int h = app_svc_file_open("del.txt", 1);
+	int rc = (h >= 0) ? 0 : h;
+
+	if (rc == 0 && app_svc_file_write(h, "abc", 3) != 3) {
+		rc = -EIO;
+	}
+	if (rc == 0 && app_svc_file_delete("del.txt") != -EBUSY) {
+		rc = -EBADMSG;
+	}
+	if (h >= 0) {
+		(void)app_svc_file_close(h);
+	}
+	if (rc == 0 && app_svc_file_size("del.txt") != 3) {
+		rc = -ERANGE;
+	}
+	if (rc == 0) {
+		rc = app_svc_file_delete("del.txt");
+	}
+	if (rc == 0 && app_svc_file_size("del.txt") != -ENOENT) {
+		rc = -EEXIST;
+	}
+	if (rc == 0 && app_svc_file_delete("../x") != -EACCES) {
+		rc = -EPROTO;
+	}
+	report_rc = rc;
+	report_done = 1;
+}
+
+ZTEST(devices, test_fs_delete_and_size)
+{
+	expect_rc("f_del", fs_delete_and_size, APP_CAP_LOG | APP_CAP_FS, 0);
+	expect_rc("f_dnp", fs_ungranted, APP_CAP_LOG, -EPERM);
+}
+
 static void fs_probe_note(void *a)
 {
 	ARG_UNUSED(a);

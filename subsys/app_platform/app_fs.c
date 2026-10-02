@@ -51,6 +51,7 @@ BUILD_ASSERT(CONFIG_APP_PLATFORM_APP_STACK_SIZE >= 2048,
 static struct fs_file_t files[OPEN_FILES];
 static int file_owner[OPEN_FILES];
 static bool file_used[OPEN_FILES];
+static char file_path[OPEN_FILES][PATH_MAX_LEN];
 static SVC_LOCK_DEFINE(fs_lock);
 
 /* The application's name, which names its root directory. Only names that are
@@ -198,8 +199,77 @@ int z_impl_app_svc_file_open(const char *path, int create)
 	}
 	file_used[h] = true;
 	file_owner[h] = id;
+	memcpy(file_path[h], abs, sizeof(abs));
 	app_service_unlock(&fs_lock);
 	return h;
+}
+
+/* Resolve a path of the calling application to its absolute path. */
+static int caller_path(const char *path, char *abs, size_t abs_sz)
+{
+	if (!app_has_cap(APP_CAP_FS)) {
+		return -EPERM;
+	}
+
+	int id = app_platform_id_current();
+	char name[APP_PLATFORM_NAME_LEN];
+	int rc;
+
+	if (id < 0) {
+		return -EPERM;
+	}
+	rc = root_name(id, name);
+	if (rc == 0) {
+		rc = confine_path(name, path, abs, abs_sz);
+	}
+	return rc;
+}
+
+int z_impl_app_svc_file_delete(const char *path)
+{
+	char abs[PATH_MAX_LEN];
+	int rc = caller_path(path, abs, sizeof(abs));
+
+	if (rc != 0) {
+		return rc;
+	}
+	rc = app_service_lock(&fs_lock, K_FOREVER);
+	if (rc != 0) {
+		return rc;
+	}
+	for (int i = 0; i < OPEN_FILES; i++) {
+		if (file_used[i] && strcmp(file_path[i], abs) == 0) {
+			app_service_unlock(&fs_lock);
+			return -EBUSY;
+		}
+	}
+	rc = fs_unlink(abs);
+	app_service_unlock(&fs_lock);
+	return rc;
+}
+
+int z_impl_app_svc_file_size(const char *path)
+{
+	char abs[PATH_MAX_LEN];
+	struct fs_dirent ent;
+	int rc = caller_path(path, abs, sizeof(abs));
+
+	if (rc != 0) {
+		return rc;
+	}
+	rc = app_service_lock(&fs_lock, K_FOREVER);
+	if (rc != 0) {
+		return rc;
+	}
+	rc = fs_stat(abs, &ent);
+	app_service_unlock(&fs_lock);
+	if (rc != 0) {
+		return rc;
+	}
+	if (ent.type != FS_DIR_ENTRY_FILE) {
+		return -EISDIR;
+	}
+	return (ent.size > INT32_MAX) ? -EFBIG : (int)ent.size;
 }
 
 /* Resolve a handle to the caller's own open file, refusing another
@@ -371,4 +441,26 @@ static inline int z_vrfy_app_svc_file_close(int handle)
 	return z_impl_app_svc_file_close(handle);
 }
 #include <zephyr/syscalls/app_svc_file_close_mrsh.c>
+
+static inline int z_vrfy_app_svc_file_delete(const char *path)
+{
+	char copy[PATH_MAX_LEN];
+
+	if (k_usermode_string_copy(copy, (char *)path, sizeof(copy)) != 0) {
+		return -EFAULT;
+	}
+	return z_impl_app_svc_file_delete(copy);
+}
+#include <zephyr/syscalls/app_svc_file_delete_mrsh.c>
+
+static inline int z_vrfy_app_svc_file_size(const char *path)
+{
+	char copy[PATH_MAX_LEN];
+
+	if (k_usermode_string_copy(copy, (char *)path, sizeof(copy)) != 0) {
+		return -EFAULT;
+	}
+	return z_impl_app_svc_file_size(copy);
+}
+#include <zephyr/syscalls/app_svc_file_size_mrsh.c>
 #endif /* CONFIG_USERSPACE */
