@@ -85,8 +85,11 @@ ZTEST(module_abi, test_missing_service_fails_to_link)
 		LLEXT_TEMPORARY_BUF_LOADER(absent_bytes, sizeof(absent_bytes));
 	struct llext_load_param ldr_parm = LLEXT_LOAD_PARAM_DEFAULT;
 	struct llext *ext = NULL;
+	int ret;
 
-	zassert_equal(llext_load(&buf_loader.loader, "absent", &ext, &ldr_parm), -ENODATA);
+	/* A missing symbol reached through the PLT reports -ENOENT. */
+	ret = llext_load(&buf_loader.loader, "absent", &ext, &ldr_parm);
+	zassert_true(ret == -ENODATA || ret == -ENOENT, "load rc %d", ret);
 	zassert_is_null(ext);
 }
 
