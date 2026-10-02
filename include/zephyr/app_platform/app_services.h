@@ -1664,7 +1664,8 @@ __syscall uint32_t app_svc_checkpoint_get(void);
  * @brief Emit a burst of pulses on the counter stimulus. Needs @ref APP_CAP_COUNTER.
  *
  * @param n Number of pulses to emit.
- * @retval >=0 the pulses emitted, -EPERM without the capability, -ENODEV if absent.
+ * @retval >=0 the pulses emitted, -EPERM without the capability, -EINVAL when
+ *         @p n is over the platform bound, -ENODEV if absent.
  */
 __syscall int app_svc_pulse_emit(uint32_t n);
 

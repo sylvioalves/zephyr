@@ -48,8 +48,11 @@ int z_impl_app_svc_pulse_emit(uint32_t n)
 	if (!app_has_cap(APP_CAP_COUNTER)) {
 		return -EPERM;
 	}
-	if (!device_is_ready(stim.dev) || n > PULSE_MAX) {
+	if (n > PULSE_MAX) {
 		return -EINVAL;
+	}
+	if (!device_is_ready(stim.dev)) {
+		return -ENODEV;
 	}
 
 	/* Run a 50% square wave for exactly @n periods, then stop. The stimulus
