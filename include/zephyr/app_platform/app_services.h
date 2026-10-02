@@ -188,7 +188,8 @@ __syscall int app_svc_sha256(const uint8_t *in, size_t len, uint8_t *out32);
 /**
  * @brief Fill a buffer with random bytes. Needs @ref APP_CAP_RANDOM.
  *
- * Stateless: safe under concurrent callers.
+ * The bytes come from the cryptographically secure generator when the system
+ * has a hardware entropy source. Stateless: safe under concurrent callers.
  *
  * @param buf Receives the random bytes.
  * @param len Number of bytes (bounded by the platform).

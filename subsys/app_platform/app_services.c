@@ -196,8 +196,12 @@ int z_impl_app_svc_random(uint8_t *buf, size_t len)
 	if (!IS_ENABLED(CONFIG_APP_PLATFORM_HAS_RANDOM)) {
 		return -ENOTSUP;
 	}
+#if defined(CONFIG_CSPRNG_ENABLED) || defined(CONFIG_TEST_CSPRNG_GENERATOR)
+	return (sys_csrand_get(buf, len) == 0) ? 0 : -EIO;
+#else
 	sys_rand_get(buf, len);
 	return 0;
+#endif
 }
 
 uint32_t z_impl_app_svc_uptime_ms(void)
