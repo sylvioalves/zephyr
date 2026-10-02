@@ -273,6 +273,22 @@ inbox, which leaves the flow control to TCP. The poll set needs
 :kconfig:option:`CONFIG_APP_PLATFORM_MAX_APPS`, which the platform sets by default and checks at
 build time.
 
+Waiting on several sources
+==========================
+
+``app_svc_event_wait()`` delivers input events, button presses, GPIO edges, BLE events and the
+stop request, to a queue owned by one application. ``app_svc_event_subscribe()`` adds
+notifications from the other sources: a timer slot expiring, an IPC message, a CAN frame, bytes on
+the secondary UART, an MQTT message or socket data, and a counter alarm. A notification says data
+is waiting; the application reads it with the source's own call and a zero timeout until that call
+returns ``-EAGAIN``. One loop around ``app_svc_event_wait()`` can then serve every source without a
+worker thread per source.
+
+Timeouts of services added with the event queue are ``int32_t`` milliseconds where a negative
+value waits forever. Older services take ``uint32_t`` milliseconds with no forever value and keep
+that signature, as released entries never change; to wait on them forever, subscribe to their
+notification and wait on the event queue instead.
+
 Bulk calls
 ==========
 

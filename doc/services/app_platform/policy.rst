@@ -156,7 +156,7 @@ Connectivity
      - One shared scan, results fanned out to every scanning application.
    * - BLE GATT client
      - Brokered connection, arbitrated pool
-     - Per-application connections, capped by the controller's limit.
+     - One platform connection, used by one application call at a time.
    * - Sockets
      - Brokered connection
      - One socket per application, isolated from the others.
