@@ -65,8 +65,9 @@
 
 	app_platform {
 		compatible = "zephyr,app-platform";
-		gpios = <&test_gpio 0 GPIO_ACTIVE_HIGH>;
-		line-names = "test_line";
+		gpios = <&test_gpio 0 GPIO_ACTIVE_HIGH>, <&test_gpio 2 GPIO_ACTIVE_HIGH>,
+			<&test_gpio 3 GPIO_ACTIVE_LOW>;
+		line-names = "test_line", "test_in", "test_low";
 		dacs = <&dac_emul>;
 		regulators = <&fake_reg0>;
 		steppers = <&fake_stepper>;

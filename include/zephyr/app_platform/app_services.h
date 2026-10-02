@@ -867,6 +867,77 @@ __syscall int app_svc_event_subscribe(uint32_t mask);
 __syscall int app_svc_gpio_watch(int line, int on);
 
 /**
+ * @brief Watch a granted GPIO line for chosen edges. Needs @ref APP_CAP_GPIO,
+ *        and @ref APP_CAP_INPUT to receive the events.
+ *
+ * As @ref app_svc_gpio_watch, but only the edges in @p edge are posted, and an
+ * edge that follows the last posted one within @p debounce_ms is dropped.
+ * Reading the line with @ref app_svc_gpio_get after the debounce time gives
+ * its settled level.
+ *
+ * @param line Line index below @ref app_svc_gpio_count.
+ * @param edge One of @ref app_gpio_edge.
+ * @param debounce_ms Minimum time between posted edges, 0 for none.
+ *
+ * @retval 0 Success.
+ * @retval -EPERM The application does not hold @ref APP_CAP_GPIO.
+ * @retval -EINVAL @p line or @p edge out of range.
+ * @retval -EACCES The line was not granted.
+ * @retval -ENOTSUP The platform is built without events.
+ * @retval -EBUSY The service stayed locked.
+ */
+__syscall int app_svc_gpio_watch_edge(int line, uint8_t edge, uint16_t debounce_ms);
+
+/**
+ * @brief Read a granted GPIO line. Needs @ref APP_CAP_GPIO.
+ *
+ * @param line Line index below @ref app_svc_gpio_count.
+ *
+ * @retval 0 The line is inactive.
+ * @retval 1 The line is active.
+ * @retval -EPERM The application does not hold @ref APP_CAP_GPIO.
+ * @retval -EINVAL @p line out of range.
+ * @retval -EACCES The line was not granted.
+ * @retval -ENODEV The line's controller is not ready.
+ */
+__syscall int app_svc_gpio_get(int line);
+
+/**
+ * @brief Read several granted GPIO lines, one driver call per port. Needs
+ *        @ref APP_CAP_GPIO.
+ *
+ * @param mask Lines to read, bit N for line N.
+ * @param values Receives bit N set for each line in @p mask that is active.
+ *
+ * @retval 0 Success.
+ * @retval -EPERM The application does not hold @ref APP_CAP_GPIO.
+ * @retval -EINVAL @p mask names a line that does not exist.
+ * @retval -EACCES @p mask names a line that was not granted.
+ */
+__syscall int app_svc_gpio_get_mask(uint32_t mask, uint32_t *values);
+
+/**
+ * @brief Set the direction, bias and drive of a granted GPIO line. Needs
+ *        @ref APP_CAP_GPIO.
+ *
+ * Exactly one of APP_GPIO_INPUT and APP_GPIO_OUTPUT is set. A line watched by
+ * any application stays an input. The line returns to its devicetree setting
+ * when the application is reclaimed.
+ *
+ * @param line Line index below @ref app_svc_gpio_count.
+ * @param flags APP_GPIO_* flags.
+ *
+ * @retval 0 Success.
+ * @retval -EPERM The application does not hold @ref APP_CAP_GPIO.
+ * @retval -EINVAL @p line out of range or @p flags inconsistent.
+ * @retval -EACCES The line was not granted.
+ * @retval -EBUSY An output was requested for a watched line, or the service
+ *         stayed locked.
+ * @retval -ENOTSUP The controller does not support the flags.
+ */
+__syscall int app_svc_gpio_configure(int line, uint32_t flags);
+
+/**
  * @brief Send a message to another application's mailbox. Needs @ref APP_CAP_IPC.
  *
  * Per-app-keyed: the bytes are copied into the destination application's own

@@ -1135,6 +1135,93 @@ ZTEST(devices, test_event_wait_serves_every_source)
 		  APP_CAP_LOG | APP_CAP_INPUT | APP_CAP_TIME | APP_CAP_IPC | APP_CAP_CAN, 0);
 }
 
+K_APP_DMEM(report_part) volatile uint32_t gpio_edges;
+
+K_APP_DMEM(report_part) volatile int gpio_read_rc;
+
+static void gpio_cfg_and_read(void *a)
+{
+	ARG_UNUSED(a);
+
+	uint32_t v = 0;
+	int rc = app_svc_gpio_configure(1, APP_GPIO_INPUT | APP_GPIO_PULL_UP);
+
+	if (rc == 0) {
+		rc = app_svc_gpio_configure(2, APP_GPIO_INPUT);
+	}
+	if (rc == 0 && app_svc_gpio_configure(1, APP_GPIO_INPUT | APP_GPIO_OUTPUT) != -EINVAL) {
+		rc = -EBADMSG;
+	}
+	if (rc == 0 && app_svc_gpio_configure(1, APP_GPIO_INPUT | APP_GPIO_OPEN_DRAIN) !=
+			       -EINVAL) {
+		rc = -EPROTO;
+	}
+	report_rc = rc;
+	report_done = 1;
+	holding = 1;
+	while (release == 0) {
+		k_msleep(1);
+	}
+	rc = (app_svc_gpio_get(1) == 1) ? 0 : -EIO;
+	if (rc == 0) {
+		rc = app_svc_gpio_get_mask(BIT(1) | BIT(2), &v);
+	}
+	if (rc == 0 && v != BIT(1)) {
+		rc = -ERANGE;
+	}
+	gpio_read_rc = rc;
+}
+
+static void gpio_rising_only(void *a)
+{
+	ARG_UNUSED(a);
+
+	struct app_event evt;
+	int rc = app_svc_gpio_watch_edge(1, APP_GPIO_EDGE_RISING, 0);
+
+	report_rc = rc;
+	report_done = 1;
+	holding = 1;
+	while (release == 0) {
+		if (app_svc_event_wait(&evt, 10) == 0 && evt.kind == APP_EVENT_GPIO) {
+			gpio_edges |= (evt.value != 0U) ? BIT(0) : BIT(1);
+		}
+	}
+}
+
+ZTEST(devices, test_gpio_configure_get_and_edges)
+{
+	const struct gpio_dt_spec in = GPIO_DT_SPEC_GET_BY_IDX(DT_PATH(app_platform), gpios, 1);
+	const struct gpio_dt_spec low = GPIO_DT_SPEC_GET_BY_IDX(DT_PATH(app_platform), gpios, 2);
+	gpio_flags_t flags;
+
+	for (int i = 0; i < CONFIG_APP_PLATFORM_MAX_APPS; i++) {
+		app_platform_grant_gpio(i, BIT(0) | BIT(1) | BIT(2));
+	}
+	gpio_read_rc = -9999;
+	launch_held("g_cfg", gpio_cfg_and_read, APP_CAP_LOG | APP_CAP_GPIO);
+	zassert_ok(gpio_emul_flags_get(in.port, in.pin, &flags));
+	zassert_true((flags & GPIO_PULL_UP) != 0U, "pull-up not applied");
+	zassert_ok(gpio_emul_input_set_dt(&low, 1));
+	zassert_ok(gpio_emul_input_set_dt(&in, 1));
+	release_held("g_cfg");
+	zassert_equal(gpio_read_rc, 0, "read back failed (%d)", gpio_read_rc);
+	zassert_ok(gpio_emul_flags_get(in.port, in.pin, &flags));
+	zassert_true((flags & GPIO_OUTPUT) != 0U, "reclaim kept the input configuration");
+
+	gpio_edges = 0U;
+	for (int i = 0; i < CONFIG_APP_PLATFORM_MAX_APPS; i++) {
+		app_platform_grant_gpio(i, BIT(1));
+	}
+	launch_held("g_rise", gpio_rising_only, APP_CAP_LOG | APP_CAP_GPIO | APP_CAP_INPUT);
+	zassert_ok(gpio_emul_input_set_dt(&in, 0));
+	zassert_ok(gpio_emul_input_set_dt(&in, 1));
+	zassert_ok(gpio_emul_input_set_dt(&in, 0));
+	k_msleep(50);
+	release_held("g_rise");
+	zassert_equal(gpio_edges, BIT(0), "edges seen 0x%x", gpio_edges);
+}
+
 static void led_set_held(void *a)
 {
 	ARG_UNUSED(a);

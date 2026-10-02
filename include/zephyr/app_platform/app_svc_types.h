@@ -60,6 +60,24 @@ enum app_event_kind {
 	APP_EVENT_COUNTER,    /**< a counter alarm fired; line is the counter */
 };
 
+/** @ref app_svc_gpio_configure flag: the line is an input. */
+#define APP_GPIO_INPUT      0x01U
+/** @ref app_svc_gpio_configure flag: the line is an output, driven inactive. */
+#define APP_GPIO_OUTPUT     0x02U
+/** @ref app_svc_gpio_configure flag: enable the pull-up. */
+#define APP_GPIO_PULL_UP    0x04U
+/** @ref app_svc_gpio_configure flag: enable the pull-down. */
+#define APP_GPIO_PULL_DOWN  0x08U
+/** @ref app_svc_gpio_configure flag: drive the output open-drain. */
+#define APP_GPIO_OPEN_DRAIN 0x10U
+
+/** Edges reported by @ref app_svc_gpio_watch_edge. */
+enum app_gpio_edge {
+	APP_GPIO_EDGE_BOTH = 0, /**< every change */
+	APP_GPIO_EDGE_RISING,   /**< changes to the active level */
+	APP_GPIO_EDGE_FALLING,  /**< changes to the inactive level */
+};
+
 /** Bit of an @ref app_event_kind in an @ref app_svc_event_subscribe mask. */
 #define APP_EVENT_BIT(kind) (1UL << (kind))
 
