@@ -1166,6 +1166,30 @@ __syscall int app_svc_counter_read(int idx, uint32_t *ticks);
  */
 __syscall int app_svc_counter_frequency(int idx, uint32_t *hz);
 
+/**
+ * @brief Set a one-shot alarm on a granted counter. Needs
+ *        @ref APP_CAP_COUNTER_DEV.
+ *
+ * The alarm fires @p ticks counter ticks from now and posts an
+ * @ref APP_EVENT_COUNTER notification whose line is @p idx, delivered when the
+ * application subscribed to it with @ref app_svc_event_subscribe. A new alarm
+ * replaces the application's pending one; 0 cancels it. One application holds
+ * a counter's alarm at a time, and a pending alarm is cancelled when the
+ * application is reclaimed.
+ *
+ * @param idx Counter index below @ref app_svc_counter_count.
+ * @param ticks Ticks until the alarm, or 0 to cancel.
+ *
+ * @retval 0 Success.
+ * @retval -EPERM The application does not hold @ref APP_CAP_COUNTER_DEV.
+ * @retval -EINVAL @p idx out of range, or @p ticks above the counter's top.
+ * @retval -EACCES The counter was not granted.
+ * @retval -ENOTSUP The counter has no alarm channel.
+ * @retval -EBUSY Another application holds the counter's alarm, or the service
+ *         stayed locked.
+ */
+__syscall int app_svc_counter_alarm(int idx, uint32_t ticks);
+
 /** @brief Grant an application a set of hardware counter instances. */
 void app_platform_grant_counter(int id, uint32_t idx_mask);
 

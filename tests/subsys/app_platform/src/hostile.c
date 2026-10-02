@@ -10,6 +10,7 @@
  */
 
 #include <zephyr/ztest.h>
+#include <zephyr/drivers/counter.h>
 #include <zephyr/app_platform/app_platform.h>
 #include <zephyr/app_platform/app_services.h>
 #include <zephyr/app_platform/app_caps.h>
@@ -931,6 +932,55 @@ ZTEST(zhostile, test_4_16_counter_runs)
 	for (int i = 0; i < CONFIG_APP_PLATFORM_MAX_APPS; i++) {
 		app_platform_grant_counter(i, 0U);
 	}
+}
+
+#if COUNTERS > 0
+static void counter_alarm_event(void *a)
+{
+	ARG_UNUSED(a);
+
+	uint32_t hz = 0;
+	struct app_event evt;
+	int rc = app_svc_event_subscribe(APP_EVENT_BIT(APP_EVENT_COUNTER));
+
+	if (rc == 0) {
+		rc = app_svc_counter_frequency(0, &hz);
+	}
+	if (rc == 0) {
+		rc = app_svc_counter_start(0);
+	}
+	if (rc == 0) {
+		rc = app_svc_counter_alarm(0, MAX(hz / 50U, 1U));
+	}
+	if (rc == 0) {
+		rc = app_svc_event_wait(&evt, 1000);
+	}
+	if (rc == 0 && (evt.kind != APP_EVENT_COUNTER || evt.line != 0U)) {
+		rc = -EBADMSG;
+	}
+	report_rc = rc;
+	report_done = 1;
+}
+#endif
+
+ZTEST(zhostile, test_4_16_counter_alarm_posts_event)
+{
+#if COUNTERS > 0
+	const struct device *dev = DEVICE_DT_GET(DT_PHANDLE_BY_IDX(
+		DT_COMPAT_GET_ANY_STATUS_OKAY(zephyr_app_platform), counters, 0));
+	int expected = (counter_get_num_of_channels(dev) == 0U) ? -ENOTSUP : 0;
+
+	for (int i = 0; i < CONFIG_APP_PLATFORM_MAX_APPS; i++) {
+		app_platform_grant_counter(i, BIT(0));
+	}
+	expect_refused("h_cal", counter_alarm_event,
+		       APP_CAP_LOG | APP_CAP_COUNTER_DEV | APP_CAP_INPUT, expected);
+	for (int i = 0; i < CONFIG_APP_PLATFORM_MAX_APPS; i++) {
+		app_platform_grant_counter(i, 0U);
+	}
+#else
+	ztest_test_skip();
+#endif
 }
 
 /* ---- 4.15 the per-application file sandbox ---- */

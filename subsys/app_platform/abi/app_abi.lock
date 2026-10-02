@@ -372,3 +372,4 @@ func pwm_count 1 svc int (void)
 func adc_read_mv 1 svc int (int, int32_t *)
 func adc_count 1 svc int (void)
 const APP_PWM_INVERTED 0x1
+func counter_alarm 1 svc int (int, uint32_t)

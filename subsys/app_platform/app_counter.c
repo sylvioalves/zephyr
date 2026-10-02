@@ -6,9 +6,9 @@
 
 /* Shared hardware counter service. The platform owns the counter instances and
  * hands an application a granted one by index, so an application can time an
- * interval against real hardware rather than the scheduler. Reading is the
- * whole surface: an application never receives the device, and alarms stay with
- * the platform because a callback cannot cross into user mode.
+ * interval against real hardware rather than the scheduler. An application
+ * never receives the device. An alarm it sets fires in the platform, which
+ * posts an APP_EVENT_COUNTER notification to the application's event queue.
  *
  * The service builds to nothing when the board has no counter node, so a board
  * without the peripheral still builds.
@@ -24,6 +24,7 @@
 #include <zephyr/internal/syscall_handler.h>
 #include <errno.h>
 
+#include "app_events.h"
 #include "app_grants.h"
 
 static const struct device *const counters[] = {
@@ -35,7 +36,34 @@ static const struct device *const counters[] = {
 static uint32_t counter_grant[MAX_APPS];
 /* Bit N set means this application issued the last start of counter N. */
 static uint32_t counter_started[MAX_APPS];
+/* Application that holds the alarm of each counter, or -1. */
+static int8_t alarm_owner[COUNTER_COUNT + 1];
 static SVC_LOCK_DEFINE(counter_lock);
+
+static int counter_init_owners(void)
+{
+	for (int i = 0; i < (int)COUNTER_COUNT; i++) {
+		alarm_owner[i] = -1;
+	}
+	return 0;
+}
+SYS_INIT(counter_init_owners, PRE_KERNEL_1, 0);
+
+static void counter_alarm_fired(const struct device *dev, uint8_t chan, uint32_t ticks,
+				void *user_data)
+{
+	ARG_UNUSED(dev);
+	ARG_UNUSED(chan);
+	ARG_UNUSED(ticks);
+
+	int idx = (int)(intptr_t)user_data;
+	int id = alarm_owner[idx];
+
+	alarm_owner[idx] = -1;
+	if (id >= 0) {
+		app_events_notify(id, APP_EVENT_COUNTER, (uint8_t)idx);
+	}
+}
 
 void app_platform_grant_counter(int id, uint32_t idx_mask)
 {
@@ -54,6 +82,10 @@ void app_platform_clear_counter_grants(int id)
 		return;
 	}
 	for (int i = 0; i < (int)COUNTER_COUNT; i++) {
+		if (alarm_owner[i] == id) {
+			(void)counter_cancel_channel_alarm(counters[i], 0);
+			alarm_owner[i] = -1;
+		}
 		if ((counter_started[id] & BIT(i)) != 0U) {
 			(void)counter_stop(counters[i]);
 		}
@@ -166,7 +198,55 @@ int z_impl_app_svc_counter_frequency(int idx, uint32_t *hz)
 	return 0;
 }
 
+int z_impl_app_svc_counter_alarm(int idx, uint32_t ticks)
+{
+	const struct device *dev;
+	int id = app_platform_id_current();
+	int rc = granted_counter(idx, &dev);
+
+	if (rc != 0) {
+		return rc;
+	}
+	if (counter_get_num_of_channels(dev) == 0U) {
+		return -ENOTSUP;
+	}
+	if (app_service_lock(&counter_lock, SVC_LOCK_TIMEOUT) != 0) {
+		return -EBUSY;
+	}
+	if (alarm_owner[idx] >= 0 && alarm_owner[idx] != id) {
+		rc = -EBUSY;
+	} else if (ticks == 0U) {
+		if (alarm_owner[idx] == id) {
+			(void)counter_cancel_channel_alarm(dev, 0);
+			alarm_owner[idx] = -1;
+		}
+	} else {
+		struct counter_alarm_cfg cfg = {
+			.callback = counter_alarm_fired,
+			.ticks = ticks,
+			.user_data = (void *)(intptr_t)idx,
+		};
+
+		if (alarm_owner[idx] == id) {
+			(void)counter_cancel_channel_alarm(dev, 0);
+		}
+		alarm_owner[idx] = (int8_t)id;
+		rc = counter_set_channel_alarm(dev, 0, &cfg);
+		if (rc != 0) {
+			alarm_owner[idx] = -1;
+		}
+	}
+	(void)app_service_unlock(&counter_lock);
+	return rc;
+}
+
 #ifdef CONFIG_USERSPACE
+static inline int z_vrfy_app_svc_counter_alarm(int idx, uint32_t ticks)
+{
+	return z_impl_app_svc_counter_alarm(idx, ticks);
+}
+#include <zephyr/syscalls/app_svc_counter_alarm_mrsh.c>
+
 static inline int z_vrfy_app_svc_counter_count(void)
 {
 	return z_impl_app_svc_counter_count();
