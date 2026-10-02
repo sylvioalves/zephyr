@@ -40,7 +40,8 @@ struct app_queue {
 
 #define NOTIFY_KINDS (APP_EVENT_BIT(APP_EVENT_TIMER) | APP_EVENT_BIT(APP_EVENT_IPC) |      \
 		      APP_EVENT_BIT(APP_EVENT_CAN) | APP_EVENT_BIT(APP_EVENT_UART_RX) |    \
-		      APP_EVENT_BIT(APP_EVENT_NET) | APP_EVENT_BIT(APP_EVENT_COUNTER))
+		      APP_EVENT_BIT(APP_EVENT_NET) | APP_EVENT_BIT(APP_EVENT_COUNTER) |    \
+		      APP_EVENT_BIT(APP_EVENT_RADIO))
 
 static struct app_queue queues[MAX_APPS];
 static uint32_t subscribed[MAX_APPS];

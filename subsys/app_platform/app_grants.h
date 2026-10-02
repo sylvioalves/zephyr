@@ -146,6 +146,15 @@ static inline void app_platform_clear_periph_grants(int id)
 }
 #endif
 
+#ifdef CONFIG_APP_PLATFORM_RADIO
+void app_platform_clear_radio(int id);
+#else
+static inline void app_platform_clear_radio(int id)
+{
+	ARG_UNUSED(id);
+}
+#endif
+
 #ifdef CONFIG_APP_PLATFORM_CAN
 void app_platform_clear_can(int id);
 #else

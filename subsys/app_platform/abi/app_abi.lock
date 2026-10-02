@@ -375,3 +375,4 @@ const APP_PWM_INVERTED 0x1
 func counter_alarm 1 svc int (int, uint32_t)
 func file_delete 1 svc int (const char *)
 func file_size 1 svc int (const char *)
+enum app_event_kind.APP_EVENT_RADIO 0xd

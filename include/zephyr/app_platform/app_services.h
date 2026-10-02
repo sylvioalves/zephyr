@@ -835,7 +835,7 @@ __syscall int app_svc_event_wait(struct app_event *evt, int32_t timeout_ms);
  *        Needs @ref APP_CAP_INPUT.
  *
  * Input events (button, GPIO, BLE and stop) are always delivered. The
- * notification kinds, @ref APP_EVENT_TIMER through @ref APP_EVENT_COUNTER, are
+ * notification kinds, @ref APP_EVENT_TIMER through @ref APP_EVENT_RADIO, are
  * delivered only while subscribed, so one loop around @ref app_svc_event_wait
  * can serve every source. A notification says data is waiting; the application
  * then reads it with the source's own call and a zero timeout until that call
@@ -2497,6 +2497,9 @@ __syscall int app_svc_radio_send(const void *buf, size_t len);
 
 /**
  * @brief Receive a datagram from the 802.15.4 peer. Needs @ref APP_CAP_RADIO.
+ *
+ * Each application receives its own copy of every datagram that arrives after
+ * its first radio call.
  *
  * @param buf        Receives the bytes.
  * @param len        Buffer size (bounded by the platform).

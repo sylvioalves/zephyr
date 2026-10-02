@@ -58,6 +58,7 @@ enum app_event_kind {
 	APP_EVENT_UART_RX,    /**< bytes arrived on the secondary UART */
 	APP_EVENT_NET,        /**< data is queued; line 0 MQTT, line 1 socket */
 	APP_EVENT_COUNTER,    /**< a counter alarm fired; line is the counter */
+	APP_EVENT_RADIO,      /**< an 802.15.4 datagram is queued */
 };
 
 /** @ref app_svc_gpio_configure flag: the line is an input. */

@@ -9,7 +9,8 @@
  * receives datagrams to a peer through copied buffers and never holds the socket
  * (a socket is a kernel object a user thread cannot keep). A supervisor pair of
  * threads runs all socket I/O: a tx thread drains an outgoing queue, an rx
- * thread fills an incoming queue.
+ * thread copies each datagram into the queue of every application that uses
+ * the radio, so one application never takes another's datagrams.
  */
 
 #include <zephyr/app_platform/app_services.h>
@@ -20,6 +21,7 @@
 #include <zephyr/net/socket.h>
 #include <string.h>
 #include <errno.h>
+#include "app_events.h"
 #include "app_grants.h"
 
 #define PEER_ADDR CONFIG_APP_PLATFORM_RADIO_PEER
@@ -31,8 +33,30 @@ struct radio_msg {
 	uint8_t  data[MSG_MAX];
 };
 
+#define RX_DEPTH 4
+
 K_MSGQ_DEFINE(radio_tx_q, sizeof(struct radio_msg), 4, 4);
-K_MSGQ_DEFINE(radio_rx_q, sizeof(struct radio_msg), 4, 4);
+static struct k_msgq radio_rx_q[MAX_APPS];
+static char __aligned(4) radio_rx_buf[MAX_APPS][RX_DEPTH * sizeof(struct radio_msg)];
+static atomic_t radio_users;
+
+static int radio_init_queues(void)
+{
+	for (int i = 0; i < MAX_APPS; i++) {
+		k_msgq_init(&radio_rx_q[i], radio_rx_buf[i], sizeof(struct radio_msg), RX_DEPTH);
+	}
+	return 0;
+}
+SYS_INIT(radio_init_queues, POST_KERNEL, 0);
+
+void app_platform_clear_radio(int id)
+{
+	if (id < 0 || id >= MAX_APPS) {
+		return;
+	}
+	atomic_clear_bit(&radio_users, id);
+	k_msgq_purge(&radio_rx_q[id]);
+}
 
 static int radio_sock = -1;
 static struct sockaddr_in6 peer;
@@ -97,9 +121,15 @@ static void radio_rx(void *a, void *b, void *c)
 		struct radio_msg m;
 		int n = zsock_recv(radio_sock, m.data, sizeof(m.data), 0);
 
-		if (n > 0) {
-			m.len = (uint16_t)n;
-			(void)k_msgq_put(&radio_rx_q, &m, K_NO_WAIT);
+		if (n <= 0) {
+			continue;
+		}
+		m.len = (uint16_t)n;
+		for (int id = 0; id < MAX_APPS; id++) {
+			if (atomic_test_bit(&radio_users, id) &&
+			    k_msgq_put(&radio_rx_q[id], &m, K_NO_WAIT) == 0) {
+				app_events_notify(id, APP_EVENT_RADIO, 0U);
+			}
 		}
 	}
 }
@@ -112,7 +142,12 @@ static bool radio_ready;
 
 static int radio_ensure_up(void)
 {
+	int id = app_platform_id_current();
 	int rc = 0;
+
+	if (id >= 0 && id < MAX_APPS) {
+		atomic_set_bit(&radio_users, id);
+	}
 
 	if (app_service_lock(&radio_lock, SVC_LOCK_TIMEOUT) != 0) {
 		return -EBUSY;
@@ -158,8 +193,12 @@ int z_impl_app_svc_radio_recv(void *buf, size_t len, uint32_t timeout_ms)
 	}
 
 	struct radio_msg m;
+	int id = app_platform_id_current();
 
-	if (k_msgq_get(&radio_rx_q, &m, K_MSEC(timeout_ms)) != 0) {
+	if (id < 0 || id >= MAX_APPS) {
+		return -EINVAL;
+	}
+	if (k_msgq_get(&radio_rx_q[id], &m, K_MSEC(timeout_ms)) != 0) {
 		return -EAGAIN;
 	}
 

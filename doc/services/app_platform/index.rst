@@ -276,10 +276,10 @@ build time.
 Waiting on several sources
 ==========================
 
-``app_svc_event_wait()`` delivers input events, button presses, GPIO edges, BLE events and the
-stop request, to a queue owned by one application. ``app_svc_event_subscribe()`` adds
-notifications from the other sources: a timer slot expiring, an IPC message, a CAN frame, bytes on
-the secondary UART, an MQTT message or socket data, and a counter alarm. A notification says data
+``app_svc_event_wait()`` delivers input events, button presses, GPIO edges, BLE events and the stop
+request, to a queue owned by one application. ``app_svc_event_subscribe()`` adds notifications from
+the other sources: a timer slot expiring, an IPC message, a CAN frame, bytes on the secondary UART,
+an MQTT message or socket data, a counter alarm, and an 802.15.4 datagram. A notification says data
 is waiting; the application reads it with the source's own call and a zero timeout until that call
 returns ``-EAGAIN``. One loop around ``app_svc_event_wait()`` can then serve every source without a
 worker thread per source.
