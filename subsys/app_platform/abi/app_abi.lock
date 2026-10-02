@@ -322,3 +322,10 @@ field app_can_status.tx_err_cnt offset 1 size 1
 field app_can_status.rx_err_cnt offset 2 size 1
 field app_can_status.last_tx_error offset 4 size 4
 field app_can_status.rx_dropped offset 8 size 4
+func event_subscribe 1 svc int (uint32_t)
+enum app_event_kind.APP_EVENT_TIMER 0x7
+enum app_event_kind.APP_EVENT_IPC 0x8
+enum app_event_kind.APP_EVENT_CAN 0x9
+enum app_event_kind.APP_EVENT_UART_RX 0xa
+enum app_event_kind.APP_EVENT_NET 0xb
+enum app_event_kind.APP_EVENT_COUNTER 0xc

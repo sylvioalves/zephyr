@@ -162,7 +162,8 @@ Connectivity
      - One socket per application, isolated from the others.
    * - MQTT and friends
      - Brokered connection
-     - The platform owns the client; arriving messages go to an event queue.
+     - The platform owns the client; arriving messages wait in a per-application
+       inbox, announced through the event queue when subscribed.
 
 Sensors and analog
 ******************
@@ -265,7 +266,8 @@ Time
        application reads.
    * - Software timers
      - Open
-     - Expiry delivered to the application's queue.
+     - Expiry wakes the slot's waiter and, when subscribed, posts an event to
+       the application's queue.
    * - Hardware counter
      - Arbitrated pool
      - Scarce, so one granted instance with the limit enforced.

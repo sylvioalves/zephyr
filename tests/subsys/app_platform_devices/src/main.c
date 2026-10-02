@@ -1068,6 +1068,73 @@ ZTEST(devices, test_i2c_failing_app_loses_grants)
 	expect_rc_i2c("i_bad", i2c_absent_device, 0x33, -EACCES);
 }
 
+static void events_from_sources(void *a)
+{
+	ARG_UNUSED(a);
+
+	uint32_t want = APP_EVENT_BIT(APP_EVENT_TIMER) | APP_EVENT_BIT(APP_EVENT_IPC) |
+			APP_EVENT_BIT(APP_EVENT_CAN);
+	uint32_t seen = 0U;
+	int can_events = 0;
+	uint8_t b = 1;
+	struct app_event evt;
+	int slot;
+	int rc = app_svc_event_subscribe(want);
+
+	if (rc == 0 && app_svc_event_subscribe(APP_EVENT_BIT(APP_EVENT_BUTTON)) != -EINVAL) {
+		rc = -EBADMSG;
+	}
+	if (rc == 0) {
+		rc = app_svc_event_subscribe(want);
+	}
+	if (rc == 0) {
+		rc = app_svc_ipc_register("evsrc");
+	}
+	slot = app_svc_timer_create();
+	if (rc == 0 && slot < 0) {
+		rc = slot;
+	}
+	if (rc == 0) {
+		rc = app_svc_timer_arm(slot, 20, 0);
+	}
+	for (int i = 0; rc == 0 && i < 3; i++) {
+		rc = app_svc_can_send(0x111U, &b, 1);
+	}
+	if (rc == 0) {
+		rc = app_svc_ipc_send_to("evsrc", &b, 1);
+	}
+	while (rc == 0 && app_svc_event_wait(&evt, 200) == 0) {
+		seen |= APP_EVENT_BIT(evt.kind);
+		if (evt.kind == APP_EVENT_CAN) {
+			can_events++;
+		}
+		if (evt.kind == APP_EVENT_TIMER && evt.line != (uint8_t)slot) {
+			rc = -EBADMSG;
+		}
+	}
+	if (rc == 0 && seen != want) {
+		rc = -ENOMSG;
+	}
+	if (rc == 0 && can_events != 1) {
+		rc = -EEXIST;
+	}
+	if (rc == 0) {
+		(void)app_svc_event_subscribe(0U);
+		(void)app_svc_can_send(0x111U, &b, 1);
+		if (app_svc_event_wait(&evt, 50) != -EAGAIN) {
+			rc = -EALREADY;
+		}
+	}
+	report_rc = rc;
+	report_done = 1;
+}
+
+ZTEST(devices, test_event_wait_serves_every_source)
+{
+	expect_rc("ev_src", events_from_sources,
+		  APP_CAP_LOG | APP_CAP_INPUT | APP_CAP_TIME | APP_CAP_IPC | APP_CAP_CAN, 0);
+}
+
 static void led_set_held(void *a)
 {
 	ARG_UNUSED(a);

@@ -27,6 +27,7 @@
 #include <zephyr/posix/fcntl.h>
 #include <zephyr/zvfs/eventfd.h>
 #include <zephyr/net/mqtt.h>
+#include "app_events.h"
 #include "app_grants.h"
 #ifdef CONFIG_SETTINGS
 #include <zephyr/settings/settings.h>
@@ -435,7 +436,9 @@ static void mqtt_evt(struct mqtt_client *c, const struct mqtt_evt *e)
 		if (rc >= 0) {
 			m.data[rc] = '\0';
 			m.len = (uint16_t)rc;
-			(void)k_msgq_put(&s->inbox, &m, K_NO_WAIT);
+			if (k_msgq_put(&s->inbox, &m, K_NO_WAIT) == 0) {
+				app_events_notify((int)(s - sessions), APP_EVENT_NET, 0U);
+			}
 		}
 		if (p->message.topic.qos == MQTT_QOS_1_AT_LEAST_ONCE) {
 			struct mqtt_puback_param ack = {
@@ -860,12 +863,15 @@ static void sock_pump(int id, int fd)
 		m.len = (uint16_t)n;
 		m.src_addr = from.sin_addr;
 		m.src_port = ntohs(from.sin_port);
-		(void)k_msgq_put(&sk->inbox, &m, K_NO_WAIT);
+		if (k_msgq_put(&sk->inbox, &m, K_NO_WAIT) == 0) {
+			app_events_notify(id, APP_EVENT_NET, 1U);
+		}
 	} else if (n == 0 || errno != EAGAIN) {
 		sk->rx_eof = true;
 		if (sk->is_tcp) {
 			m.len = 0;
 			(void)k_msgq_put(&sk->inbox, &m, K_NO_WAIT);
+			app_events_notify(id, APP_EVENT_NET, 1U);
 		}
 	}
 	app_service_unlock(&net_lock);

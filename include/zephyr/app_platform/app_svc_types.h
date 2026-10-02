@@ -52,7 +52,16 @@ enum app_event_kind {
 	APP_EVENT_BLE_CONNECTED,    /**< a peer connected to the served app */
 	APP_EVENT_BLE_DISCONNECTED, /**< the connected peer went away */
 	APP_EVENT_STOP,       /**< the platform asked the application to exit */
+	APP_EVENT_TIMER,      /**< a timer slot expired; line is the slot */
+	APP_EVENT_IPC,        /**< a message arrived in the IPC mailbox */
+	APP_EVENT_CAN,        /**< a CAN frame is queued */
+	APP_EVENT_UART_RX,    /**< bytes arrived on the secondary UART */
+	APP_EVENT_NET,        /**< data is queued; line 0 MQTT, line 1 socket */
+	APP_EVENT_COUNTER,    /**< a counter alarm fired; line is the counter */
 };
+
+/** Bit of an @ref app_event_kind in an @ref app_svc_event_subscribe mask. */
+#define APP_EVENT_BIT(kind) (1UL << (kind))
 
 /**
  * @brief One input event delivered to an application.

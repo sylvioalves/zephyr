@@ -18,6 +18,7 @@
 #ifdef CONFIG_APP_PLATFORM_EVENTS
 void app_events_post(int id, const struct app_event *evt);
 void app_events_broadcast(const struct app_event *evt, bool (*pred)(int id));
+void app_events_notify(int id, uint8_t kind, uint8_t line);
 #else
 static inline void app_events_post(int id, const struct app_event *evt)
 {
@@ -29,6 +30,12 @@ static inline void app_events_broadcast(const struct app_event *evt,
 {
 	ARG_UNUSED(evt);
 	ARG_UNUSED(pred);
+}
+static inline void app_events_notify(int id, uint8_t kind, uint8_t line)
+{
+	ARG_UNUSED(id);
+	ARG_UNUSED(kind);
+	ARG_UNUSED(line);
 }
 #endif
 

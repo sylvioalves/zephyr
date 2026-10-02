@@ -24,6 +24,7 @@
 #include <zephyr/drivers/can.h>
 #include <string.h>
 #include <errno.h>
+#include "app_events.h"
 #include "app_grants.h"
 
 #define CAN_PAYLOAD_MAX 8
@@ -87,6 +88,8 @@ static void can_rx(const struct device *dev, struct can_frame *frame, void *arg)
 		}
 		if (k_msgq_put(&can_rx_q[id], frame, K_NO_WAIT) != 0) {
 			can_rx_dropped[id]++;
+		} else {
+			app_events_notify(id, APP_EVENT_CAN, 0U);
 		}
 	}
 }

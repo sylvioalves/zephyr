@@ -830,6 +830,27 @@ void app_platform_grant_gpio(int id, uint32_t line_mask);
 __syscall int app_svc_event_wait(struct app_event *evt, int32_t timeout_ms);
 
 /**
+ * @brief Choose which notification events reach the application's queue.
+ *        Needs @ref APP_CAP_INPUT.
+ *
+ * Input events (button, GPIO, BLE and stop) are always delivered. The
+ * notification kinds, @ref APP_EVENT_TIMER through @ref APP_EVENT_COUNTER, are
+ * delivered only while subscribed, so one loop around @ref app_svc_event_wait
+ * can serve every source. A notification says data is waiting; the application
+ * then reads it with the source's own call and a zero timeout until that call
+ * returns -EAGAIN. A notification already queued and not yet taken is not
+ * queued again for the same kind and line.
+ *
+ * @param mask APP_EVENT_BIT() of each notification kind to receive; 0 stops
+ *             them all.
+ *
+ * @retval 0 Success.
+ * @retval -EPERM The application does not hold @ref APP_CAP_INPUT.
+ * @retval -EINVAL @p mask names a kind that is not a notification.
+ */
+__syscall int app_svc_event_subscribe(uint32_t mask);
+
+/**
  * @brief Subscribe to level changes on a granted GPIO line. Needs
  *        @ref APP_CAP_GPIO and a per-line grant.
  *

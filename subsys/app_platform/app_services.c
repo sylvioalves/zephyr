@@ -19,6 +19,7 @@
 #include <zephyr/logging/log.h>
 #include <zephyr/internal/syscall_handler.h>
 #include <zephyr/random/random.h>
+#include "app_events.h"
 #include "app_grants.h"
 
 LOG_MODULE_REGISTER(app_log, CONFIG_APP_PLATFORM_LOG_LEVEL);
@@ -129,7 +130,11 @@ static int mailbox_put(int dest, const void *buf, size_t len)
 
 	msg.len = (uint16_t)len;
 	memcpy(msg.data, buf, len);
-	return k_msgq_put(&mailbox[dest], &msg, K_NO_WAIT) == 0 ? 0 : -EAGAIN;
+	if (k_msgq_put(&mailbox[dest], &msg, K_NO_WAIT) != 0) {
+		return -EAGAIN;
+	}
+	app_events_notify(dest, APP_EVENT_IPC, 0U);
+	return 0;
 }
 
 void z_impl_app_svc_log(const char *msg)
@@ -586,8 +591,11 @@ static struct k_spinlock slot_lock;
 static void slot_expiry(struct k_timer *t)
 {
 	struct app_timer_slot *s = CONTAINER_OF(t, struct app_timer_slot, timer);
+	int idx = (int)(s - &slots[0][0]);
 
 	k_sem_give(&s->sem);
+	app_events_notify(idx / APP_TIMER_SLOTS, APP_EVENT_TIMER,
+			  (uint8_t)(idx % APP_TIMER_SLOTS));
 }
 
 static struct app_timer_slot *slot_of(int id, int slot)
@@ -951,6 +959,7 @@ int z_impl_app_svc_topic_publish(const char *topic, const void *buf, size_t len)
 	for (int i = 0; i < MAX_APPS; i++) {
 		if (ipc_topics[i][0] != '\0' && strcmp(ipc_topics[i], topic) == 0) {
 			if (k_msgq_put(&mailbox[i], &msg, K_NO_WAIT) == 0) {
+				app_events_notify(i, APP_EVENT_IPC, 0U);
 				delivered++;
 			}
 		}
