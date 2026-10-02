@@ -44,6 +44,10 @@
 		gpio-controller;
 		#gpio-cells = <2>;
 		ngpios = <4>;
+		rising-edge;
+		falling-edge;
+		high-level;
+		low-level;
 		status = "okay";
 	};
 

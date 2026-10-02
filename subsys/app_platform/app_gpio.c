@@ -4,12 +4,13 @@
  * SPDX-License-Identifier: Apache-2.0
  */
 
-/* The shared GPIO service. The platform owns a set of output lines taken from
- * the board's "leds" devicetree node. An application that holds APP_CAP_GPIO may
- * drive only the lines it was granted (see app_platform_grant_gpio), so the
- * capability admits the service and a per-line mask scopes it to specific pins -
- * the second-level grant pattern. A line an application last drove active is
- * driven inactive when that application is reclaimed.
+/* The shared GPIO service. The platform owns a set of lines taken from the
+ * "gpios" property of the zephyr,app-platform devicetree node. An application
+ * that holds APP_CAP_GPIO may drive only the lines it was granted (see
+ * app_platform_grant_gpio), so the capability admits the service and a
+ * per-line mask scopes it to specific pins - the second-level grant pattern.
+ * A line an application last drove active is driven inactive when that
+ * application is reclaimed.
  */
 
 #include <zephyr/app_platform/app_services.h>
@@ -51,53 +52,6 @@ static uint32_t line_grant[MAX_APPS];
 static uint32_t line_active[MAX_APPS];
 static SVC_LOCK_DEFINE(line_lock);
 
-/* Drop every line grant of a slot that is being handed to a new application
- * and drive the lines it last set active back to inactive.
- */
-void app_platform_clear_gpio_grants(int id)
-{
-	if (id < 0 || id >= MAX_APPS) {
-		return;
-	}
-	line_grant[id] = 0U;
-	if (app_service_lock(&line_lock, SVC_LOCK_TIMEOUT) != 0) {
-		return;
-	}
-#if HAS_LINES
-	for (int i = 0; i < (int)LINE_COUNT; i++) {
-		if ((line_active[id] & BIT(i)) != 0U) {
-			(void)gpio_pin_set_dt(&lines[i], 0);
-		}
-	}
-#endif
-	line_active[id] = 0U;
-	(void)app_service_unlock(&line_lock);
-}
-
-void app_platform_grant_gpio(int id, uint32_t line_mask)
-{
-	if (id >= 0 && id < MAX_APPS) {
-		line_grant[id] = line_mask;
-	}
-}
-
-#if HAS_LINES
-static bool gpio_ready;
-
-static void gpio_ready_init(void)
-{
-	if (gpio_ready) {
-		return;
-	}
-	for (int i = 0; i < (int)LINE_COUNT; i++) {
-		if (gpio_is_ready_dt(&lines[i])) {
-			gpio_pin_configure_dt(&lines[i], GPIO_OUTPUT_INACTIVE);
-		}
-	}
-	gpio_ready = true;
-}
-#endif
-
 #if HAS_LINES && defined(CONFIG_APP_PLATFORM_EVENTS)
 /* Bit N set means application N is watching this line. A line is configured as
  * an input and its interrupt enabled only while at least one application is
@@ -128,6 +82,101 @@ static void line_changed(const struct device *dev, struct gpio_callback *cb,
 			app_events_post(id, &evt);
 		}
 	}
+}
+
+/* Add or drop one application's watch on a line, and switch the line between
+ * an output and an interrupt-enabled input as its first watcher arrives or its
+ * last one leaves. Called with line_lock held.
+ */
+static int line_watch_set(int line, int id, bool on)
+{
+	bool was_watched = (line_watchers[line] != 0U);
+
+	if (on) {
+		line_watchers[line] |= BIT(id);
+	} else {
+		line_watchers[line] &= ~BIT(id);
+	}
+
+	bool watched = (line_watchers[line] != 0U);
+
+	if (watched == was_watched) {
+		return 0;
+	}
+	if (watched) {
+		int rc = gpio_pin_configure_dt(&lines[line], GPIO_INPUT);
+
+		if (rc != 0) {
+			line_watchers[line] &= ~BIT(id);
+			return rc;
+		}
+		gpio_init_callback(&line_cb[line], line_changed,
+				   BIT(lines[line].pin));
+		(void)gpio_add_callback(lines[line].port, &line_cb[line]);
+		rc = gpio_pin_interrupt_configure_dt(&lines[line], GPIO_INT_EDGE_BOTH);
+		if (rc != 0) {
+			line_watchers[line] &= ~BIT(id);
+			(void)gpio_remove_callback(lines[line].port, &line_cb[line]);
+			(void)gpio_pin_configure_dt(&lines[line], GPIO_OUTPUT_INACTIVE);
+		}
+		return rc;
+	}
+
+	(void)gpio_pin_interrupt_configure_dt(&lines[line], GPIO_INT_DISABLE);
+	(void)gpio_remove_callback(lines[line].port, &line_cb[line]);
+	return gpio_pin_configure_dt(&lines[line], GPIO_OUTPUT_INACTIVE);
+}
+#endif
+
+/* Drop every line grant of a slot that is being handed to a new application
+ * and drive the lines it last set active back to inactive.
+ */
+void app_platform_clear_gpio_grants(int id)
+{
+	if (id < 0 || id >= MAX_APPS) {
+		return;
+	}
+	line_grant[id] = 0U;
+	if (app_service_lock(&line_lock, SVC_LOCK_TIMEOUT) != 0) {
+		return;
+	}
+#if HAS_LINES
+	for (int i = 0; i < (int)LINE_COUNT; i++) {
+#ifdef CONFIG_APP_PLATFORM_EVENTS
+		if ((line_watchers[i] & BIT(id)) != 0U) {
+			(void)line_watch_set(i, id, false);
+		}
+#endif
+		if ((line_active[id] & BIT(i)) != 0U) {
+			(void)gpio_pin_set_dt(&lines[i], 0);
+		}
+	}
+#endif
+	line_active[id] = 0U;
+	(void)app_service_unlock(&line_lock);
+}
+
+void app_platform_grant_gpio(int id, uint32_t line_mask)
+{
+	if (id >= 0 && id < MAX_APPS) {
+		line_grant[id] = line_mask;
+	}
+}
+
+#if HAS_LINES
+static bool gpio_ready;
+
+static void gpio_ready_init(void)
+{
+	if (gpio_ready) {
+		return;
+	}
+	for (int i = 0; i < (int)LINE_COUNT; i++) {
+		if (gpio_is_ready_dt(&lines[i])) {
+			gpio_pin_configure_dt(&lines[i], GPIO_OUTPUT_INACTIVE);
+		}
+	}
+	gpio_ready = true;
 }
 #endif
 
@@ -289,36 +338,14 @@ int z_impl_app_svc_gpio_watch(int line, int on)
 		return -ENODEV;
 	}
 
-	bool was_watched = (line_watchers[line] != 0U);
-
-	if (on != 0) {
-		line_watchers[line] |= BIT(id);
-	} else {
-		line_watchers[line] &= ~BIT(id);
+	if (app_service_lock(&line_lock, SVC_LOCK_TIMEOUT) != 0) {
+		return -EBUSY;
 	}
 
-	bool watched = (line_watchers[line] != 0U);
+	int rc = line_watch_set(line, id, on != 0);
 
-	if (watched == was_watched) {
-		return 0;
-	}
-	if (watched) {
-		int rc = gpio_pin_configure_dt(&lines[line], GPIO_INPUT);
-
-		if (rc != 0) {
-			line_watchers[line] &= ~BIT(id);
-			return rc;
-		}
-		gpio_init_callback(&line_cb[line], line_changed,
-				   BIT(lines[line].pin));
-		(void)gpio_add_callback(lines[line].port, &line_cb[line]);
-		return gpio_pin_interrupt_configure_dt(&lines[line],
-						       GPIO_INT_EDGE_BOTH);
-	}
-
-	(void)gpio_pin_interrupt_configure_dt(&lines[line], GPIO_INT_DISABLE);
-	(void)gpio_remove_callback(lines[line].port, &line_cb[line]);
-	return gpio_pin_configure_dt(&lines[line], GPIO_OUTPUT_INACTIVE);
+	(void)app_service_unlock(&line_lock);
+	return rc;
 #else
 	ARG_UNUSED(on);
 	return -ENOTSUP;

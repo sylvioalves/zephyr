@@ -731,6 +731,53 @@ ZTEST(devices, test_gpio_inactive_on_reclaim)
 	zassert_equal(gpio_emul_output_get_dt(&line), 0, "reclaim left the line active");
 }
 
+static void gpio_watch_held(void *a)
+{
+	ARG_UNUSED(a);
+	hold_until_released(app_svc_gpio_watch(0, 1));
+}
+
+static void gpio_watch_steal(void *a)
+{
+	ARG_UNUSED(a);
+
+	struct app_event evt;
+
+	report_rc = app_svc_event_wait(&evt, 50);
+	report_done = 1;
+}
+
+ZTEST(devices, test_gpio_watch_dropped_on_reclaim)
+{
+	const struct gpio_dt_spec line = GPIO_DT_SPEC_GET(DT_NODELABEL(test_line), gpios);
+	gpio_flags_t flags;
+
+	for (int i = 0; i < CONFIG_APP_PLATFORM_MAX_APPS; i++) {
+		app_platform_grant_gpio(i, BIT(0));
+	}
+	launch_held("w_rc", gpio_watch_held, APP_CAP_LOG | APP_CAP_GPIO | APP_CAP_INPUT);
+	zassert_ok(gpio_emul_flags_get(line.port, line.pin, &flags));
+	zassert_true((flags & GPIO_INPUT) != 0U, "watched line is not an input");
+	release_held("w_rc");
+	zassert_ok(gpio_emul_flags_get(line.port, line.pin, &flags));
+	zassert_true((flags & GPIO_OUTPUT) != 0U, "reclaim left the line an input");
+
+	/* No grant now: a toggle must not reach the next application. */
+	report_rc = -9999;
+	report_done = 0;
+
+	const struct app_def def = {
+		.name = "w_steal", .source = APP_BUILTIN, .entry = gpio_watch_steal,
+		.caps = APP_CAP_LOG | APP_CAP_INPUT,
+	};
+
+	zassert_true(launch_reporting(&def) >= 0);
+	(void)gpio_emul_input_set_dt(&line, 1);
+	(void)gpio_emul_input_set_dt(&line, 0);
+	zassert_true(wait_slot_free("w_steal", 2000));
+	zassert_equal(report_rc, -EAGAIN, "event reached an unwatched slot (%d)", report_rc);
+}
+
 static void led_set_held(void *a)
 {
 	ARG_UNUSED(a);

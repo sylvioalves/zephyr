@@ -602,10 +602,11 @@ config APP_PLATFORM_GPIO
 	depends on APP_PLATFORM_SERVICES
 	depends on GPIO
 	help
-	  Expose the board's "leds" devicetree lines as a capability-gated
-	  service. An application holding APP_CAP_GPIO drives only the lines it
-	  is granted (app_platform_grant_gpio), so the capability admits the
-	  service and a per-line mask scopes it to specific pins.
+	  Expose the lines in the "gpios" property of the zephyr,app-platform
+	  devicetree node as a capability-gated service. An application
+	  holding APP_CAP_GPIO drives only the lines it is granted
+	  (app_platform_grant_gpio), so the capability admits the service
+	  and a per-line mask scopes it to specific pins.
 
 config APP_PLATFORM_PERIPH
 	bool "Shared PWM and ADC services"
