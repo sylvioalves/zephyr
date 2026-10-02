@@ -1480,6 +1480,43 @@ ZTEST(devices, test_pwm_period_and_polarity)
 	zassert_equal(fake_pwm_set_cycles_fake.arg4_history[1] & PWM_POLARITY_INVERTED, 0U);
 }
 
+K_APP_DMEM(report_part) volatile int press_seen[2];
+
+static void button_waiter(void *a)
+{
+	int n = (int)(uintptr_t)a;
+
+	press_seen[n] = -9999;
+	report_done = 1;
+	press_seen[n] = app_svc_button_wait(2000);
+}
+
+ZTEST(devices, test_button_press_reaches_every_waiter)
+{
+	const struct gpio_dt_spec btn = GPIO_DT_SPEC_GET(DT_NODELABEL(test_btn), gpios);
+	const struct app_def a = {
+		.name = "b_one", .source = APP_BUILTIN, .entry = button_waiter,
+		.arg = (void *)0, .caps = APP_CAP_LOG | APP_CAP_INPUT,
+	};
+	const struct app_def b = {
+		.name = "b_two", .source = APP_BUILTIN, .entry = button_waiter,
+		.arg = (void *)1, .caps = APP_CAP_LOG | APP_CAP_INPUT,
+	};
+
+	zassert_ok(gpio_emul_input_set_dt(&btn, 0));
+	press_seen[0] = 0;
+	press_seen[1] = 0;
+	zassert_true(launch_reporting(&a) >= 0);
+	zassert_true(launch_reporting(&b) >= 0);
+	k_msleep(100);
+	zassert_ok(gpio_emul_input_set_dt(&btn, 1));
+	zassert_true(wait_slot_free("b_one", 3000));
+	zassert_true(wait_slot_free("b_two", 3000));
+	zassert_ok(gpio_emul_input_set_dt(&btn, 0));
+	zassert_true(press_seen[0] > 0, "first waiter got %d", press_seen[0]);
+	zassert_true(press_seen[1] > 0, "second waiter got %d", press_seen[1]);
+}
+
 static void led_set_held(void *a)
 {
 	ARG_UNUSED(a);

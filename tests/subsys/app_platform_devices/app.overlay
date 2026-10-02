@@ -44,7 +44,7 @@
 		compatible = "zephyr,gpio-emul";
 		gpio-controller;
 		#gpio-cells = <2>;
-		ngpios = <4>;
+		ngpios = <8>;
 		rising-edge;
 		falling-edge;
 		high-level;
@@ -61,6 +61,14 @@
 
 		test_led: test_led {
 			gpios = <&test_gpio 1 GPIO_ACTIVE_HIGH>;
+		};
+	};
+
+	buttons {
+		compatible = "gpio-keys";
+
+		test_btn: test_btn {
+			gpios = <&test_gpio 4 GPIO_ACTIVE_HIGH>;
 		};
 	};
 
@@ -151,6 +159,7 @@
 
 	aliases {
 		led0 = &test_led;
+		sw0 = &test_btn;
 		app-pwm0 = &test_pwm;
 		led-strip = &test_strip;
 		app-i2c = &fake_i2c_bus;

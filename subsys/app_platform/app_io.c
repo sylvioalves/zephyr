@@ -176,11 +176,33 @@ int z_impl_app_svc_led_find(const char *name)
 }
 #endif /* DT_HAS_ALIAS(led0) */
 
+/* One press semaphore per application, so a press wakes every waiting
+ * application instead of whichever one takes it first.
+ */
+static struct k_sem press_sem[MAX_APPS];
+
+static int press_sem_init(void)
+{
+	for (int i = 0; i < MAX_APPS; i++) {
+		k_sem_init(&press_sem[i], 0, 16);
+	}
+	return 0;
+}
+SYS_INIT(press_sem_init, PRE_KERNEL_2, 0);
+
+static inline void press_give_all(void)
+{
+	for (int i = 0; i < MAX_APPS; i++) {
+		k_sem_give(&press_sem[i]);
+	}
+}
+
 void app_platform_clear_led_grants(int id)
 {
 	if (id < 0 || id >= MAX_APPS) {
 		return;
 	}
+	k_sem_reset(&press_sem[id]);
 	led_grant[id] = 0U;
 	if (app_service_lock(&led_lock, SVC_LOCK_TIMEOUT) != 0) {
 		return;
@@ -205,7 +227,6 @@ void app_platform_clear_led_grants(int id)
  * code travels with the event so an application can tell them apart. Posting to
  * an application queue never blocks, so this is safe in the reporting context.
  */
-static K_SEM_DEFINE(press_sem, 0, 16);
 static atomic_t press_count;
 
 static void key_event(struct input_event *evt, void *user)
@@ -218,7 +239,7 @@ static void key_event(struct input_event *evt, void *user)
 	}
 
 	atomic_inc(&press_count);
-	k_sem_give(&press_sem);
+	press_give_all();
 
 	struct app_event out = {
 		.kind = APP_EVENT_BUTTON,
@@ -233,7 +254,6 @@ INPUT_CALLBACK_DEFINE(NULL, key_event, NULL);
 #elif DT_HAS_ALIAS(sw0)
 static const struct gpio_dt_spec button = GPIO_DT_SPEC_GET(DT_ALIAS(sw0), gpios);
 static struct gpio_callback button_cb;
-static K_SEM_DEFINE(press_sem, 0, 16);
 static atomic_t press_count;
 
 static void button_pressed(const struct device *dev, struct gpio_callback *cb,
@@ -241,7 +261,7 @@ static void button_pressed(const struct device *dev, struct gpio_callback *cb,
 {
 	ARG_UNUSED(dev); ARG_UNUSED(cb); ARG_UNUSED(pins);
 	atomic_inc(&press_count);
-	k_sem_give(&press_sem);
+	press_give_all();
 
 	/* Also deliver to every per-application queue, so an application can
 	 * wait on the button together with its other sources. app_svc_button_wait
@@ -278,9 +298,13 @@ int z_impl_app_svc_button_wait(int32_t timeout_ms)
 		return -EPERM;
 	}
 
+	int id = app_platform_id_current();
 	k_timeout_t t = (timeout_ms < 0) ? K_FOREVER : K_MSEC(timeout_ms);
 
-	if (k_sem_take(&press_sem, t) != 0) {
+	if (id < 0 || id >= MAX_APPS) {
+		return -EINVAL;
+	}
+	if (k_sem_take(&press_sem[id], t) != 0) {
 		return -EAGAIN;
 	}
 	return (int)atomic_get(&press_count);

@@ -1827,7 +1827,9 @@ void app_platform_display_unlock(void);
  * @brief Wait for the next button press. Needs @ref APP_CAP_INPUT.
  *
  * Blocks until the platform's button is pressed, then returns the running press
- * count. The platform owns the button and counts edges in supervisor mode.
+ * count. The platform owns the button and counts edges in supervisor mode. Each
+ * application waits on its own presses, so every waiting application sees
+ * every press.
  *
  * Pass 0 to poll: the call returns -EAGAIN at once when no press is waiting, so
  * an application that must keep working can check for input without blocking.
