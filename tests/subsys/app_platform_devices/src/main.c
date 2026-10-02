@@ -23,6 +23,7 @@
 #include <zephyr/drivers/regulator.h>
 #include <zephyr/drivers/led_strip.h>
 #include <zephyr/drivers/display.h>
+#include <zephyr/drivers/uart.h>
 #include <zephyr/drivers/uart/serial_test.h>
 #include <zephyr/fs/fs.h>
 #include <zephyr/fs/littlefs.h>
@@ -776,6 +777,44 @@ ZTEST(devices, test_gpio_watch_dropped_on_reclaim)
 	(void)gpio_emul_input_set_dt(&line, 0);
 	zassert_true(wait_slot_free("w_steal", 2000));
 	zassert_equal(report_rc, -EAGAIN, "event reached an unwatched slot (%d)", report_rc);
+}
+
+static void uart_cfg_held(void *a)
+{
+	ARG_UNUSED(a);
+	hold_until_released(app_svc_uart_configure(9600, APP_UART_PARITY_EVEN, 1, 8));
+}
+
+static void uart_cfg_other(void *a)
+{
+	ARG_UNUSED(a);
+	report_rc = app_svc_uart_configure(19200, APP_UART_PARITY_NONE, 1, 8);
+	report_done = 1;
+}
+
+static void uart_close_other(void *a)
+{
+	ARG_UNUSED(a);
+	report_rc = app_svc_uart_close();
+	report_done = 1;
+}
+
+ZTEST(devices, test_uart_config_owned_until_reclaim)
+{
+	const struct device *uart = DEVICE_DT_GET(DT_CHOSEN(app_uart));
+	struct uart_config boot;
+	struct uart_config cfg;
+
+	zassert_ok(uart_config_get(uart, &boot));
+	launch_held("u_own", uart_cfg_held, APP_CAP_LOG | APP_CAP_UART);
+	expect_rc("u_cfg", uart_cfg_other, APP_CAP_LOG | APP_CAP_UART, -EBUSY);
+	expect_rc("u_close", uart_close_other, APP_CAP_LOG | APP_CAP_UART, 0);
+	zassert_ok(uart_config_get(uart, &cfg));
+	zassert_equal(cfg.baudrate, 9600, "another app's reclaim reset the port");
+	zassert_equal(cfg.parity, UART_CFG_PARITY_EVEN);
+	release_held("u_own");
+	zassert_ok(uart_config_get(uart, &cfg));
+	zassert_mem_equal(&cfg, &boot, sizeof(cfg), "owner's reclaim kept its settings");
 }
 
 static void led_set_held(void *a)

@@ -133,11 +133,14 @@ static const struct device *const uart_dev = DEVICE_DT_GET(DT_CHOSEN(app_uart));
 
 #if DT_HAS_CHOSEN(app_uart)
 /* The port is shared, so the configuration an application installs is backed
- * by the one found at boot and restored on close or reclaim.
+ * by the one found at boot. The application that installed it owns it until it
+ * closes the port or is reclaimed; only then is the boot configuration restored,
+ * and another application cannot change it meanwhile.
  */
 static struct uart_config uart_boot_cfg;
 static bool uart_boot_cfg_valid;
-static bool uart_reconfigured;
+static int uart_cfg_owner = -1;
+static SVC_LOCK_DEFINE(uart_lock);
 
 static void uart_save_boot_cfg(void)
 {
@@ -151,12 +154,16 @@ static void uart_save_boot_cfg(void)
 
 static void uart_restore_boot_cfg(int id)
 {
-	ARG_UNUSED(id);
-
-	if (uart_reconfigured && uart_boot_cfg_valid) {
-		(void)uart_configure(uart_dev, &uart_boot_cfg);
-		uart_reconfigured = false;
+	if (app_service_lock(&uart_lock, SVC_LOCK_TIMEOUT) != 0) {
+		return;
 	}
+	if (uart_cfg_owner == id) {
+		if (uart_boot_cfg_valid) {
+			(void)uart_configure(uart_dev, &uart_boot_cfg);
+		}
+		uart_cfg_owner = -1;
+	}
+	(void)app_service_unlock(&uart_lock);
 }
 #endif
 
@@ -225,13 +232,23 @@ int z_impl_app_svc_uart_configure(uint32_t baud, uint8_t parity, uint8_t stop_bi
 	cfg.baudrate = baud;
 	cfg.flow_ctrl = UART_CFG_FLOW_CTRL_NONE;
 
+	int id = app_platform_id_current();
+
+	if (app_service_lock(&uart_lock, SVC_LOCK_TIMEOUT) != 0) {
+		return -EBUSY;
+	}
+	if (uart_cfg_owner >= 0 && uart_cfg_owner != id) {
+		(void)app_service_unlock(&uart_lock);
+		return -EBUSY;
+	}
 	uart_save_boot_cfg();
 
 	int err = uart_configure(uart_dev, &cfg);
 
 	if (err == 0) {
-		uart_reconfigured = true;
+		uart_cfg_owner = id;
 	}
+	(void)app_service_unlock(&uart_lock);
 	return err;
 #else
 	ARG_UNUSED(baud);
@@ -251,7 +268,7 @@ int z_impl_app_svc_uart_close(void)
 	if (!device_is_ready(uart_dev)) {
 		return -ENODEV;
 	}
-	uart_restore_boot_cfg(-1);
+	uart_restore_boot_cfg(app_platform_id_current());
 	return 0;
 #else
 	return -ENODEV;

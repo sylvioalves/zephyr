@@ -140,6 +140,8 @@
 		led0 = &test_led;
 		app-pwm0 = &test_pwm;
 		led-strip = &test_strip;
+		app-i2c = &fake_i2c_bus;
+		app-spi = &app_spi;
 	};
 
 	fake_i2c_bus: i2c@100 {
@@ -173,7 +175,22 @@
 		};
 	};
 
+	app_uart: app_uart {
+		compatible = "zephyr,uart-emul";
+		current-speed = <115200>;
+		status = "okay";
+	};
+
+	app_spi: spi@200 {
+		compatible = "zephyr,spi-emul-controller";
+		reg = <0x200 4>;
+		#address-cells = <1>;
+		#size-cells = <0>;
+		status = "okay";
+	};
+
 	chosen {
+		app,uart = &app_uart;
 		zephyr,eeprom = &i2c_eeprom;
 		zephyr,rtc = &rtc_emul;
 		zephyr,fuel-gauge = &smartbattery0;

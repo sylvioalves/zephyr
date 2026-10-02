@@ -1785,10 +1785,10 @@ __syscall int app_svc_uart_read(uint8_t *buf, size_t len);
  *
  * The platform owns the port and keeps it open; this only changes how it is
  * framed, so an application can talk to a device that does not run at the
- * configured default without reaching the driver itself. The settings stay
- * until another call or @ref app_svc_uart_close, and are restored when the
- * application is reclaimed, so one application cannot leave the port
- * misconfigured for the next.
+ * configured default without reaching the driver itself. The application
+ * that sets them owns them until it calls @ref app_svc_uart_close or is
+ * reclaimed, when the boot settings are restored; another application cannot
+ * change them meanwhile.
  *
  * @param baud     Line rate in bits per second.
  * @param parity   One of @ref app_uart_parity.
@@ -1799,6 +1799,7 @@ __syscall int app_svc_uart_read(uint8_t *buf, size_t len);
  * @retval -EINVAL on an unsupported combination.
  * @retval -ENODEV when no secondary UART is chosen.
  * @retval -ENOTSUP when the driver cannot be reconfigured at runtime.
+ * @retval -EBUSY another application owns the settings.
  */
 __syscall int app_svc_uart_configure(uint32_t baud, uint8_t parity,
 				     uint8_t stop_bits, uint8_t data_bits);
@@ -1807,9 +1808,10 @@ __syscall int app_svc_uart_configure(uint32_t baud, uint8_t parity,
  * @brief Restore the secondary UART's boot configuration. Needs
  *        @ref APP_CAP_UART.
  *
- * The port itself stays open for the platform; this drops whatever
- * @ref app_svc_uart_configure changed, so a later reader sees the devicetree
- * settings again.
+ * The port itself stays open for the platform; this drops whatever the
+ * calling application set with @ref app_svc_uart_configure, so a later reader
+ * sees the devicetree settings again. It does nothing to settings another
+ * application owns.
  *
  * @retval 0 on success.
  * @retval -EPERM without @ref APP_CAP_UART.
