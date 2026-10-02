@@ -62,7 +62,7 @@ int main(void)
 	app_platform_grant_gpio(0, BIT(0));
 	app_platform_grant_pwm(0, BIT(0));
 	app_platform_grant_adc(0, BIT(0));
-	app_platform_grant_i2c(0, 0x50);
+	(void)app_platform_grant_i2c(0, 0x50);
 	app_platform_grant_spi(0, true);
 	/* The last 8 KB of the storage partition, clear of the registry and
 	 * the module blobs that live at its start.

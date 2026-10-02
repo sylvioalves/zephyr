@@ -972,6 +972,102 @@ ZTEST(devices, test_can_filters_route_frames)
 	release_held("c_lis");
 }
 
+/* Run an application in a slot granted one I2C address and require a result. */
+static void expect_rc_i2c(const char *name, app_entry_t entry, uint16_t addr,
+			  int expected_rc)
+{
+	const struct app_def def = {
+		.name = name, .source = APP_BUILTIN, .entry = entry,
+		.caps = APP_CAP_LOG | APP_CAP_I2C, .stopped = true,
+	};
+	int id;
+
+	report_rc = -9999;
+	report_done = 0;
+	id = app_platform_launch(&def);
+	zassert_true(id >= 0, "%s launch failed", name);
+	add_report_part(id);
+	zassert_ok(app_platform_grant_i2c(id, addr));
+	zassert_equal(app_platform_start(id), id, "%s did not start", name);
+	zassert_true(wait_slot_free(name, 2000), "%s never exited", name);
+	zassert_equal(report_done, 1, "%s trapped instead of reporting", name);
+	zassert_equal(report_rc, expected_rc, "%s rc %d != %d", name, report_rc,
+		      expected_rc);
+}
+
+static void i2c_eeprom_read(void *a)
+{
+	ARG_UNUSED(a);
+
+	uint8_t reg = 0;
+	uint8_t buf[CONFIG_APP_PLATFORM_BUS_XFER_MAX];
+	int rc = app_svc_i2c_write_read(0x57, &reg, 1, buf, sizeof(buf));
+
+	if (rc == 0 && app_svc_i2c_read(0x0b, buf, 1) != -EACCES) {
+		rc = -EBADMSG;
+	}
+	if (rc == 0 && app_svc_i2c_read(0x57, buf, sizeof(buf) + 1) != -EINVAL) {
+		rc = -E2BIG;
+	}
+	report_rc = rc;
+	report_done = 1;
+}
+
+static void i2c_absent_device(void *a)
+{
+	ARG_UNUSED(a);
+
+	uint8_t b;
+	int rc = 0;
+
+	for (int i = 0; i < CONFIG_APP_PLATFORM_I2C_ERROR_LIMIT; i++) {
+		if (app_svc_i2c_read(0x33, &b, 1) == 0) {
+			rc = -EBADMSG;
+		}
+	}
+	report_rc = (rc == 0) ? app_svc_i2c_read(0x33, &b, 1) : rc;
+	report_done = 1;
+}
+
+static void i2c_noop(void *a)
+{
+	ARG_UNUSED(a);
+	report_done = 1;
+}
+
+ZTEST(devices, test_i2c_grants_are_exclusive)
+{
+	const struct app_def def = {
+		.name = "i_hold", .source = APP_BUILTIN, .entry = i2c_noop,
+		.caps = APP_CAP_LOG | APP_CAP_I2C, .stopped = true,
+	};
+	int id = app_platform_launch(&def);
+	int other;
+
+	zassert_true(id >= 0);
+	other = (id + 1) % CONFIG_APP_PLATFORM_MAX_APPS;
+	add_report_part(id);
+	zassert_ok(app_platform_grant_i2c(id, 0x50));
+	zassert_ok(app_platform_grant_i2c(id, 0x50), "re-grant to the holder failed");
+	zassert_equal(app_platform_grant_i2c(other, 0x50), -EBUSY);
+	zassert_equal(app_platform_grant_i2c(other, 0x80), -EINVAL);
+	zassert_equal(app_platform_grant_i2c(other, 0), -EINVAL);
+	for (int i = 1; i < CONFIG_APP_PLATFORM_I2C_ADDRS; i++) {
+		zassert_ok(app_platform_grant_i2c(id, 0x60 + i));
+	}
+	zassert_equal(app_platform_grant_i2c(id, 0x70), -ENOSPC);
+	zassert_equal(app_platform_start(id), id);
+	zassert_true(wait_slot_free("i_hold", 2000));
+	zassert_ok(app_platform_grant_i2c(other, 0x50), "reclaim kept the address");
+
+	expect_rc_i2c("i_rd", i2c_eeprom_read, 0x57, 0);
+}
+
+ZTEST(devices, test_i2c_failing_app_loses_grants)
+{
+	expect_rc_i2c("i_bad", i2c_absent_device, 0x33, -EACCES);
+}
+
 static void led_set_held(void *a)
 {
 	ARG_UNUSED(a);

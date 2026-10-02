@@ -727,6 +727,33 @@ config APP_PLATFORM_BUS
 	  only the bus devices it was given. Each service is a no-op when its
 	  devicetree node is absent.
 
+if APP_PLATFORM_BUS
+
+config APP_PLATFORM_BUS_XFER_MAX
+	int "Largest I2C, SPI or UART transfer in one call"
+	default 256
+	range 16 4096
+	help
+	  Bytes one bus service call may move. A larger bound lets a sensor
+	  FIFO be drained in one transfer, at the cost of holding the bus
+	  longer against other applications.
+
+config APP_PLATFORM_I2C_ADDRS
+	int "I2C addresses per application"
+	default 4
+	range 1 16
+
+config APP_PLATFORM_I2C_ERROR_LIMIT
+	int "Failed I2C transfers before an application loses its grants"
+	default 8
+	range 0 255
+	help
+	  After this many I2C transfers of one application fail in a row, the
+	  platform revokes that application's address grants and tries to
+	  recover the bus. 0 never revokes.
+
+endif # APP_PLATFORM_BUS
+
 config APP_PLATFORM_BLE
 	bool "Shared BLE service"
 	depends on APP_PLATFORM_SERVICES

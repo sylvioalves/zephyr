@@ -199,7 +199,9 @@ Buses
      - Notes
    * - I2C
      - Scoped
-     - A granted address, never the raw bus.
+     - Granted addresses, never the raw bus. An address belongs to one
+       application at a time, and an application whose transfers keep failing
+       loses its grants.
    * - SPI
      - Scoped
      - The platform's SPI device, allowed per application. Chip selects are not

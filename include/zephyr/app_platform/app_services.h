@@ -1742,8 +1742,23 @@ __syscall int app_svc_i2c_write(uint16_t addr, const uint8_t *buf, size_t len);
 __syscall int app_svc_i2c_write_read(uint16_t addr, const uint8_t *tx, size_t tx_len,
 				     uint8_t *rx, size_t rx_len);
 
-/** @brief Grant an application access to one I2C address. */
-void app_platform_grant_i2c(int id, uint16_t addr);
+/**
+ * @brief Grant an application access to an I2C address.
+ *
+ * An application may hold up to @kconfig{CONFIG_APP_PLATFORM_I2C_ADDRS}
+ * addresses and an address is held by one application at a time. The grants
+ * are dropped when the application is reclaimed, or when
+ * @kconfig{CONFIG_APP_PLATFORM_I2C_ERROR_LIMIT} of its transfers fail in a row.
+ *
+ * @param id Application slot.
+ * @param addr 7-bit device address, 1 to 0x7f.
+ *
+ * @retval 0 Granted, or already held by this application.
+ * @retval -EINVAL @p id or @p addr out of range.
+ * @retval -EBUSY Another application holds @p addr.
+ * @retval -ENOSPC The application holds the maximum number of addresses.
+ */
+int app_platform_grant_i2c(int id, uint16_t addr);
 
 /**
  * @brief Full-duplex SPI transfer. Needs @ref APP_CAP_SPI and a grant

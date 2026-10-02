@@ -19,11 +19,16 @@
 #include <zephyr/drivers/i2c.h>
 #include <zephyr/drivers/spi.h>
 #include <zephyr/drivers/uart.h>
+#include <zephyr/logging/log.h>
 #include <errno.h>
 
 #include "app_grants.h"
 
-#define BUS_XFER_MAX 64
+LOG_MODULE_DECLARE(app_platform, CONFIG_APP_PLATFORM_LOG_LEVEL);
+
+#define BUS_XFER_MAX    CONFIG_APP_PLATFORM_BUS_XFER_MAX
+#define I2C_ADDRS       CONFIG_APP_PLATFORM_I2C_ADDRS
+#define I2C_ERROR_LIMIT CONFIG_APP_PLATFORM_I2C_ERROR_LIMIT
 
 /* ---- I2C ---- */
 
@@ -31,17 +36,54 @@
 static const struct device *const i2c_dev = DEVICE_DT_GET(DT_ALIAS(app_i2c));
 #endif
 
-/* Per-application grant of a single allowed 7-bit address (0 = none). */
-static uint16_t i2c_grant[MAX_APPS];
+/* Per-application 7-bit addresses (0 = free entry). An address is granted to
+ * at most one application at a time.
+ */
+static uint16_t i2c_grant[MAX_APPS][I2C_ADDRS];
+/* Consecutive failed transfers per application. */
+static uint8_t i2c_errors[MAX_APPS];
+static struct k_spinlock i2c_grant_lock;
 
-void app_platform_grant_i2c(int id, uint16_t addr)
+int app_platform_grant_i2c(int id, uint16_t addr)
 {
-	if (id >= 0 && id < MAX_APPS) {
-		i2c_grant[id] = addr;
+	if (id < 0 || id >= MAX_APPS || addr == 0U || addr > 0x7fU) {
+		return -EINVAL;
 	}
+
+	k_spinlock_key_t key = k_spin_lock(&i2c_grant_lock);
+
+	for (int a = 0; a < MAX_APPS; a++) {
+		for (int i = 0; i < I2C_ADDRS; i++) {
+			if (i2c_grant[a][i] == addr) {
+				k_spin_unlock(&i2c_grant_lock, key);
+				return (a == id) ? 0 : -EBUSY;
+			}
+		}
+	}
+	for (int i = 0; i < I2C_ADDRS; i++) {
+		if (i2c_grant[id][i] == 0U) {
+			i2c_grant[id][i] = addr;
+			k_spin_unlock(&i2c_grant_lock, key);
+			return 0;
+		}
+	}
+	k_spin_unlock(&i2c_grant_lock, key);
+	return -ENOSPC;
 }
 
-int z_impl_app_svc_i2c_read(uint16_t addr, uint8_t *buf, size_t len)
+static void i2c_revoke_all(int id)
+{
+	k_spinlock_key_t key = k_spin_lock(&i2c_grant_lock);
+
+	for (int i = 0; i < I2C_ADDRS; i++) {
+		i2c_grant[id][i] = 0U;
+	}
+	i2c_errors[id] = 0U;
+	k_spin_unlock(&i2c_grant_lock, key);
+}
+
+/* Admit an I2C call: capability, transfer bounds and address grant. */
+static int i2c_admit(uint16_t addr, size_t len_a, size_t len_b, int *id_out)
 {
 	if (!app_has_cap(APP_CAP_I2C)) {
 		return -EPERM;
@@ -49,19 +91,101 @@ int z_impl_app_svc_i2c_read(uint16_t addr, uint8_t *buf, size_t len)
 
 	int id = app_platform_id_current();
 
-	if (id < 0 || id >= MAX_APPS || len > BUS_XFER_MAX) {
+	if (id < 0 || id >= MAX_APPS || len_a > BUS_XFER_MAX || len_b > BUS_XFER_MAX) {
 		return -EINVAL;
 	}
-	if (i2c_grant[id] == 0U || i2c_grant[id] != addr) {
+	if (addr == 0U) {
+		return -EACCES;
+	}
+
+	bool granted = false;
+	k_spinlock_key_t key = k_spin_lock(&i2c_grant_lock);
+
+	for (int i = 0; i < I2C_ADDRS; i++) {
+		if (i2c_grant[id][i] == addr) {
+			granted = true;
+			break;
+		}
+	}
+	k_spin_unlock(&i2c_grant_lock, key);
+	if (!granted) {
 		return -EACCES;
 	}
 #if DT_HAS_ALIAS(app_i2c)
 	if (!device_is_ready(i2c_dev)) {
 		return -ENODEV;
 	}
-	return i2c_read(i2c_dev, buf, len, addr);
+#endif
+	*id_out = id;
+	return 0;
+}
+
+#if DT_HAS_ALIAS(app_i2c)
+/* Count failed transfers. An application whose transfers keep failing has its
+ * grants revoked and the bus recovered, so a device it holds in a bad state, or
+ * a line it keeps stuck, stops costing every other application the bus.
+ */
+static int i2c_account(int id, int rc)
+{
+	if (rc == 0) {
+		i2c_errors[id] = 0U;
+		return 0;
+	}
+	if (I2C_ERROR_LIMIT > 0 && ++i2c_errors[id] >= I2C_ERROR_LIMIT) {
+		LOG_WRN("app %d: %d failed i2c transfers, grants revoked", id, I2C_ERROR_LIMIT);
+		i2c_revoke_all(id);
+		(void)i2c_recover_bus(i2c_dev);
+	}
+	return rc;
+}
+#endif
+
+int z_impl_app_svc_i2c_read(uint16_t addr, uint8_t *buf, size_t len)
+{
+	int id;
+	int rc = i2c_admit(addr, len, 0, &id);
+
+	if (rc != 0) {
+		return rc;
+	}
+#if DT_HAS_ALIAS(app_i2c)
+	return i2c_account(id, i2c_read(i2c_dev, buf, len, addr));
 #else
 	ARG_UNUSED(buf);
+	return -ENODEV;
+#endif
+}
+
+int z_impl_app_svc_i2c_write(uint16_t addr, const uint8_t *buf, size_t len)
+{
+	int id;
+	int rc = i2c_admit(addr, len, 0, &id);
+
+	if (rc != 0) {
+		return rc;
+	}
+#if DT_HAS_ALIAS(app_i2c)
+	return i2c_account(id, i2c_write(i2c_dev, buf, len, addr));
+#else
+	ARG_UNUSED(buf);
+	return -ENODEV;
+#endif
+}
+
+int z_impl_app_svc_i2c_write_read(uint16_t addr, const uint8_t *tx, size_t tx_len,
+				  uint8_t *rx, size_t rx_len)
+{
+	int id;
+	int rc = i2c_admit(addr, tx_len, rx_len, &id);
+
+	if (rc != 0) {
+		return rc;
+	}
+#if DT_HAS_ALIAS(app_i2c)
+	return i2c_account(id, i2c_write_read(i2c_dev, addr, tx, tx_len, rx, rx_len));
+#else
+	ARG_UNUSED(tx);
+	ARG_UNUSED(rx);
 	return -ENODEV;
 #endif
 }
@@ -82,7 +206,7 @@ static bool spi_grant[MAX_APPS];
 void app_platform_clear_bus_grants(int id)
 {
 	if (id >= 0 && id < MAX_APPS) {
-		i2c_grant[id] = 0U;
+		i2c_revoke_all(id);
 		spi_grant[id] = false;
 	}
 }
@@ -317,59 +441,6 @@ int z_impl_app_svc_uart_read(uint8_t *buf, size_t len)
 	return (int)n;
 #else
 	ARG_UNUSED(buf);
-	return -ENODEV;
-#endif
-}
-
-int z_impl_app_svc_i2c_write(uint16_t addr, const uint8_t *buf, size_t len)
-{
-	if (!app_has_cap(APP_CAP_I2C)) {
-		return -EPERM;
-	}
-
-	int id = app_platform_id_current();
-
-	if (id < 0 || id >= MAX_APPS || len > BUS_XFER_MAX) {
-		return -EINVAL;
-	}
-	if (i2c_grant[id] == 0U || i2c_grant[id] != addr) {
-		return -EACCES;
-	}
-#if DT_HAS_ALIAS(app_i2c)
-	if (!device_is_ready(i2c_dev)) {
-		return -ENODEV;
-	}
-	return i2c_write(i2c_dev, buf, len, addr);
-#else
-	ARG_UNUSED(buf);
-	return -ENODEV;
-#endif
-}
-
-int z_impl_app_svc_i2c_write_read(uint16_t addr, const uint8_t *tx, size_t tx_len,
-				  uint8_t *rx, size_t rx_len)
-{
-	if (!app_has_cap(APP_CAP_I2C)) {
-		return -EPERM;
-	}
-
-	int id = app_platform_id_current();
-
-	if (id < 0 || id >= MAX_APPS || tx_len > BUS_XFER_MAX ||
-	    rx_len > BUS_XFER_MAX) {
-		return -EINVAL;
-	}
-	if (i2c_grant[id] == 0U || i2c_grant[id] != addr) {
-		return -EACCES;
-	}
-#if DT_HAS_ALIAS(app_i2c)
-	if (!device_is_ready(i2c_dev)) {
-		return -ENODEV;
-	}
-	return i2c_write_read(i2c_dev, addr, tx, tx_len, rx, rx_len);
-#else
-	ARG_UNUSED(tx);
-	ARG_UNUSED(rx);
 	return -ENODEV;
 #endif
 }
