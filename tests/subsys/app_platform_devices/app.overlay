@@ -188,6 +188,18 @@
 		#address-cells = <1>;
 		#size-cells = <0>;
 		status = "okay";
+
+		spi_echo0: echo@0 {
+			compatible = "vnd,spi-echo";
+			reg = <0>;
+			spi-max-frequency = <8000000>;
+		};
+
+		spi_echo1: echo@1 {
+			compatible = "vnd,spi-echo";
+			reg = <1>;
+			spi-max-frequency = <8000000>;
+		};
 	};
 
 	app_can: can_loopback {

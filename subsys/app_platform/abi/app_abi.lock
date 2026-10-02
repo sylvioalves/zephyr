@@ -341,3 +341,22 @@ const APP_GPIO_OPEN_DRAIN 0x10
 enum app_gpio_edge.APP_GPIO_EDGE_BOTH 0x0
 enum app_gpio_edge.APP_GPIO_EDGE_RISING 0x1
 enum app_gpio_edge.APP_GPIO_EDGE_FALLING 0x2
+func i2c_transfer 1 svc int (uint16_t, const struct app_i2c_msg *, size_t, uint8_t *, size_t)
+func i2c_configure 1 svc int (uint8_t)
+func spi_transceive 1 svc int (const uint8_t *, size_t, uint8_t *, size_t)
+func spi_configure 1 svc int (uint32_t, uint8_t, uint8_t, uint8_t)
+const APP_SPI_CPOL 0x1
+const APP_SPI_CPHA 0x2
+const APP_SPI_LSB_FIRST 0x4
+const APP_SPI_CS_NONE 0xff
+const APP_I2C_SPEED_DEFAULT 0x0
+const APP_I2C_SPEED_STANDARD 0x1
+const APP_I2C_SPEED_FAST 0x2
+const APP_I2C_SPEED_FAST_PLUS 0x3
+const APP_I2C_MSG_READ 0x1
+const APP_I2C_MSG_STOP 0x2
+const APP_I2C_MSG_RESTART 0x4
+const APP_I2C_MSGS_MAX 0x8
+struct app_i2c_msg size 4
+field app_i2c_msg.len offset 0 size 2
+field app_i2c_msg.flags offset 2 size 1

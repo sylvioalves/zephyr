@@ -25,6 +25,7 @@
 #include <zephyr/drivers/display.h>
 #include <zephyr/drivers/uart.h>
 #include <zephyr/drivers/can.h>
+#include <zephyr/drivers/i2c.h>
 #include <zephyr/drivers/uart/serial_test.h>
 #include <zephyr/fs/fs.h>
 #include <zephyr/fs/littlefs.h>
@@ -36,6 +37,7 @@
 
 #include "display_capture.h"
 #include "locked_svc.h"
+#include "spi_echo.h"
 
 /* The fake regulator and stepper drivers are FFF-based, so the test image owns
  * the framework's globals.
@@ -1220,6 +1222,141 @@ ZTEST(devices, test_gpio_configure_get_and_edges)
 	k_msleep(50);
 	release_held("g_rise");
 	zassert_equal(gpio_edges, BIT(0), "edges seen 0x%x", gpio_edges);
+}
+
+static void spi_cs1_mode3(void *a)
+{
+	ARG_UNUSED(a);
+
+	const uint8_t tx[3] = { 0x11, 0x22, 0x33 };
+	uint8_t rx[4] = { 0 };
+	int rc = app_svc_spi_configure(2000000U, APP_SPI_CPOL | APP_SPI_CPHA, 8U, 1U);
+
+	if (rc == 0 && app_svc_spi_configure(2000000U, 0U, 8U, 0U) != -EACCES) {
+		rc = -EBADMSG;
+	}
+	if (rc == 0 && app_svc_spi_configure(2000000U, 0x80U, 8U, 1U) != -EINVAL) {
+		rc = -EPROTO;
+	}
+	if (rc == 0) {
+		rc = app_svc_spi_transceive(tx, sizeof(tx), rx, sizeof(rx));
+	}
+	if (rc == 0 && (memcmp(rx, tx, sizeof(tx)) != 0 || rx[3] != 0U)) {
+		rc = -EIO;
+	}
+	if (rc == 0 && app_svc_spi_transceive(NULL, 0, NULL, 0) != -EINVAL) {
+		rc = -ERANGE;
+	}
+	report_rc = rc;
+	report_done = 1;
+}
+
+static void spi_default_xfer(void *a)
+{
+	ARG_UNUSED(a);
+
+	uint8_t tx[2] = { 1, 2 };
+	uint8_t rx[2];
+
+	report_rc = app_svc_spi_xfer(tx, rx, sizeof(tx));
+	report_done = 1;
+}
+
+ZTEST(devices, test_spi_config_and_chip_select)
+{
+	const struct app_def def = {
+		.name = "s_cs1", .source = APP_BUILTIN, .entry = spi_cs1_mode3,
+		.caps = APP_CAP_LOG | APP_CAP_SPI, .stopped = true,
+	};
+	const struct spi_config *cfg;
+	int id = app_platform_launch(&def);
+	int other;
+
+	zassert_true(id >= 0);
+	other = (id + 1) % CONFIG_APP_PLATFORM_MAX_APPS;
+	add_report_part(id);
+	report_rc = -9999;
+	report_done = 0;
+	zassert_ok(app_platform_grant_spi_cs(id, 1));
+	zassert_equal(app_platform_grant_spi_cs(other, 1), -EBUSY);
+	zassert_equal(app_platform_start(id), id);
+	zassert_true(wait_slot_free("s_cs1", 2000));
+	zassert_equal(report_rc, 0, "s_cs1 rc %d", report_rc);
+	cfg = spi_echo_last(1);
+	zassert_not_null(cfg, "chip select 1 saw no transfer");
+	zassert_equal(cfg->frequency, 2000000U);
+	zassert_equal(cfg->operation & (SPI_MODE_CPOL | SPI_MODE_CPHA),
+		      SPI_MODE_CPOL | SPI_MODE_CPHA);
+	zassert_ok(app_platform_grant_spi_cs(other, 1), "reclaim kept chip select 1");
+
+	for (int i = 0; i < CONFIG_APP_PLATFORM_MAX_APPS; i++) {
+		app_platform_grant_spi(i, true);
+	}
+	expect_rc("s_def", spi_default_xfer, APP_CAP_LOG | APP_CAP_SPI, 0);
+	cfg = spi_echo_last(0);
+	zassert_not_null(cfg, "default transfer did not reach chip select 0");
+	zassert_equal(cfg->frequency, 1000000U);
+	zassert_equal(cfg->operation & (SPI_MODE_CPOL | SPI_MODE_CPHA), 0U);
+}
+
+static void i2c_list_and_speed(void *a)
+{
+	ARG_UNUSED(a);
+
+	const struct app_i2c_msg wr[] = {
+		{ .len = 5, .flags = APP_I2C_MSG_STOP },
+	};
+	const struct app_i2c_msg rd[] = {
+		{ .len = 1, .flags = 0U },
+		{ .len = 4, .flags = APP_I2C_MSG_READ | APP_I2C_MSG_RESTART },
+	};
+	uint8_t wbuf[5] = { 0x10, 0xde, 0xad, 0xbe, 0xef };
+	uint8_t rbuf[5] = { 0x10 };
+	int rc = 0;
+
+	if (app_svc_i2c_configure(4U) != -EINVAL) {
+		rc = -EBADMSG;
+	}
+	if (rc == 0) {
+		rc = app_svc_i2c_transfer(0x57, wr, ARRAY_SIZE(wr), wbuf, sizeof(wbuf));
+	}
+	if (rc == 0) {
+		k_msleep(10);
+		rc = app_svc_i2c_transfer(0x57, rd, ARRAY_SIZE(rd), rbuf, sizeof(rbuf));
+	}
+	if (rc == 0 && memcmp(&rbuf[1], &wbuf[1], 4) != 0) {
+		rc = -EILSEQ;
+	}
+	if (rc == 0 && app_svc_i2c_transfer(0x57, rd, ARRAY_SIZE(rd), rbuf, 3) != -EINVAL) {
+		rc = -ERANGE;
+	}
+	report_rc = rc;
+	report_done = 1;
+}
+
+/* The emulated EEPROM refuses any speed above standard. */
+static void i2c_fast_read(void *a)
+{
+	ARG_UNUSED(a);
+
+	uint8_t b;
+	int rc = app_svc_i2c_configure(APP_I2C_SPEED_FAST);
+
+	report_rc = (rc == 0) ? app_svc_i2c_read(0x57, &b, 1) : rc;
+	report_done = 1;
+}
+
+ZTEST(devices, test_i2c_transfer_list_and_speed)
+{
+	const struct device *bus = DEVICE_DT_GET(DT_ALIAS(app_i2c));
+	uint32_t cfg;
+
+	expect_rc_i2c("i_fast", i2c_fast_read, 0x57, -EIO);
+	zassert_ok(i2c_get_config(bus, &cfg));
+	zassert_equal(I2C_SPEED_GET(cfg), I2C_SPEED_FAST, "speed %u", I2C_SPEED_GET(cfg));
+	expect_rc_i2c("i_lst", i2c_list_and_speed, 0x57, 0);
+	zassert_ok(i2c_get_config(bus, &cfg));
+	zassert_equal(I2C_SPEED_GET(cfg), I2C_SPEED_STANDARD, "speed %u", I2C_SPEED_GET(cfg));
 }
 
 static void led_set_held(void *a)

@@ -1,0 +1,8 @@
+# Copyright (c) 2026 Espressif Systems (Shanghai) Co., Ltd.
+# SPDX-License-Identifier: Apache-2.0
+
+description: SPI device that echoes what it receives and keeps the last configuration
+
+compatible: "vnd,spi-echo"
+
+include: spi-device.yaml

@@ -78,6 +78,41 @@ enum app_gpio_edge {
 	APP_GPIO_EDGE_FALLING,  /**< changes to the inactive level */
 };
 
+/** @ref app_svc_spi_configure flag: clock idles high. */
+#define APP_SPI_CPOL      0x01U
+/** @ref app_svc_spi_configure flag: data sampled on the second clock edge. */
+#define APP_SPI_CPHA      0x02U
+/** @ref app_svc_spi_configure flag: least significant bit first. */
+#define APP_SPI_LSB_FIRST 0x04U
+/** @ref app_svc_spi_configure chip select value: drive no chip select. */
+#define APP_SPI_CS_NONE   0xffU
+
+/** @ref app_svc_i2c_configure speed: the devicetree setting. */
+#define APP_I2C_SPEED_DEFAULT   0U
+/** @ref app_svc_i2c_configure speed: 100 kHz. */
+#define APP_I2C_SPEED_STANDARD  1U
+/** @ref app_svc_i2c_configure speed: 400 kHz. */
+#define APP_I2C_SPEED_FAST      2U
+/** @ref app_svc_i2c_configure speed: 1 MHz. */
+#define APP_I2C_SPEED_FAST_PLUS 3U
+
+/** @ref app_i2c_msg::flags bit: read into the buffer instead of writing it. */
+#define APP_I2C_MSG_READ    0x01U
+/** @ref app_i2c_msg::flags bit: send a stop after the message. */
+#define APP_I2C_MSG_STOP    0x02U
+/** @ref app_i2c_msg::flags bit: send a repeated start before the message. */
+#define APP_I2C_MSG_RESTART 0x04U
+/** Messages one @ref app_svc_i2c_transfer call may carry. */
+#define APP_I2C_MSGS_MAX    8
+
+/** One message of an @ref app_svc_i2c_transfer, taking the next @p len bytes of
+ *  the call's buffer.
+ */
+struct app_i2c_msg {
+	uint16_t len;   /**< bytes to read or write */
+	uint8_t  flags; /**< APP_I2C_MSG_* bits */
+};
+
 /** Bit of an @ref app_event_kind in an @ref app_svc_event_subscribe mask. */
 #define APP_EVENT_BIT(kind) (1UL << (kind))
 

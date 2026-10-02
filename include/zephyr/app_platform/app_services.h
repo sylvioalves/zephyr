@@ -1835,6 +1835,44 @@ __syscall int app_svc_i2c_write_read(uint16_t addr, const uint8_t *tx, size_t tx
 				     uint8_t *rx, size_t rx_len);
 
 /**
+ * @brief Run several I2C messages to one device as one transaction. Needs
+ *        @ref APP_CAP_I2C and a grant for @p addr.
+ *
+ * The messages take consecutive slices of @p buf and run without another
+ * transfer between them. The last message always ends with a stop.
+ *
+ * @param addr 7-bit device address.
+ * @param msgs Messages, 1 to APP_I2C_MSGS_MAX.
+ * @param num Number of messages.
+ * @param buf Bytes to write and room for bytes read, in message order.
+ * @param buf_len Size of @p buf, bounded by the platform.
+ *
+ * @retval 0 Success.
+ * @retval -EPERM The application does not hold @ref APP_CAP_I2C.
+ * @retval -EACCES @p addr was not granted.
+ * @retval -EINVAL @p num, a flag or the lengths out of range.
+ * @retval -ENODEV The board exposes no application I2C bus.
+ * @retval -EIO The device did not acknowledge.
+ */
+__syscall int app_svc_i2c_transfer(uint16_t addr, const struct app_i2c_msg *msgs, size_t num,
+				   uint8_t *buf, size_t buf_len);
+
+/**
+ * @brief Set the bus speed for the application's I2C transfers. Needs
+ *        @ref APP_CAP_I2C.
+ *
+ * The speed is applied before each of the application's transfers and does not
+ * affect other applications.
+ *
+ * @param speed APP_I2C_SPEED_DEFAULT, _STANDARD, _FAST or _FAST_PLUS.
+ *
+ * @retval 0 Success.
+ * @retval -EPERM The application does not hold @ref APP_CAP_I2C.
+ * @retval -EINVAL @p speed out of range.
+ */
+__syscall int app_svc_i2c_configure(uint8_t speed);
+
+/**
  * @brief Grant an application access to an I2C address.
  *
  * An application may hold up to @kconfig{CONFIG_APP_PLATFORM_I2C_ADDRS}
@@ -1865,8 +1903,69 @@ int app_platform_grant_i2c(int id, uint16_t addr);
  */
 __syscall int app_svc_spi_xfer(const uint8_t *tx, uint8_t *rx, size_t len);
 
-/** @brief Grant or revoke an application's SPI access. */
+/** @brief Grant or revoke an application's SPI access, without a chip select. */
 void app_platform_grant_spi(int id, bool allow);
+
+/**
+ * @brief Grant an application one SPI chip select.
+ *
+ * Also grants SPI access. A chip select is held by one application at a time
+ * and is dropped when the application is reclaimed. With cs-gpios on the
+ * controller node, @p cs indexes that list; otherwise it is the controller's
+ * native chip select.
+ *
+ * @param id Application slot.
+ * @param cs Chip select index.
+ *
+ * @retval 0 Granted.
+ * @retval -EINVAL @p id or @p cs out of range.
+ * @retval -EBUSY Another application holds @p cs.
+ */
+int app_platform_grant_spi_cs(int id, uint8_t cs);
+
+/**
+ * @brief SPI transfer with independent transmit and receive lengths. Needs
+ *        @ref APP_CAP_SPI and a grant (@ref app_platform_grant_spi).
+ *
+ * Uses the configuration the application set with @ref app_svc_spi_configure,
+ * by default 1 MHz, mode 0, 8-bit words, most significant bit first and no
+ * chip select. The receive side clocks out zeros once @p tx_len bytes are sent.
+ *
+ * @param tx Bytes to send, or NULL when @p tx_len is 0.
+ * @param tx_len Bytes to send.
+ * @param rx Receives bytes clocked in, or NULL when @p rx_len is 0.
+ * @param rx_len Bytes to receive.
+ *
+ * @retval 0 Success.
+ * @retval -EPERM The application does not hold @ref APP_CAP_SPI.
+ * @retval -EACCES The application holds no SPI grant.
+ * @retval -EINVAL A length over the platform bound, or a NULL buffer with a
+ *         non-zero length, or both lengths 0.
+ * @retval -ENODEV The board exposes no application SPI bus.
+ */
+__syscall int app_svc_spi_transceive(const uint8_t *tx, size_t tx_len, uint8_t *rx,
+				     size_t rx_len);
+
+/**
+ * @brief Set the application's SPI clock, mode, word size and chip select.
+ *        Needs @ref APP_CAP_SPI and a grant (@ref app_platform_grant_spi).
+ *
+ * Applies to the application's own transfers only.
+ *
+ * @param freq_hz Clock frequency in Hz.
+ * @param flags APP_SPI_CPOL, APP_SPI_CPHA and APP_SPI_LSB_FIRST bits.
+ * @param word_bits 8 or 16.
+ * @param cs Chip select granted with @ref app_platform_grant_spi_cs, or
+ *           APP_SPI_CS_NONE.
+ *
+ * @retval 0 Success.
+ * @retval -EPERM The application does not hold @ref APP_CAP_SPI.
+ * @retval -EACCES No SPI grant, or @p cs was not granted.
+ * @retval -EINVAL @p freq_hz, @p flags, @p word_bits or @p cs out of range.
+ * @retval -ENODEV The board exposes no application SPI bus.
+ */
+__syscall int app_svc_spi_configure(uint32_t freq_hz, uint8_t flags, uint8_t word_bits,
+				    uint8_t cs);
 
 /**
  * @brief Write to the secondary UART. Needs @ref APP_CAP_UART.

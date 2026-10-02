@@ -17,7 +17,9 @@
 #include <zephyr/kernel.h>
 #include <zephyr/internal/syscall_handler.h>
 #include <zephyr/drivers/i2c.h>
+#include <zephyr/dt-bindings/i2c/i2c.h>
 #include <zephyr/drivers/spi.h>
+#include <zephyr/drivers/gpio.h>
 #include <zephyr/drivers/uart.h>
 #include <zephyr/logging/log.h>
 #include <errno.h>
@@ -43,6 +45,45 @@ static uint16_t i2c_grant[MAX_APPS][I2C_ADDRS];
 /* Consecutive failed transfers per application. */
 static uint8_t i2c_errors[MAX_APPS];
 static struct k_spinlock i2c_grant_lock;
+/* Bus speed each application asked for, APP_I2C_SPEED_*; 0 is the devicetree
+ * speed. It is applied before each of the application's transfers, under the
+ * bus lock, so it never applies to another application's transfer.
+ */
+static uint8_t i2c_speed[MAX_APPS];
+static SVC_LOCK_DEFINE(i2c_bus_lock);
+
+#if DT_HAS_ALIAS(app_i2c)
+static uint8_t i2c_cur_speed;
+
+#define I2C_DT_HZ DT_PROP_OR(DT_ALIAS(app_i2c), clock_frequency, I2C_BITRATE_STANDARD)
+#define I2C_DT_SPEED                                                                       \
+	((I2C_DT_HZ >= I2C_BITRATE_FAST_PLUS) ? I2C_SPEED_FAST_PLUS                         \
+	 : (I2C_DT_HZ >= I2C_BITRATE_FAST)    ? I2C_SPEED_FAST                              \
+					      : I2C_SPEED_STANDARD)
+
+/* Run one transfer at the calling application's speed. */
+static int i2c_run(int id, struct i2c_msg *msgs, uint8_t num, uint16_t addr)
+{
+	int rc;
+
+	if (app_service_lock(&i2c_bus_lock, SVC_LOCK_TIMEOUT) != 0) {
+		return -EBUSY;
+	}
+	if (i2c_speed[id] != i2c_cur_speed) {
+		uint32_t speed = (i2c_speed[id] != 0U) ? i2c_speed[id] : I2C_DT_SPEED;
+
+		rc = i2c_configure(i2c_dev, I2C_MODE_CONTROLLER | I2C_SPEED_SET(speed));
+		if (rc != 0) {
+			(void)app_service_unlock(&i2c_bus_lock);
+			return rc;
+		}
+		i2c_cur_speed = i2c_speed[id];
+	}
+	rc = i2c_transfer(i2c_dev, msgs, num, addr);
+	(void)app_service_unlock(&i2c_bus_lock);
+	return rc;
+}
+#endif
 
 int app_platform_grant_i2c(int id, uint16_t addr)
 {
@@ -149,7 +190,9 @@ int z_impl_app_svc_i2c_read(uint16_t addr, uint8_t *buf, size_t len)
 		return rc;
 	}
 #if DT_HAS_ALIAS(app_i2c)
-	return i2c_account(id, i2c_read(i2c_dev, buf, len, addr));
+	struct i2c_msg msg = { .buf = buf, .len = len, .flags = I2C_MSG_READ | I2C_MSG_STOP };
+
+	return i2c_account(id, i2c_run(id, &msg, 1, addr));
 #else
 	ARG_UNUSED(buf);
 	return -ENODEV;
@@ -165,7 +208,10 @@ int z_impl_app_svc_i2c_write(uint16_t addr, const uint8_t *buf, size_t len)
 		return rc;
 	}
 #if DT_HAS_ALIAS(app_i2c)
-	return i2c_account(id, i2c_write(i2c_dev, buf, len, addr));
+	struct i2c_msg msg = { .buf = (uint8_t *)buf, .len = len,
+			       .flags = I2C_MSG_WRITE | I2C_MSG_STOP };
+
+	return i2c_account(id, i2c_run(id, &msg, 1, addr));
 #else
 	ARG_UNUSED(buf);
 	return -ENODEV;
@@ -182,7 +228,13 @@ int z_impl_app_svc_i2c_write_read(uint16_t addr, const uint8_t *tx, size_t tx_le
 		return rc;
 	}
 #if DT_HAS_ALIAS(app_i2c)
-	return i2c_account(id, i2c_write_read(i2c_dev, addr, tx, tx_len, rx, rx_len));
+	struct i2c_msg msgs[2] = {
+		{ .buf = (uint8_t *)tx, .len = tx_len, .flags = I2C_MSG_WRITE },
+		{ .buf = rx, .len = rx_len,
+		  .flags = I2C_MSG_RESTART | I2C_MSG_READ | I2C_MSG_STOP },
+	};
+
+	return i2c_account(id, i2c_run(id, msgs, 2, addr));
 #else
 	ARG_UNUSED(tx);
 	ARG_UNUSED(rx);
@@ -190,24 +242,112 @@ int z_impl_app_svc_i2c_write_read(uint16_t addr, const uint8_t *tx, size_t tx_le
 #endif
 }
 
+int z_impl_app_svc_i2c_transfer(uint16_t addr, const struct app_i2c_msg *msgs, size_t num,
+				uint8_t *buf, size_t buf_len)
+{
+	int id;
+	int rc = i2c_admit(addr, buf_len, 0, &id);
+
+	if (rc != 0) {
+		return rc;
+	}
+	if (num == 0U || num > APP_I2C_MSGS_MAX) {
+		return -EINVAL;
+	}
+#if DT_HAS_ALIAS(app_i2c)
+	struct i2c_msg m[APP_I2C_MSGS_MAX];
+	size_t off = 0U;
+
+	for (size_t i = 0; i < num; i++) {
+		uint8_t f = msgs[i].flags;
+
+		if ((f & ~(APP_I2C_MSG_READ | APP_I2C_MSG_STOP | APP_I2C_MSG_RESTART)) != 0U ||
+		    msgs[i].len > buf_len - off) {
+			return -EINVAL;
+		}
+		m[i].buf = &buf[off];
+		m[i].len = msgs[i].len;
+		m[i].flags = ((f & APP_I2C_MSG_READ) != 0U) ? I2C_MSG_READ : I2C_MSG_WRITE;
+		if ((f & APP_I2C_MSG_STOP) != 0U || i == num - 1U) {
+			m[i].flags |= I2C_MSG_STOP;
+		}
+		if ((f & APP_I2C_MSG_RESTART) != 0U) {
+			m[i].flags |= I2C_MSG_RESTART;
+		}
+		off += msgs[i].len;
+	}
+	return i2c_account(id, i2c_run(id, m, (uint8_t)num, addr));
+#else
+	ARG_UNUSED(msgs);
+	ARG_UNUSED(buf);
+	return -ENODEV;
+#endif
+}
+
+int z_impl_app_svc_i2c_configure(uint8_t speed)
+{
+	if (!app_has_cap(APP_CAP_I2C)) {
+		return -EPERM;
+	}
+
+	int id = app_platform_id_current();
+
+	if (id < 0 || id >= MAX_APPS || speed > APP_I2C_SPEED_FAST_PLUS) {
+		return -EINVAL;
+	}
+	i2c_speed[id] = speed;
+	return 0;
+}
+
 /* ---- SPI ---- */
 
+#define SPI_CS_COUNT 32
+
 #if DT_HAS_ALIAS(app_spi)
-static const struct device *const spi_dev = DEVICE_DT_GET(DT_ALIAS(app_spi));
-static struct spi_config spi_cfg = {
-	.frequency = 1000000U,
-	.operation = SPI_WORD_SET(8) | SPI_TRANSFER_MSB,
+#define SPI_NODE DT_ALIAS(app_spi)
+static const struct device *const spi_dev = DEVICE_DT_GET(SPI_NODE);
+
+#if DT_NODE_HAS_PROP(SPI_NODE, cs_gpios)
+#define SPI_CS_GPIO(node_id, prop, idx) GPIO_DT_SPEC_GET_BY_IDX(node_id, prop, idx),
+static const struct gpio_dt_spec spi_cs_gpios[] = {
+	DT_FOREACH_PROP_ELEM(SPI_NODE, cs_gpios, SPI_CS_GPIO)
 };
 #endif
 
+/* Each application transfers with its own configuration, so one application's
+ * mode, clock or chip select never applies to another's transfer.
+ */
+static struct spi_config spi_cfg[MAX_APPS];
+#endif
+
 static bool spi_grant[MAX_APPS];
+/* Bit N set: this application holds chip select N. A chip select is held by
+ * one application at a time.
+ */
+static uint32_t spi_cs_grant[MAX_APPS];
+static struct k_spinlock spi_grant_lock;
+
+static void spi_reset_cfg(int id)
+{
+#if DT_HAS_ALIAS(app_spi)
+	spi_cfg[id] = (struct spi_config){
+		.frequency = 1000000U,
+		.operation = SPI_WORD_SET(8) | SPI_TRANSFER_MSB,
+	};
+#else
+	ARG_UNUSED(id);
+#endif
+}
 
 /* Drop the bus grants of a slot being handed to a new application. */
 void app_platform_clear_bus_grants(int id)
 {
 	if (id >= 0 && id < MAX_APPS) {
 		i2c_revoke_all(id);
+		i2c_speed[id] = 0U;
 		spi_grant[id] = false;
+		spi_cs_grant[id] = 0U;
+		spi_reset_cfg(id);
 	}
 }
 
@@ -218,7 +358,27 @@ void app_platform_grant_spi(int id, bool allow)
 	}
 }
 
-int z_impl_app_svc_spi_xfer(const uint8_t *tx, uint8_t *rx, size_t len)
+int app_platform_grant_spi_cs(int id, uint8_t cs)
+{
+	if (id < 0 || id >= MAX_APPS || cs >= SPI_CS_COUNT) {
+		return -EINVAL;
+	}
+
+	k_spinlock_key_t key = k_spin_lock(&spi_grant_lock);
+
+	for (int a = 0; a < MAX_APPS; a++) {
+		if (a != id && (spi_cs_grant[a] & BIT(cs)) != 0U) {
+			k_spin_unlock(&spi_grant_lock, key);
+			return -EBUSY;
+		}
+	}
+	spi_cs_grant[id] |= BIT(cs);
+	spi_grant[id] = true;
+	k_spin_unlock(&spi_grant_lock, key);
+	return 0;
+}
+
+static int spi_admit(size_t len_a, size_t len_b, int *id_out)
 {
 	if (!app_has_cap(APP_CAP_SPI)) {
 		return -EPERM;
@@ -226,7 +386,7 @@ int z_impl_app_svc_spi_xfer(const uint8_t *tx, uint8_t *rx, size_t len)
 
 	int id = app_platform_id_current();
 
-	if (id < 0 || id >= MAX_APPS || len > BUS_XFER_MAX) {
+	if (id < 0 || id >= MAX_APPS || len_a > BUS_XFER_MAX || len_b > BUS_XFER_MAX) {
 		return -EINVAL;
 	}
 	if (!spi_grant[id]) {
@@ -236,15 +396,86 @@ int z_impl_app_svc_spi_xfer(const uint8_t *tx, uint8_t *rx, size_t len)
 	if (!device_is_ready(spi_dev)) {
 		return -ENODEV;
 	}
-	struct spi_buf txb = { .buf = (void *)tx, .len = len };
-	struct spi_buf rxb = { .buf = rx, .len = len };
+	if (spi_cfg[id].frequency == 0U) {
+		spi_reset_cfg(id);
+	}
+#endif
+	*id_out = id;
+	return 0;
+}
+
+int z_impl_app_svc_spi_xfer(const uint8_t *tx, uint8_t *rx, size_t len)
+{
+	return z_impl_app_svc_spi_transceive(tx, len, rx, len);
+}
+
+int z_impl_app_svc_spi_transceive(const uint8_t *tx, size_t tx_len, uint8_t *rx,
+				  size_t rx_len)
+{
+	int id;
+	int rc = spi_admit(tx_len, rx_len, &id);
+
+	if (rc != 0) {
+		return rc;
+	}
+	if ((tx == NULL && tx_len != 0U) || (rx == NULL && rx_len != 0U) ||
+	    tx_len + rx_len == 0U) {
+		return -EINVAL;
+	}
+#if DT_HAS_ALIAS(app_spi)
+	struct spi_buf txb = { .buf = (void *)tx, .len = tx_len };
+	struct spi_buf rxb = { .buf = rx, .len = rx_len };
 	struct spi_buf_set txs = { .buffers = &txb, .count = 1 };
 	struct spi_buf_set rxs = { .buffers = &rxb, .count = 1 };
 
-	return spi_transceive(spi_dev, &spi_cfg, &txs, &rxs);
+	return spi_transceive(spi_dev, &spi_cfg[id], (tx_len != 0U) ? &txs : NULL,
+			      (rx_len != 0U) ? &rxs : NULL);
 #else
-	ARG_UNUSED(tx);
-	ARG_UNUSED(rx);
+	return -ENODEV;
+#endif
+}
+
+int z_impl_app_svc_spi_configure(uint32_t freq_hz, uint8_t flags, uint8_t word_bits,
+				 uint8_t cs)
+{
+	int id;
+	int rc = spi_admit(0, 0, &id);
+
+	if (rc != 0) {
+		return rc;
+	}
+	if (freq_hz == 0U || (word_bits != 8U && word_bits != 16U) ||
+	    (flags & ~(APP_SPI_CPOL | APP_SPI_CPHA | APP_SPI_LSB_FIRST)) != 0U) {
+		return -EINVAL;
+	}
+	if (cs != APP_SPI_CS_NONE && (cs >= SPI_CS_COUNT || (spi_cs_grant[id] & BIT(cs)) == 0U)) {
+		return -EACCES;
+	}
+#if DT_HAS_ALIAS(app_spi)
+	struct spi_config cfg = {
+		.frequency = freq_hz,
+		.operation = SPI_WORD_SET(word_bits) | SPI_OP_MODE_CONTROLLER,
+	};
+
+	if ((flags & APP_SPI_CPOL) != 0U) {
+		cfg.operation |= SPI_MODE_CPOL;
+	}
+	if ((flags & APP_SPI_CPHA) != 0U) {
+		cfg.operation |= SPI_MODE_CPHA;
+	}
+	cfg.operation |= ((flags & APP_SPI_LSB_FIRST) != 0U) ? SPI_TRANSFER_LSB : SPI_TRANSFER_MSB;
+	if (cs != APP_SPI_CS_NONE) {
+#if DT_NODE_HAS_PROP(SPI_NODE, cs_gpios)
+		if (cs >= ARRAY_SIZE(spi_cs_gpios)) {
+			return -EINVAL;
+		}
+		cfg.cs.gpio = spi_cs_gpios[cs];
+#endif
+		cfg.peripheral = cs;
+	}
+	spi_cfg[id] = cfg;
+	return 0;
+#else
 	return -ENODEV;
 #endif
 }
@@ -453,6 +684,26 @@ static inline int z_vrfy_app_svc_i2c_read(uint16_t addr, uint8_t *buf, size_t le
 }
 #include <zephyr/syscalls/app_svc_i2c_read_mrsh.c>
 
+static inline int z_vrfy_app_svc_i2c_transfer(uint16_t addr, const struct app_i2c_msg *msgs,
+					      size_t num, uint8_t *buf, size_t buf_len)
+{
+	struct app_i2c_msg copy[APP_I2C_MSGS_MAX];
+
+	if (num == 0U || num > APP_I2C_MSGS_MAX) {
+		return -EINVAL;
+	}
+	K_OOPS(k_usermode_from_copy(copy, msgs, num * sizeof(copy[0])));
+	K_OOPS(K_SYSCALL_MEMORY_WRITE(buf, buf_len));
+	return z_impl_app_svc_i2c_transfer(addr, copy, num, buf, buf_len);
+}
+#include <zephyr/syscalls/app_svc_i2c_transfer_mrsh.c>
+
+static inline int z_vrfy_app_svc_i2c_configure(uint8_t speed)
+{
+	return z_impl_app_svc_i2c_configure(speed);
+}
+#include <zephyr/syscalls/app_svc_i2c_configure_mrsh.c>
+
 static inline int z_vrfy_app_svc_i2c_write(uint16_t addr, const uint8_t *buf,
 					   size_t len)
 {
@@ -478,6 +729,26 @@ static inline int z_vrfy_app_svc_spi_xfer(const uint8_t *tx, uint8_t *rx, size_t
 	return z_impl_app_svc_spi_xfer(tx, rx, len);
 }
 #include <zephyr/syscalls/app_svc_spi_xfer_mrsh.c>
+
+static inline int z_vrfy_app_svc_spi_transceive(const uint8_t *tx, size_t tx_len,
+						uint8_t *rx, size_t rx_len)
+{
+	if (tx != NULL) {
+		K_OOPS(K_SYSCALL_MEMORY_READ(tx, tx_len));
+	}
+	if (rx != NULL) {
+		K_OOPS(K_SYSCALL_MEMORY_WRITE(rx, rx_len));
+	}
+	return z_impl_app_svc_spi_transceive(tx, tx_len, rx, rx_len);
+}
+#include <zephyr/syscalls/app_svc_spi_transceive_mrsh.c>
+
+static inline int z_vrfy_app_svc_spi_configure(uint32_t freq_hz, uint8_t flags,
+					       uint8_t word_bits, uint8_t cs)
+{
+	return z_impl_app_svc_spi_configure(freq_hz, flags, word_bits, cs);
+}
+#include <zephyr/syscalls/app_svc_spi_configure_mrsh.c>
 
 static inline int z_vrfy_app_svc_uart_write(const uint8_t *buf, size_t len)
 {

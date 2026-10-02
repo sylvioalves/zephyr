@@ -205,8 +205,9 @@ Buses
        loses its grants.
    * - SPI
      - Scoped
-     - The platform's SPI device, allowed per application. Chip selects are not
-       scoped.
+     - The platform's SPI controller, allowed per application, with chip
+       selects granted to one application at a time. Each application's clock,
+       mode and chip select apply to its own transfers only.
    * - UART
      - Capability only
      - The platform's secondary UART, gated by ``APP_CAP_UART`` with no
