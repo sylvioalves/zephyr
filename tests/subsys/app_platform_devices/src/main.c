@@ -27,6 +27,7 @@
 #include <zephyr/drivers/uart.h>
 #include <zephyr/drivers/serial/uart_emul.h>
 #include <zephyr/drivers/can.h>
+#include <zephyr/drivers/emul_sensor.h>
 #include <zephyr/drivers/i2c.h>
 #include <zephyr/drivers/uart/serial_test.h>
 #include <zephyr/fs/fs.h>
@@ -1515,6 +1516,59 @@ ZTEST(devices, test_button_press_reaches_every_waiter)
 	zassert_ok(gpio_emul_input_set_dt(&btn, 0));
 	zassert_true(press_seen[0] > 0, "first waiter got %d", press_seen[0]);
 	zassert_true(press_seen[1] > 0, "second waiter got %d", press_seen[1]);
+}
+
+static int sensor_by_name(const char *name)
+{
+	struct app_svc_sensor_info info;
+
+	for (int i = 0; i < app_svc_sensor_count(); i++) {
+		if (app_svc_sensor_info(i, &info) == 0 && strcmp(info.name, name) == 0) {
+			return info.present ? i : -ENODEV;
+		}
+	}
+	return -ENOENT;
+}
+
+static void sensor_backed_by_device(void *a)
+{
+	ARG_UNUSED(a);
+
+	int32_t v = 0;
+	int hum = sensor_by_name("humidity");
+	int acc = sensor_by_name("accel-x");
+	int rc = (hum >= 0 && acc >= 0) ? 0 : -ENOENT;
+
+	if (rc == 0 && sensor_by_name("pressure") != -ENODEV) {
+		rc = -EEXIST;
+	}
+	if (rc == 0) {
+		rc = app_svc_sensor_read(hum, &v);
+	}
+	if (rc == 0 && (v < 45400 || v > 45600)) {
+		rc = -ERANGE;
+	}
+	if (rc == 0) {
+		rc = app_svc_sensor_read(acc, &v);
+	}
+	if (rc == 0 && (v < -9900 || v > -9700)) {
+		rc = -EDOM;
+	}
+	report_rc = rc;
+	report_done = 1;
+}
+
+ZTEST(devices, test_sensor_kinds_backed_by_listed_device)
+{
+	const struct emul *emul = EMUL_DT_GET(DT_NODELABEL(gen_sensor));
+	q31_t hum = (q31_t)(45.5 * (1 << 24));
+	q31_t acc = (q31_t)(-9.81 * (1 << 27));
+
+	zassert_ok(emul_sensor_backend_set_channel(
+		emul, (struct sensor_chan_spec){SENSOR_CHAN_HUMIDITY, 0}, &hum, 7));
+	zassert_ok(emul_sensor_backend_set_channel(
+		emul, (struct sensor_chan_spec){SENSOR_CHAN_ACCEL_X, 0}, &acc, 4));
+	expect_rc("s_dev", sensor_backed_by_device, APP_CAP_LOG | APP_CAP_SENSOR, 0);
 }
 
 static void led_set_held(void *a)

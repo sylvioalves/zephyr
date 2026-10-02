@@ -80,6 +80,12 @@
 		dacs = <&dac_emul>;
 		regulators = <&fake_reg0>;
 		steppers = <&fake_stepper>;
+		sensors = <&gen_sensor>;
+	};
+
+	gen_sensor: gen_sensor {
+		compatible = "zephyr,generic-emul-sensor";
+		status = "okay";
 	};
 
 	fake_pwm: fake_pwm {

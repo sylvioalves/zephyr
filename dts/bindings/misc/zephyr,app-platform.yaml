@@ -45,3 +45,9 @@ properties:
   steppers:
     type: phandles
     description: Stepper motor controller devices.
+
+  sensors:
+    type: phandles
+    description: |
+      Sensor devices backing the sensor service's catalog. The first listed
+      device that reports a kind's channel backs that kind.

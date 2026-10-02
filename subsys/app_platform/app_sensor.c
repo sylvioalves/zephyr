@@ -9,6 +9,11 @@
  * bus or the driver behind it. An entry is present when this board has a device
  * backing that kind, and announced otherwise, so the same application runs on a
  * board that gains the hardware later without being rebuilt.
+ *
+ * The devices in the "sensors" property of the zephyr,app-platform node back
+ * the kinds: on first use each device is sampled and the first device that
+ * reports a kind's channel backs that kind. The die-temperature device backs
+ * "temperature" when no listed device does.
  */
 
 #include <zephyr/app_platform/app_services.h>
@@ -38,64 +43,114 @@ struct sensor_svc {
 	const char         *name;
 	enum sensor_channel chan;
 	const char         *unit;
-	bool                present;
 };
 
-static struct sensor_svc catalog[] = {
+static const struct sensor_svc catalog[] = {
 	/* Environment */
-	{ "temperature",      SENSOR_CHAN_AMBIENT_TEMP, "m.degC",   HAVE_DIE_TEMP },
-	{ "humidity",         SENSOR_CHAN_HUMIDITY,     "m.%RH",    false },
-	{ "pressure",         SENSOR_CHAN_PRESS,        "m.kPa",    false },
-	{ "altitude",         SENSOR_CHAN_ALTITUDE,     "mm",       false },
-	{ "gas-resistance",   SENSOR_CHAN_GAS_RES,      "ohm",      false },
-	{ "voc",              SENSOR_CHAN_VOC,          "ppb",      false },
+	{ "temperature",      SENSOR_CHAN_AMBIENT_TEMP, "m.degC" },
+	{ "humidity",         SENSOR_CHAN_HUMIDITY,     "m.%RH" },
+	{ "pressure",         SENSOR_CHAN_PRESS,        "m.kPa" },
+	{ "altitude",         SENSOR_CHAN_ALTITUDE,     "mm" },
+	{ "gas-resistance",   SENSOR_CHAN_GAS_RES,      "ohm" },
+	{ "voc",              SENSOR_CHAN_VOC,          "ppb" },
 
 	/* Light / optical */
-	{ "ambient-light",    SENSOR_CHAN_AMBIENT_LIGHT, "m.lux",    false },
-	{ "ir",               SENSOR_CHAN_IR,           "raw",      false },
-	{ "red",              SENSOR_CHAN_RED,          "raw",      false },
-	{ "green",            SENSOR_CHAN_GREEN,        "raw",      false },
-	{ "blue",             SENSOR_CHAN_BLUE,         "raw",      false },
-	{ "proximity",        SENSOR_CHAN_PROX,         "raw",      false },
-	{ "distance",         SENSOR_CHAN_DISTANCE,     "mm",       false },
+	{ "ambient-light",    SENSOR_CHAN_AMBIENT_LIGHT, "m.lux" },
+	{ "ir",               SENSOR_CHAN_IR,           "raw" },
+	{ "red",              SENSOR_CHAN_RED,          "raw" },
+	{ "green",            SENSOR_CHAN_GREEN,        "raw" },
+	{ "blue",             SENSOR_CHAN_BLUE,         "raw" },
+	{ "proximity",        SENSOR_CHAN_PROX,         "raw" },
+	{ "distance",         SENSOR_CHAN_DISTANCE,     "mm" },
 
 	/* Motion (IMU) */
-	{ "accel-x",          SENSOR_CHAN_ACCEL_X,      "m.m/s2",   false },
-	{ "accel-y",          SENSOR_CHAN_ACCEL_Y,      "m.m/s2",   false },
-	{ "accel-z",          SENSOR_CHAN_ACCEL_Z,      "m.m/s2",   false },
-	{ "gyro-x",           SENSOR_CHAN_GYRO_X,       "m.dps",    false },
-	{ "gyro-y",           SENSOR_CHAN_GYRO_Y,       "m.dps",    false },
-	{ "gyro-z",           SENSOR_CHAN_GYRO_Z,       "m.dps",    false },
-	{ "magn-x",           SENSOR_CHAN_MAGN_X,       "m.gauss",  false },
-	{ "magn-y",           SENSOR_CHAN_MAGN_Y,       "m.gauss",  false },
-	{ "magn-z",           SENSOR_CHAN_MAGN_Z,       "m.gauss",  false },
-	{ "rotation",         SENSOR_CHAN_ROTATION,     "m.deg",    false },
+	{ "accel-x",          SENSOR_CHAN_ACCEL_X,      "m.m/s2" },
+	{ "accel-y",          SENSOR_CHAN_ACCEL_Y,      "m.m/s2" },
+	{ "accel-z",          SENSOR_CHAN_ACCEL_Z,      "m.m/s2" },
+	{ "gyro-x",           SENSOR_CHAN_GYRO_X,       "m.dps" },
+	{ "gyro-y",           SENSOR_CHAN_GYRO_Y,       "m.dps" },
+	{ "gyro-z",           SENSOR_CHAN_GYRO_Z,       "m.dps" },
+	{ "magn-x",           SENSOR_CHAN_MAGN_X,       "m.gauss" },
+	{ "magn-y",           SENSOR_CHAN_MAGN_Y,       "m.gauss" },
+	{ "magn-z",           SENSOR_CHAN_MAGN_Z,       "m.gauss" },
+	{ "rotation",         SENSOR_CHAN_ROTATION,     "m.deg" },
 
 	/* Power / electrical */
-	{ "voltage",          SENSOR_CHAN_VOLTAGE,      "mV",       false },
-	{ "current",          SENSOR_CHAN_CURRENT,      "mA",       false },
-	{ "power",            SENSOR_CHAN_POWER,        "mW",       false },
-	{ "resistance",       SENSOR_CHAN_RESISTANCE,   "ohm",      false },
+	{ "voltage",          SENSOR_CHAN_VOLTAGE,      "mV" },
+	{ "current",          SENSOR_CHAN_CURRENT,      "mA" },
+	{ "power",            SENSOR_CHAN_POWER,        "mW" },
+	{ "resistance",       SENSOR_CHAN_RESISTANCE,   "ohm" },
 
 	/* Mechanical / rate */
-	{ "rpm",              SENSOR_CHAN_RPM,          "rpm",      false },
-	{ "frequency",        SENSOR_CHAN_FREQUENCY,    "mHz",      false },
-	{ "flow-rate",        SENSOR_CHAN_FLOW_RATE,    "m.L/min",  false },
+	{ "rpm",              SENSOR_CHAN_RPM,          "rpm" },
+	{ "frequency",        SENSOR_CHAN_FREQUENCY,    "mHz" },
+	{ "flow-rate",        SENSOR_CHAN_FLOW_RATE,    "m.L/min" },
 
 	/* Battery / fuel gauge */
-	{ "batt-voltage",     SENSOR_CHAN_GAUGE_VOLTAGE,        "mV",   false },
-	{ "batt-current",     SENSOR_CHAN_GAUGE_AVG_CURRENT,    "mA",   false },
-	{ "batt-charge",      SENSOR_CHAN_GAUGE_STATE_OF_CHARGE, "m.%",  false },
-	{ "batt-health",      SENSOR_CHAN_GAUGE_STATE_OF_HEALTH, "m.%",  false },
-	{ "batt-temp",        SENSOR_CHAN_GAUGE_TEMP,           "m.degC", false },
+	{ "batt-voltage",     SENSOR_CHAN_GAUGE_VOLTAGE,        "mV" },
+	{ "batt-current",     SENSOR_CHAN_GAUGE_AVG_CURRENT,    "mA" },
+	{ "batt-charge",      SENSOR_CHAN_GAUGE_STATE_OF_CHARGE, "m.%" },
+	{ "batt-health",      SENSOR_CHAN_GAUGE_STATE_OF_HEALTH, "m.%" },
+	{ "batt-temp",        SENSOR_CHAN_GAUGE_TEMP,           "m.degC" },
 };
 
 #define CATALOG_COUNT ((int)ARRAY_SIZE(catalog))
+
+static const struct device *const sensor_devs[] = {
+	APP_PLATFORM_DEVICES(sensors)
+};
+
+/* Device and channel backing each kind, filled on first use; NULL when none. */
+static const struct device *backing[CATALOG_COUNT];
+static enum sensor_channel backing_chan[CATALOG_COUNT];
+static bool probed;
 
 /* One transaction at a time on the shared device; readers still appear
  * concurrent to the applications calling in.
  */
 static SVC_LOCK_DEFINE(sensor_lock);
+
+/* Find the device backing each kind. Called with sensor_lock held. */
+static void sensors_probe(void)
+{
+	struct sensor_value val;
+
+	if (probed) {
+		return;
+	}
+	for (int d = 0; d < (int)ARRAY_SIZE(sensor_devs); d++) {
+		if (!device_is_ready(sensor_devs[d]) || sensor_sample_fetch(sensor_devs[d]) != 0) {
+			continue;
+		}
+		for (int i = 0; i < CATALOG_COUNT; i++) {
+			if (backing[i] == NULL &&
+			    sensor_channel_get(sensor_devs[d], catalog[i].chan, &val) == 0) {
+				backing[i] = sensor_devs[d];
+				backing_chan[i] = catalog[i].chan;
+			}
+		}
+	}
+#if HAVE_DIE_TEMP
+	if (backing[0] == NULL && device_is_ready(die_temp)) {
+		backing[0] = die_temp;
+		backing_chan[0] = SENSOR_CHAN_DIE_TEMP;
+	}
+#endif
+	probed = true;
+}
+
+static int sensors_ensure_probed(void)
+{
+	if (probed) {
+		return 0;
+	}
+	if (app_service_lock(&sensor_lock, SVC_LOCK_TIMEOUT) != 0) {
+		return -EBUSY;
+	}
+	sensors_probe();
+	app_service_unlock(&sensor_lock);
+	return 0;
+}
 
 int z_impl_app_svc_sensor_count(void)
 {
@@ -116,61 +171,54 @@ int z_impl_app_svc_sensor_info(int idx, struct app_svc_sensor_info *out)
 
 	struct app_svc_sensor_info info;
 
+	if (sensors_ensure_probed() != 0) {
+		return -EBUSY;
+	}
 	memset(&info, 0, sizeof(info));
 	(void)strncpy(info.name, catalog[idx].name, sizeof(info.name) - 1);
 	(void)strncpy(info.unit, catalog[idx].unit, sizeof(info.unit) - 1);
-	info.present = catalog[idx].present;
+	info.present = (backing[idx] != NULL);
 	*out = info;
 	return 0;
 }
 
-#if HAVE_DIE_TEMP
-static int read_one(int32_t *milli_value)
+static int read_one(int idx, int32_t *milli_value)
 {
 	struct sensor_value val;
-	int rc = sensor_sample_fetch(die_temp);
+	int rc = sensor_sample_fetch(backing[idx]);
 
 	if (rc == 0) {
-		rc = sensor_channel_get(die_temp, SENSOR_CHAN_DIE_TEMP, &val);
+		rc = sensor_channel_get(backing[idx], backing_chan[idx], &val);
 	}
 	if (rc == 0) {
 		*milli_value = val.val1 * 1000 + val.val2 / 1000;
 	}
 	return rc;
 }
-#endif
 
 /* Take @p n readings of the kind at @p idx under one hold of the device. */
 static int read_samples(int idx, int32_t *milli_values, size_t n)
 {
+	int rc = 0;
+
 	if (!app_has_cap(APP_CAP_SENSOR)) {
 		return -EPERM;
 	}
 	if (idx < 0 || idx >= CATALOG_COUNT) {
 		return -EINVAL;
 	}
-	if (!catalog[idx].present) {
-		return -ENODEV;
-	}
-#if HAVE_DIE_TEMP
-	int rc = 0;
-
-	if (!device_is_ready(die_temp)) {
-		return -ENODEV;
-	}
 	if (app_service_lock(&sensor_lock, SVC_LOCK_TIMEOUT) != 0) {
 		return -EBUSY;
 	}
+	sensors_probe();
+	if (backing[idx] == NULL) {
+		rc = -ENODEV;
+	}
 	for (size_t i = 0; i < n && rc == 0; i++) {
-		rc = read_one(&milli_values[i]);
+		rc = read_one(idx, &milli_values[i]);
 	}
 	app_service_unlock(&sensor_lock);
 	return rc;
-#else
-	ARG_UNUSED(milli_values);
-	ARG_UNUSED(n);
-	return -ENODEV;
-#endif
 }
 
 int z_impl_app_svc_sensor_read(int idx, int32_t *milli_value)
