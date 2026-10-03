@@ -298,6 +298,11 @@ static int cmd_fetch(const struct shell *sh, size_t argc, char **argv)
 	int rc = app_loader_verify_load_manifest_file(mf, mf_len, sig, APP_MANIFEST_SIG_LEN, lpath,
 						      "app_main", &ext, &entry);
 
+	if (rc == -EALREADY) {
+		shell_error(sh, "'%s' is already running - not replaced", name);
+		app_registry_discard(name);
+		return rc;
+	}
 	if (rc != 0) {
 		shell_error(sh, "verify/load failed (%d) - rejected", rc);
 		app_registry_discard(name);
