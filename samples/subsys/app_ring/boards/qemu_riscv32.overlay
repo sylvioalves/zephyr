@@ -1,0 +1,23 @@
+/*
+ * Copyright (c) 2026 Espressif Systems (Shanghai) Co., Ltd.
+ *
+ * SPDX-License-Identifier: Apache-2.0
+ */
+
+/* QEMU has no spare UART: loop an emulated one back on itself. Nothing drains
+ * its transmit side, so size that to hold everything the sample sends.
+ */
+/ {
+	app_uart: app_uart {
+		compatible = "zephyr,uart-emul";
+		current-speed = <115200>;
+		loopback;
+		tx-fifo-size = <4096>;
+		rx-fifo-size = <1024>;
+		status = "okay";
+	};
+
+	chosen {
+		app-uart = &app_uart;
+	};
+};

@@ -1,0 +1,21 @@
+/*
+ * Copyright (c) 2026 Espressif Systems (Shanghai) Co., Ltd.
+ *
+ * SPDX-License-Identifier: Apache-2.0
+ */
+
+#include <zephyr/dt-bindings/i2c/i2c.h>
+
+/* QEMU has no I2C controller: stand in an emulated bus with nothing attached,
+ * so the granted read reaches the bus and fails there.
+ */
+/ {
+	i2c0: i2c@100 {
+		compatible = "zephyr,i2c-emul-controller";
+		reg = <0x100 4>;
+		#address-cells = <1>;
+		#size-cells = <0>;
+		clock-frequency = <I2C_BITRATE_STANDARD>;
+		status = "okay";
+	};
+};

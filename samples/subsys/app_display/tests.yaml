@@ -29,5 +29,7 @@ tests:
     platform_allow:
       - esp32c5_devkitc/esp32c5/hpcore
       - esp32c6_devkitc/esp32c6/hpcore
+      - qemu_riscv32/qemu_virt_riscv32
+      - qemu_riscv32/qemu_virt_riscv32/smp
     extra_args:
       - EXTRA_DTC_OVERLAY_FILE=dummy_display.overlay

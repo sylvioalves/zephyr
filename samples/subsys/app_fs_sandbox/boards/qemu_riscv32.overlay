@@ -1,0 +1,38 @@
+/*
+ * Copyright (c) 2026 Espressif Systems (Shanghai) Co., Ltd.
+ *
+ * SPDX-License-Identifier: Apache-2.0
+ */
+
+#include <mem.h>
+
+/* QEMU has no flash for the application store: back the storage partition
+ * with the flash simulator.
+ */
+/ {
+	app_sim_flash: app_sim_flash {
+		compatible = "zephyr,sim-flash";
+		#address-cells = <1>;
+		#size-cells = <1>;
+		erase-value = <0xff>;
+
+		flash_sim@0 {
+			compatible = "soc-nv-flash";
+			reg = <0x00000000 DT_SIZE_K(512)>;
+			erase-block-size = <4096>;
+			write-block-size = <4>;
+
+			partitions {
+				ranges;
+				#address-cells = <1>;
+				#size-cells = <1>;
+
+				storage_partition: partition@0 {
+					compatible = "zephyr,mapped-partition";
+					label = "storage";
+					reg = <0x00000000 DT_SIZE_K(512)>;
+				};
+			};
+		};
+	};
+};

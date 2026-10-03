@@ -1,0 +1,17 @@
+/*
+ * Copyright (c) 2026 Espressif Systems (Shanghai) Co., Ltd.
+ *
+ * SPDX-License-Identifier: Apache-2.0
+ */
+
+/* QEMU has no die temperature sensor: stand in an emulated one. */
+/ {
+	die_temp: die_temp {
+		compatible = "zephyr,generic-emul-sensor";
+		status = "okay";
+	};
+
+	aliases {
+		die-temp0 = &die_temp;
+	};
+};

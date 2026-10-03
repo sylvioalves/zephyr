@@ -10,6 +10,8 @@ common:
     - mps2/an385
     - esp32c5_devkitc/esp32c5/hpcore
     - esp32c6_devkitc/esp32c6/hpcore
+    - qemu_riscv32/qemu_virt_riscv32
+    - qemu_riscv32/qemu_virt_riscv32/smp
   integration_platforms:
     - qemu_x86
   harness: console
