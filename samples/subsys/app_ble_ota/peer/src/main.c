@@ -110,6 +110,25 @@ static const struct bt_data ad[] = {
 		sizeof(CONFIG_BT_DEVICE_NAME) - 1),
 };
 
+/* Every transfer is its own connection, so advertise again once the device
+ * drops the link and its connection object is free. The previous advertising
+ * set is still registered, so stop it first.
+ */
+static void peer_recycled(void)
+{
+	(void)bt_le_adv_stop();
+
+	int rc = bt_le_adv_start(BT_LE_ADV_CONN_FAST_1, ad, ARRAY_SIZE(ad), NULL, 0);
+
+	if (rc != 0) {
+		printk("advertising again failed (%d)\n", rc);
+	}
+}
+
+BT_CONN_CB_DEFINE(peer_conn_cb) = {
+	.recycled = peer_recycled,
+};
+
 int main(void)
 {
 	printk("\n*** BLE app-update peer: serving '%s' ***\n",

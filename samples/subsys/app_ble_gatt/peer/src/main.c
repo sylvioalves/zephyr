@@ -84,25 +84,25 @@ static const struct bt_data ad[] = {
 		sizeof(CONFIG_BT_DEVICE_NAME) - 1),
 };
 
-/*
- * Each service call is its own connection, so the peer has to advertise again
+/* Each service call is its own connection, so the peer has to advertise again
  * once the device drops the link; a peripheral does not resume on its own.
+ * Restart once the connection object is free, or a connectable advertiser has
+ * no connection to accept with. The previous advertising set is still
+ * registered, so stop it first.
  */
-static void peer_disconnected(struct bt_conn *conn, uint8_t reason)
+static void peer_recycled(void)
 {
-	ARG_UNUSED(conn);
-	ARG_UNUSED(reason);
-
-	/* The previous advertising set is still registered after the link
-	 * drops; starting again without stopping it first returns -ENOMEM.
-	 */
 	(void)bt_le_adv_stop();
-	(void)bt_le_adv_start(BT_LE_ADV_CONN_FAST_1, ad, ARRAY_SIZE(ad),
-			      NULL, 0);
+
+	int rc = bt_le_adv_start(BT_LE_ADV_CONN_FAST_1, ad, ARRAY_SIZE(ad), NULL, 0);
+
+	if (rc != 0) {
+		printk("peer: advertising again failed (%d)\n", rc);
+	}
 }
 
 BT_CONN_CB_DEFINE(peer_conn_cb) = {
-	.disconnected = peer_disconnected,
+	.recycled = peer_recycled,
 };
 
 int main(void)

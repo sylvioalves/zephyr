@@ -36,10 +36,10 @@ static struct bt_gatt_read_params rd;
 static struct bt_gatt_write_params wr;
 static uint16_t count_handle;
 static uint16_t conf_handle;
-static bool connect_wanted = true;
 
 static K_SEM_DEFINE(ready, 0, 1);
 static K_SEM_DEFINE(step, 0, 1);
+static K_SEM_DEFINE(gone, 0, 1);
 
 static uint8_t discover_cb(struct bt_conn *c, const struct bt_gatt_attr *attr,
 			   struct bt_gatt_discover_params *params)
@@ -98,6 +98,11 @@ static void connected(struct bt_conn *c, uint8_t err)
 {
 	if (err != 0U) {
 		printk("central: connect failed 0x%02x\n", err);
+		if (c == conn) {
+			bt_conn_unref(conn);
+			conn = NULL;
+		}
+		k_sem_give(&gone);
 		return;
 	}
 	printk("central: %s\n", __func__);
@@ -117,6 +122,7 @@ static void disconnected(struct bt_conn *c, uint8_t reason)
 		bt_conn_unref(conn);
 		conn = NULL;
 	}
+	k_sem_give(&gone);
 }
 
 BT_CONN_CB_DEFINE(central_cb) = {
@@ -144,7 +150,7 @@ static void scan_cb(const bt_addr_le_t *addr, int8_t rssi, uint8_t type,
 {
 	ARG_UNUSED(rssi); ARG_UNUSED(type);
 
-	if (!connect_wanted || conn != NULL) {
+	if (conn != NULL) {
 		return;
 	}
 
@@ -160,34 +166,8 @@ static void scan_cb(const bt_addr_le_t *addr, int8_t rssi, uint8_t type,
 				BT_LE_CONN_PARAM_DEFAULT, &conn);
 }
 
-int main(void)
+static void exchange(void)
 {
-	printk("\n*** BLE central: driving the served application ***\n");
-
-	if (bt_enable(NULL) != 0) {
-		printk("central: bt_enable failed\n");
-		return 0;
-	}
-
-	struct bt_le_scan_param sp = {
-		.type = BT_LE_SCAN_TYPE_ACTIVE,
-		.options = BT_LE_SCAN_OPT_NONE,
-		.interval = BT_GAP_SCAN_FAST_INTERVAL,
-		.window = BT_GAP_SCAN_FAST_WINDOW,
-	};
-
-	if (bt_le_scan_start(&sp, scan_cb) != 0) {
-		printk("central: scan failed\n");
-		return 0;
-	}
-	if (k_sem_take(&ready, K_SECONDS(20)) != 0) {
-		printk("central: peer not found or discovery failed\n");
-		return 0;
-	}
-	if (count_handle == 0U || conf_handle == 0U) {
-		printk("central: characteristics not found\n");
-		return 0;
-	}
 	printk("central: discovered count=%u conf=%u\n", count_handle,
 	       conf_handle);
 
@@ -214,11 +194,57 @@ int main(void)
 		}
 		k_sleep(K_SECONDS(2));
 	}
-
 	printk("central: done\n");
-	connect_wanted = false;
-	if (conn != NULL) {
-		bt_conn_disconnect(conn, BT_HCI_ERR_REMOTE_USER_TERM_CONN);
+}
+
+int main(void)
+{
+	printk("\n*** BLE central: driving the served application ***\n");
+
+	if (bt_enable(NULL) != 0) {
+		printk("central: bt_enable failed\n");
+		return 0;
+	}
+
+	struct bt_le_scan_param sp = {
+		.type = BT_LE_SCAN_TYPE_ACTIVE,
+		.options = BT_LE_SCAN_OPT_NONE,
+		.interval = BT_GAP_SCAN_FAST_INTERVAL,
+		.window = BT_GAP_SCAN_FAST_WINDOW,
+	};
+
+	/* Serve every run of the application: drive it, drop the link and look
+	 * for it again.
+	 */
+	for (;;) {
+		count_handle = 0U;
+		conf_handle = 0U;
+		k_sem_reset(&ready);
+		k_sem_reset(&gone);
+		if (bt_le_scan_start(&sp, scan_cb) != 0) {
+			printk("central: scan failed\n");
+			k_sleep(K_SECONDS(1));
+			continue;
+		}
+		if (k_sem_take(&ready, K_SECONDS(20)) != 0) {
+			printk("central: peer not found or discovery failed\n");
+			(void)bt_le_scan_stop();
+			if (conn != NULL) {
+				bt_conn_disconnect(conn, BT_HCI_ERR_REMOTE_USER_TERM_CONN);
+				(void)k_sem_take(&gone, K_SECONDS(5));
+			}
+			continue;
+		}
+		if (count_handle == 0U || conf_handle == 0U) {
+			printk("central: characteristics not found\n");
+		} else {
+			exchange();
+		}
+		if (conn != NULL) {
+			bt_conn_disconnect(conn, BT_HCI_ERR_REMOTE_USER_TERM_CONN);
+			(void)k_sem_take(&gone, K_SECONDS(5));
+		}
+		k_sleep(K_SECONDS(2));
 	}
 	return 0;
 }
