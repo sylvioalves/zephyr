@@ -5,5 +5,6 @@ tests:
   sample.app_platform.timer_slots:
     platform_allow:
       - esp32c5_devkitc/esp32c5/hpcore
+      - esp32c6_devkitc/esp32c6/hpcore
     tags: app_platform
     build_only: true

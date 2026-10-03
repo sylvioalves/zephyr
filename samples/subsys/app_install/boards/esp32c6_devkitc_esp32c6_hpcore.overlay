@@ -1,0 +1,16 @@
+/*
+ * Copyright (c) 2026 Espressif Systems (Shanghai) Co., Ltd.
+ *
+ * SPDX-License-Identifier: Apache-2.0
+ *
+ * Enlarge the storage partition for the application store. Under simple boot
+ * the second firmware slot is unused, so its region is reassigned to storage,
+ * growing the littlefs area from 192 KB to 1.75 MB for many or larger apps. The
+ * code partition and the low-power-core slots are left untouched.
+ */
+
+/delete-node/ &slot1_partition;
+
+&storage_partition {
+	reg = <0x1e0000 DT_SIZE_K(1792)>;
+};

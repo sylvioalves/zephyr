@@ -1,0 +1,40 @@
+/*
+ * Copyright (c) 2026 Espressif Systems (Shanghai) Co., Ltd.
+ *
+ * SPDX-License-Identifier: Apache-2.0
+ */
+
+/ {
+	leds {
+		compatible = "gpio-leds";
+
+		led_a: led_0 {
+			gpios = <&gpio0 2 GPIO_ACTIVE_HIGH>;
+			label = "status LED 0";
+		};
+
+		led_b: led_1 {
+			gpios = <&gpio0 3 GPIO_ACTIVE_HIGH>;
+			label = "status LED 1";
+		};
+
+		led_c: led_2 {
+			gpios = <&gpio0 4 GPIO_ACTIVE_HIGH>;
+			label = "status LED 2";
+		};
+	};
+
+	app_platform {
+		compatible = "zephyr,app-platform";
+		gpios = <&gpio0 2 GPIO_ACTIVE_HIGH>,
+			<&gpio0 3 GPIO_ACTIVE_HIGH>,
+			<&gpio0 4 GPIO_ACTIVE_HIGH>;
+		line-names = "status LED 0", "status LED 1", "status LED 2";
+	};
+
+	aliases {
+		led0 = &led_a;
+		led1 = &led_b;
+		led2 = &led_c;
+	};
+};

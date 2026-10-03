@@ -9,6 +9,7 @@ common:
     - qemu_x86
     - mps2/an385
     - esp32c5_devkitc/esp32c5/hpcore
+    - esp32c6_devkitc/esp32c6/hpcore
   integration_platforms:
     - qemu_x86
   harness: console
