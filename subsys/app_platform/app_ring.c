@@ -60,6 +60,7 @@ static size_t round_pow2(size_t n)
 	return p;
 }
 
+#if DT_HAS_CHOSEN(app_uart)
 /* Read the application's indices once and check them before use. A value out
  * of range means the ring is corrupt, which is reported rather than clamped:
  * clamping would silently hand back the wrong bytes.
@@ -78,6 +79,7 @@ static int ring_indices(const struct ring_region *r, uint32_t *head,
 	*tail = tl;
 	return 0;
 }
+#endif
 
 static struct ring_region *ring_of_current(int *out_id)
 {
