@@ -25,7 +25,7 @@
 #define DMA_MAX  256
 #define DMA_CHAN 0U
 
-#if DT_NODE_EXISTS(DT_NODELABEL(dma))
+#if DT_NODE_HAS_STATUS_OKAY(DT_NODELABEL(dma))
 static const struct device *const dma_dev = DEVICE_DT_GET(DT_NODELABEL(dma));
 static uint8_t dma_src[DMA_MAX] __aligned(64);
 static uint8_t dma_dst[DMA_MAX] __aligned(64);
@@ -50,7 +50,7 @@ int z_impl_app_svc_dma_copy(const uint8_t *src, uint8_t *dst, size_t len)
 	if (len > DMA_MAX) {
 		return -EINVAL;
 	}
-#if DT_NODE_EXISTS(DT_NODELABEL(dma))
+#if DT_NODE_HAS_STATUS_OKAY(DT_NODELABEL(dma))
 	uint8_t tmp[DMA_MAX];
 
 	if (!device_is_ready(dma_dev)) {
