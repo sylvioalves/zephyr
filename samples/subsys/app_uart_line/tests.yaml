@@ -9,4 +9,8 @@ tests:
       - qemu_riscv32/qemu_virt_riscv32
       - qemu_riscv32/qemu_virt_riscv32/smp
     tags: app_platform
-    build_only: true
+    harness: console
+    harness_config:
+      type: one_line
+      regex:
+        - "uart_line: [0-9]+ passed, 0 failed"

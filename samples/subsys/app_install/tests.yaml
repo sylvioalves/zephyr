@@ -11,6 +11,10 @@ tests:
       - esp32c6_devkitc/esp32c6/hpcore
       - qemu_riscv32/qemu_virt_riscv32
       - qemu_riscv32/qemu_virt_riscv32/smp
-    # The sample waits for an operator to upload an image and type a shell
-    # command, so it is built rather than run.
-    build_only: true
+    # Installing needs an operator to upload an image and type a shell
+    # command; the run checks that the store comes up ready for one.
+    harness: console
+    harness_config:
+      type: one_line
+      regex:
+        - "ready. upload a signed app, then: store install"

@@ -11,4 +11,8 @@ tests:
       - esp32c6_devkitc/esp32c6/hpcore
       - qemu_riscv32/qemu_virt_riscv32
       - qemu_riscv32/qemu_virt_riscv32/smp
-    build_only: true
+    harness: console
+    harness_config:
+      type: one_line
+      regex:
+        - "done: app could use only its granted address"
