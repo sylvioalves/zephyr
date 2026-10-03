@@ -15,3 +15,37 @@ tests:
       type: one_line
       regex:
         - "done: a loadable app used the shared service library"
+  sample.subsys.app_probe.ble_peer:
+    tags: app_platform
+    platform_allow:
+      - esp32c5_devkitc/esp32c5/hpcore
+      - esp32c6_devkitc/esp32c6/hpcore
+    harness: console
+    harness_config:
+      # A second board running samples/bluetooth/peripheral_hr built with
+      # CONFIG_BT_DEVICE_NAME="HR-Peer".
+      fixture: ble_hr_peer
+      type: multi_line
+      ordered: true
+      regex:
+        - "ble_scan: PASS"
+        - "ble_hr: PASS"
+        - "done: a loadable app used the shared service library"
+  sample.subsys.app_probe.radio_peer:
+    tags: app_platform
+    platform_allow:
+      - esp32c5_devkitc/esp32c5/hpcore
+      - esp32c6_devkitc/esp32c6/hpcore
+    extra_args:
+      - EXTRA_CONF_FILE=radio_only.conf
+    harness: console
+    harness_config:
+      # A second board running samples/net/sockets/echo_server with
+      # overlay-802154.conf, on channel 26 at 2001:db8::1.
+      fixture: ieee802154_echo_peer
+      type: multi_line
+      ordered: true
+      regex:
+        - "radio_send: PASS"
+        - "radio_echo: PASS"
+        - "done: a loadable app used the shared service library"

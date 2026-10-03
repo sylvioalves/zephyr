@@ -14,3 +14,19 @@ tests:
       type: one_line
       regex:
         - "launched isolated gatt app"
+  sample.subsys.app_ble_gatt.peer:
+    tags: app_platform
+    platform_allow:
+      - esp32c5_devkitc/esp32c5/hpcore
+      - esp32c6_devkitc/esp32c6/hpcore
+    harness: console
+    harness_config:
+      # A second board running the peer/ application, already advertising.
+      fixture: ble_gatt_peer
+      type: multi_line
+      ordered: true
+      regex:
+        - "gatt: read [0-9]+ byte"
+        - "gatt: wrote the granted config value"
+        - "gatt: ungranted service correctly denied"
+        - "gatt: done"

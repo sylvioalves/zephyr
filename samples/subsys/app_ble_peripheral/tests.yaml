@@ -14,3 +14,17 @@ tests:
       type: one_line
       regex:
         - "launched isolated peripheral app"
+  sample.subsys.app_ble_peripheral.central:
+    tags: app_platform
+    platform_allow:
+      - esp32c5_devkitc/esp32c5/hpcore
+      - esp32c6_devkitc/esp32c6/hpcore
+    harness: console
+    harness_config:
+      # A second board running the central/ application.
+      fixture: ble_peripheral_central
+      type: multi_line
+      ordered: true
+      regex:
+        - "peripheral: a peer connected"
+        - "peripheral: peer wrote chr 1, 2 byte\\(s\\), first 0xa2 \\(#3\\)"
