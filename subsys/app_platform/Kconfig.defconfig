@@ -12,6 +12,15 @@ configdefault MAX_THREAD_BYTES
 
 endif # APP_PLATFORM && USERSPACE
 
+if APP_PLATFORM && MBEDTLS_PSA_CRYPTO_LEGACY_RNG
+
+# Without an entropy driver mbed TLS runs its own DRBG from its heap, and
+# verifying a module needs at least 4 KB of it.
+configdefault MBEDTLS_HEAP_SIZE
+	default 4096
+
+endif # APP_PLATFORM && MBEDTLS_PSA_CRYPTO_LEGACY_RNG
+
 if APP_PLATFORM_NET
 
 # The net thread polls one eventfd plus a socket and an MQTT session per
