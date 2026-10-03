@@ -657,7 +657,7 @@ int z_impl_app_svc_timer_create(void)
 			k_spin_unlock(&slot_lock, key);
 			k_timer_init(&slots[id][i].timer, slot_expiry, NULL);
 			k_sem_init(&slots[id][i].sem, 0, 1);
-			slots[id][i].armed_at = 0;
+			slots[id][i].armed_at = -1;
 			return i;
 		}
 	}
@@ -676,7 +676,7 @@ int z_impl_app_svc_timer_arm(int slot, uint32_t ms, int periodic)
 
 	if (ms == 0U) {
 		k_timer_stop(&s->timer);
-		s->armed_at = 0;
+		s->armed_at = -1;
 		return 0;
 	}
 
@@ -710,7 +710,7 @@ int z_impl_app_svc_timer_stop(int slot)
 		return err;
 	}
 	k_timer_stop(&s->timer);
-	s->armed_at = 0;
+	s->armed_at = -1;
 	return 0;
 }
 
@@ -723,7 +723,7 @@ int z_impl_app_svc_timer_elapsed(int slot)
 		return err;
 	}
 
-	if (s->armed_at == 0) {
+	if (s->armed_at < 0) {
 		return 0;
 	}
 	return (int)(k_uptime_get() - s->armed_at);
@@ -738,7 +738,7 @@ int z_impl_app_svc_timer_free(int slot)
 		return err;
 	}
 	k_timer_stop(&s->timer);
-	s->armed_at = 0;
+	s->armed_at = -1;
 
 	k_spinlock_key_t key = k_spin_lock(&slot_lock);
 
@@ -757,7 +757,7 @@ static void timer_slots_release(int id)
 	for (int i = 0; i < APP_TIMER_SLOTS; i++) {
 		if (slots[id][i].used) {
 			k_timer_stop(&slots[id][i].timer);
-			slots[id][i].armed_at = 0;
+			slots[id][i].armed_at = -1;
 
 			k_spinlock_key_t key = k_spin_lock(&slot_lock);
 
