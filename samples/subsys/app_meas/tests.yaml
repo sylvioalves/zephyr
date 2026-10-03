@@ -6,9 +6,9 @@ sample:
 tests:
   sample.subsys.app_meas:
     tags: app_platform
+    # User threads read the cycle counter, which the ESP32-C6 does not implement.
     platform_allow:
       - esp32c5_devkitc/esp32c5/hpcore
-      - esp32c6_devkitc/esp32c6/hpcore
     ignore_faults: true
     harness: console
     harness_config:
