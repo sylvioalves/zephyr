@@ -12,7 +12,9 @@
  * recovers on its own; the application holds no socket and links none of the
  * network stack.
  *
- * The echo server's address is compiled in (ECHO_HOST/ECHO_PORT).
+ * The echo server's address is compiled in (ECHO_HOST/ECHO_PORT). The default
+ * is a public TCP echo service that answers each line, so the round trip needs
+ * only internet access.
  */
 
 #include <zephyr/app_platform/app_sdk.h>
@@ -20,10 +22,10 @@
 #include <zephyr/sys/util.h>
 
 #ifndef ECHO_HOST
-#define ECHO_HOST "192.168.15.11"
+#define ECHO_HOST "tcpbin.com"
 #endif
 #ifndef ECHO_PORT
-#define ECHO_PORT 9099
+#define ECHO_PORT 4242
 #endif
 
 /* Watch this many seconds after the round trip, reporting each transition. */
@@ -73,7 +75,7 @@ static void report(const char *tag, int value, const char *suffix)
 static void tcp_round_trip(void)
 {
 	char rx[64];
-	static const char msg[] = "app_platform tcp probe";
+	static const char msg[] = "app_platform tcp probe\n";
 	uint32_t t0 = app_svc_uptime_ms();
 	int rc = app_svc_tcp_connect(ECHO_HOST, ECHO_PORT);
 
