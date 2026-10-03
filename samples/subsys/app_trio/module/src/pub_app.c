@@ -33,6 +33,8 @@ static void fmt_temp(int milli, char *out)
 
 void app_main(void *arg)
 {
+	int tries = 0;
+
 	ARG_UNUSED(arg);
 
 	app_svc_log("pub: waiting for the shared network link");
@@ -69,10 +71,14 @@ void app_main(void *arg)
 		app_svc_log(line);
 	}
 
-	if (app_svc_mqtt_open("zephyr-trio-pub", "zephyr/trio/temp",
-			      "zephyr/trio/unused") != 0) {
-		app_svc_log("pub: MQTT session failed");
-		return;
+	/* A public broker may drop a connection attempt: try a few times. */
+	while (app_svc_mqtt_open("zephyr-trio-pub", "zephyr/trio/temp",
+				 "zephyr/trio/unused") != 0) {
+		if (++tries == 5) {
+			app_svc_log("pub: MQTT session failed");
+			return;
+		}
+		app_svc_log("pub: MQTT session failed, retrying");
 	}
 	app_svc_log("pub: publishing die temp every 5s on zephyr/trio/temp");
 

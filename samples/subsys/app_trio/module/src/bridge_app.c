@@ -25,6 +25,8 @@ static size_t z_strlen(const char *s)
 
 void app_main(void *arg)
 {
+	int tries = 0;
+
 	ARG_UNUSED(arg);
 
 	app_svc_log("bridge: waiting for the shared network link");
@@ -32,11 +34,16 @@ void app_main(void *arg)
 		app_svc_log("bridge: network not ready");
 		return;
 	}
-	/* Subscribe to the same topic the publisher uses. */
-	if (app_svc_mqtt_open("zephyr-trio-bridge", "zephyr/trio/unused",
-			      "zephyr/trio/temp") != 0) {
-		app_svc_log("bridge: MQTT session failed");
-		return;
+	/* Subscribe to the same topic the publisher uses. A public broker may
+	 * drop a connection attempt, so try a few times.
+	 */
+	while (app_svc_mqtt_open("zephyr-trio-bridge", "zephyr/trio/unused",
+				 "zephyr/trio/temp") != 0) {
+		if (++tries == 5) {
+			app_svc_log("bridge: MQTT session failed");
+			return;
+		}
+		app_svc_log("bridge: MQTT session failed, retrying");
 	}
 	app_svc_log("bridge: receiving die temp over MQTT, forwarding via IPC");
 
