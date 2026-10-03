@@ -36,10 +36,10 @@ import subprocess
 import sys
 from pathlib import Path
 
-CONFIG_H = "app_platform_edk_config.h"
+EDK_CONFIG_H = "app_platform_edk_config.h"
 
 # The options the module headers test that depend on the target only.
-CONFIG_KEEP = re.compile(
+KEEP_OPTIONS = re.compile(
     r"CONFIG_(ARCH|ARM|ARM64|RISCV|XTENSA|X86|X86_64|ARC|MIPS|SPARC|RX|OPENRISC|"
     r"TRICORE|HEXAGON|64BIT|LITTLE_ENDIAN|BIG_ENDIAN|ENFORCE_ZEPHYR_STDINT|LLEXT|"
     r"ISA_THUMB2|ISA_ARM|ASSEMBLER_ISA_THUMB2)"
@@ -115,7 +115,7 @@ def module_flags(args):
             if option != "-imacros":
                 incs += [option, value]
             elif Path(value).resolve() == Path(args.autoconf).resolve():
-                flags.append(("-imacros", "config", CONFIG_H))
+                flags.append(("-imacros", "config", EDK_CONFIG_H))
             else:
                 rel = under(value, Path(args.zephyr_base) / "include")
                 if rel is None:
@@ -158,7 +158,7 @@ def config_header(autoconf):
     lines = ["/* Target options of the firmware the kit was made for. */", ""]
     for line in Path(autoconf).read_text(encoding="utf-8").splitlines():
         m = re.match(r"#define (\w+) ", line)
-        if m and CONFIG_KEEP.fullmatch(m.group(1)):
+        if m and KEEP_OPTIONS.fullmatch(m.group(1)):
             lines.append(line)
     lines += ["", "#define APP_PLATFORM_MODULE 1"]
     return "\n".join(lines) + "\n"
@@ -281,7 +281,7 @@ def main():
     for sub in ("abi", "cmake"):
         (out / sub).mkdir(parents=True, exist_ok=True)
 
-    config_h = out / CONFIG_H
+    config_h = out / EDK_CONFIG_H
     config_h.write_text(config_header(args.autoconf), encoding="utf-8")
     flags, incs = module_flags(args)
     check_headers(args, flags, incs, config_h, toolchain_root)
