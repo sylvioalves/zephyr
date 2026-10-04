@@ -115,6 +115,19 @@ ZTEST(loader_neg, test_padded_module_rejected)
 	zassert_is_null(ext);
 }
 
+ZTEST(loader_neg, test_unaligned_buffer_rejected)
+{
+	struct app_manifest mf;
+	struct llext *ext = NULL;
+
+	memcpy(&mf, mod_manifest, sizeof(mf));
+	memcpy(module_work + 1, mod_bytes, ARRAY_SIZE(mod_bytes));
+	int rc = load_signed(&mf, module_work + 1, ARRAY_SIZE(mod_bytes), &ext);
+
+	zassert_equal(rc, -EINVAL, "unaligned module buffer must be rejected (%d)", rc);
+	zassert_is_null(ext);
+}
+
 ZTEST(loader_neg, test_name_mismatch_rejected)
 {
 	struct app_manifest mf;
