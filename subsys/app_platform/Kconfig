@@ -302,8 +302,8 @@ config APP_PLATFORM_RECLAIM_HOOKS
 	help
 	  How many services can register a hook to release per-application
 	  resources when an application is reclaimed (the network, PSRAM,
-	  key/value, timer-slot, UART, motor, ring and BLE GATT services each
-	  register one). A
+	  key/value, timer-slot, UART, motor, ring, BLE GATT client and BLE
+	  GATT server services each register one). A
 	  service whose registration does not fit is left without cleanup, so
 	  raise this when adding one rather than letting it fail quietly.
 

@@ -866,7 +866,8 @@ advertising and report the link. The serving application receives
 ``APP_EVENT_GATT_WRITE`` with the characteristic index,
 ``APP_EVENT_BLE_CONNECTED`` and ``APP_EVENT_BLE_DISCONNECTED`` without
 subscribing. :c:func:`app_svc_ble_serve_stop` stops advertising and removes the
-service.
+service, and the platform does the same when the serving application is
+reclaimed, so the next application finds the server free.
 
 Application fetch
 =================

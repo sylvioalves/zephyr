@@ -504,15 +504,12 @@ int z_impl_app_svc_ble_serve_get(int idx, uint8_t *buf, size_t cap)
 	return (int)n;
 }
 
-int z_impl_app_svc_ble_serve_stop(void)
+/* Stop serving for @p id if it is the serving application. Caller holds
+ * serve_lock, or is the reaper on a lock its dead owner left broken.
+ */
+static void serve_end(int id)
 {
-	if (!app_has_cap(APP_CAP_BLE)) {
-		return -EPERM;
-	}
-	if (app_service_lock(&serve_lock, SVC_LOCK_TIMEOUT) != 0) {
-		return -EBUSY;
-	}
-	if (serving && app_platform_id_current() == serving_id) {
+	if (serving && id == serving_id) {
 		serving = false;
 		advertising = false;
 		adv_param_set = false;
@@ -522,9 +519,40 @@ int z_impl_app_svc_ble_serve_stop(void)
 		(void)bt_gatt_service_unregister(&svc);
 		serving_id = -1;
 	}
+}
+
+int z_impl_app_svc_ble_serve_stop(void)
+{
+	if (!app_has_cap(APP_CAP_BLE)) {
+		return -EPERM;
+	}
+	if (app_service_lock(&serve_lock, SVC_LOCK_TIMEOUT) != 0) {
+		return -EBUSY;
+	}
+	serve_end(app_platform_id_current());
 	app_service_unlock(&serve_lock);
 	return 0;
 }
+
+/* Take the service down when the application serving it is reclaimed. */
+static void serve_release(int id)
+{
+	int rc = app_service_lock_reclaim(&serve_lock, SVC_LOCK_TIMEOUT);
+
+	if (rc < 0) {
+		return;
+	}
+	serve_end(id);
+	if (rc == 0) {
+		app_service_unlock(&serve_lock);
+	}
+}
+
+static int serve_service_init(void)
+{
+	return app_platform_on_reclaim(serve_release);
+}
+SYS_INIT(serve_service_init, APPLICATION, 99);
 
 #ifdef CONFIG_USERSPACE
 static inline int z_vrfy_app_svc_ble_serve_start(const char *name,
