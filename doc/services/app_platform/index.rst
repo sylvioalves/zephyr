@@ -17,6 +17,9 @@ are verified rather than asserted.
 .. toctree::
    :maxdepth: 1
 
+   getting_started
+   services
+   targets
    policy
    api
 
@@ -66,9 +69,20 @@ service at all; a *grant* says which instance of a resource it may reach. The
 two produce different errors, and the distinction is deliberate:
 
 * ``-EPERM`` - the application does not hold the capability.
-* ``-EACCES`` - it holds the capability, but this GPIO line, ADC or PWM channel,
-  I2C address, SPI bus, LED pin, RGB LED pixel, display viewport or flash window
-  was not assigned to it.
+* ``-EACCES`` - it holds the capability, but this GPIO line, LED pin, ADC, PWM
+  or DAC channel, I2C address, SPI controller or chip select, counter,
+  regulator or stepper instance, RGB LED pixel, display viewport, flash or
+  EEPROM window or BLE GATT service was not assigned to it. The grants are made
+  with :c:func:`app_platform_grant_gpio`, :c:func:`app_platform_grant_led`,
+  :c:func:`app_platform_grant_adc`, :c:func:`app_platform_grant_pwm`,
+  :c:func:`app_platform_grant_dac`, :c:func:`app_platform_grant_i2c`,
+  :c:func:`app_platform_grant_spi`, :c:func:`app_platform_grant_spi_cs`,
+  :c:func:`app_platform_grant_counter`, :c:func:`app_platform_grant_regulator`,
+  :c:func:`app_platform_grant_stepper`, :c:func:`app_platform_grant_rgb`,
+  :c:func:`app_platform_grant_display`, :c:func:`app_platform_grant_flash`,
+  :c:func:`app_platform_grant_eeprom` and
+  :c:func:`app_platform_grant_ble_gatt`, see
+  :ref:`app_platform_services_catalog`.
 
 Checking the capability first means an application that holds none cannot tell
 an ungranted resource from one that does not exist.
@@ -93,10 +107,21 @@ The capabilities an application holds depend on how it is launched:
 
 :c:func:`app_platform_status` reports the capabilities an application holds.
 
-The GPIO lines, counters, DACs, regulators and steppers that applications reach
-by index are the ones listed in the ``zephyr,app-platform`` devicetree node, in
-index order. A device the node does not list is never reachable by an
-application, whatever else the board describes.
+The devices that applications reach by index are the ones listed in the
+``zephyr,app-platform`` devicetree node, in index order: the first entry of a
+list is instance 0 of that service. A device the node does not list is never
+reachable by an application, whatever else the board describes. The node takes
+these properties, see :zephyr_file:`dts/bindings/misc/zephyr,app-platform.yaml`:
+
+* ``gpios`` - the GPIO lines applications may drive or watch, and
+  ``line-names`` - their names, in the order of ``gpios``, which
+  :c:func:`app_svc_gpio_find` looks up.
+* ``counters`` - the counter devices of the hardware counter service.
+* ``dacs`` - the DAC devices of the analog output service.
+* ``regulators`` - the regulator devices of the regulator service.
+* ``steppers`` - the stepper motor controllers of the stepper service.
+* ``sensors`` - the sensor devices behind the sensor catalog. The first listed
+  device that reports a kind's channel backs that kind.
 
 .. code-block:: devicetree
 
@@ -167,7 +192,8 @@ A supervisor launches applications and acts on faults. An application marked
 resilient is relaunched after a fault, up to
 :kconfig:option:`CONFIG_APP_PLATFORM_MAX_RESTARTS` times; one that keeps
 faulting is left stopped rather than respawning without end. Applications that
-opt into monitoring also get a watchdog channel.
+opt into monitoring also get a watchdog channel, see `Liveness and the
+watchdog`_.
 
 Faults reach the supervisor through :c:func:`k_sys_fatal_error_handler`, which
 the platform defines. An application that needs its own handler disables
@@ -187,11 +213,51 @@ or EEPROM contents, is kept.
 An application that dies inside a service while it owns the service's lock, through a fault in
 the service or a stop that outlasts :kconfig:option:`CONFIG_APP_PLATFORM_STOP_WAIT_MS`, can leave
 the state behind that lock half updated. The service is then disabled: every later call to it
-fails with ``-EIO`` until the next boot. An application that dies while it only waits for the lock
+fails until the next boot, with ``-EBUSY`` from most services and ``-EIO`` from the file
+service. An application that dies while it only waits for the lock
 does not disable the service. The external RAM and ring services still take the region of each
 application reclaimed afterwards out of its domain, and leave that memory allocated. The other
 services keep the resources they held for the applications reclaimed after the lock broke. Other
 services and applications keep running.
+
+.. _app_platform_liveness:
+
+Liveness and the watchdog
+=========================
+
+The platform tells a dead application from a stuck one. Death needs no help
+from the application: every slot has a death watcher, a small thread of
+:kconfig:option:`CONFIG_APP_PLATFORM_WATCHER_STACK_SIZE` bytes that waits for the
+application's entry thread to end. A fault reaches the supervisor first through
+the fatal error handler, and a return from the entry point is seen by the
+watcher. Either way the application is reclaimed. A return is an exit, so the
+application is not relaunched; a fault marks it faulted.
+
+A hang, an application that is alive but no longer makes progress, needs an
+active check, so hang detection is opt-in. An application launched with
+:c:member:`app_def.monitored` set gets a channel of the
+:ref:`task watchdog <task_wdt_api>` with a timeout of
+:kconfig:option:`CONFIG_APP_PLATFORM_WDT_TIMEOUT_MS` when it starts, and must
+call :c:func:`app_svc_heartbeat` more often than that. The call feeds the
+channel of the calling application through :c:func:`app_platform_heartbeat`,
+which supervisor-mode code running on an application thread may call directly. The heartbeat needs
+no capability, and from an application that is not monitored it does nothing,
+so ordinary applications carry no heartbeat burden.
+
+When a monitored application misses its deadline, the watchdog callback logs
+that the application is not responding, marks it faulted and queues it for
+reclaim. The supervisor then reclaims it like a crashed application: its
+threads end, its watchdog channel is deleted, the reaper releases its
+resources, and a resilient built-in application, see
+:c:func:`app_platform_set_restart`, is relaunched with a fresh channel while it
+stays within :kconfig:option:`CONFIG_APP_PLATFORM_MAX_RESTARTS`.
+:c:member:`app_platform_status.faulted` and
+:c:member:`app_platform_status.restarts` report what happened. The platform
+initializes the task watchdog without a hardware fallback channel, and each
+monitored application takes one of the
+:kconfig:option:`CONFIG_TASK_WDT_CHANNELS` channels while it runs. The
+:zephyr_file:`samples/subsys/app_liveness` sample runs a busy application, a
+crashing one and a monitored one that stops feeding its watchdog.
 
 Worker threads
 ==============
@@ -214,6 +280,45 @@ The threads of one application coordinate through semaphores the platform keeps 
 :kconfig:option:`CONFIG_APP_PLATFORM_APP_SEMS` per application. The application names them by
 handle and never holds the kernel object, so the calls behave the same with and without user
 mode. They are released when the application ends.
+
+CPU affinity
+============
+
+On an SMP kernel the platform can keep an application on a subset of the CPUs,
+for example to give a time-critical application a CPU of its own. It needs
+:kconfig:option:`CONFIG_APP_PLATFORM_CPU_AFFINITY`, which depends on
+:kconfig:option:`CONFIG_SMP` and selects :kconfig:option:`CONFIG_SCHED_CPU_MASK`.
+The mask is :c:member:`app_def.cpu_mask` for a built-in application and
+:c:member:`app_launch_opts.cpu_mask`, passed to
+:c:func:`app_platform_launch_llext_opts`, for a loaded one. Bit ``n`` stands for
+CPU ``n``, and 0 lets the application run on any CPU.
+
+The launch checks the mask before it takes a slot. A mask that names a CPU the
+system does not have is refused with ``-EINVAL``, and so is a mask with more
+than one bit when :kconfig:option:`CONFIG_SCHED_CPU_MASK_PIN_ONLY` is enabled. A
+non-zero mask is refused with ``-ENOTSUP`` when the option is disabled. Without
+:kconfig:option:`CONFIG_SMP` the mask is ignored.
+
+The mask is applied to each application thread after it is created and before
+it starts. A mask with one bit pins the thread to that CPU with
+:c:func:`k_thread_cpu_pin`; a mask with several bits clears the thread's CPU
+mask and enables each named CPU. The entry thread gets it at every start, and
+every worker started with :c:func:`app_svc_thread_spawn` gets the same mask,
+so all threads of an application stay on its CPUs. The mask is part of the
+slot, so it is kept across :c:func:`app_platform_stop` and
+:c:func:`app_platform_start` and when the supervisor relaunches the application
+after a fault. The platform's own threads, the supervisor, the reaper and the
+death watchers, are not restricted.
+
+.. code-block:: c
+
+   const struct app_def def = {
+           .name = "control",
+           .source = APP_BUILTIN,
+           .entry = control_main,
+           .caps = APP_CAP_LOG | APP_CAP_TIME,
+           .cpu_mask = BIT(1),
+   };
 
 Per-application heap
 ====================
@@ -689,27 +794,116 @@ Configuration
 
 The platform is enabled with :kconfig:option:`CONFIG_APP_PLATFORM` and its
 services are opted into individually, so an image links only what it uses. The
-main options are:
+platform requires :kconfig:option:`CONFIG_TASK_WDT`. It enables
+:kconfig:option:`CONFIG_USERSPACE` by default where the architecture supports
+it; see `Without user mode`_ for builds without it. A firmware that defines
+system calls of its own, as every sample does, also sets
+:kconfig:option:`CONFIG_APPLICATION_DEFINED_SYSCALL`.
+
+Each service has its own option, listed with the service in
+:ref:`app_platform_services_catalog`. The other options fall into these groups.
+
+Slots and threads
+=================
 
 * :kconfig:option:`CONFIG_APP_PLATFORM_MAX_APPS` - concurrent application slots.
-  Each reserves a thread stack at build time.
+  Each reserves a thread stack and a death watcher at build time, and a memory
+  domain with user mode.
+* :kconfig:option:`CONFIG_APP_PLATFORM_APP_STACK_SIZE` - the stack of each
+  application's entry thread.
+* :kconfig:option:`CONFIG_APP_PLATFORM_APP_PRIORITY` - the preemptible priority
+  application threads run at. Keep it below the supervisor.
+* :kconfig:option:`CONFIG_APP_PLATFORM_APP_THREADS` and
+  :kconfig:option:`CONFIG_APP_PLATFORM_APP_THREAD_STACK_SIZE` - worker threads
+  per application and their stack, see `Worker threads`_.
+* :kconfig:option:`CONFIG_APP_PLATFORM_APP_SEMS` - semaphores per application.
+* :kconfig:option:`CONFIG_APP_PLATFORM_CPU_AFFINITY` - per-application CPU
+  masks on SMP, see `CPU affinity`_.
+* :kconfig:option:`CONFIG_APP_PLATFORM_APP_HEAP_POOL_SIZE` - internal RAM for
+  per-application heaps, zero to leave the feature out, and
+  :kconfig:option:`CONFIG_APP_PLATFORM_APP_HEAP_MAX_BYTES` - the largest heap
+  one application may declare, see `Per-application heap`_.
+
+Supervision
+===========
+
+* :kconfig:option:`CONFIG_APP_PLATFORM_MAX_RESTARTS` - relaunches of a
+  resilient application after a fault, zero for no limit.
+* :kconfig:option:`CONFIG_APP_PLATFORM_WDT_TIMEOUT_MS` - the liveness timeout of
+  monitored applications, see `Liveness and the watchdog`_.
+* :kconfig:option:`CONFIG_APP_PLATFORM_STOP_WAIT_MS` - how long a stopped
+  application may stay inside a service to release its locks.
+* :kconfig:option:`CONFIG_APP_PLATFORM_FATAL_HANDLER` - whether the platform
+  defines :c:func:`k_sys_fatal_error_handler`.
+* :kconfig:option:`CONFIG_APP_PLATFORM_RECLAIM_HOOKS` - how many services can
+  register a reclaim hook with :c:func:`app_platform_on_reclaim`.
+* :kconfig:option:`CONFIG_APP_PLATFORM_SUPERVISOR_PRIORITY`,
+  :kconfig:option:`CONFIG_APP_PLATFORM_SUPERVISOR_STACK_SIZE`,
+  :kconfig:option:`CONFIG_APP_PLATFORM_WATCHER_STACK_SIZE`,
+  :kconfig:option:`CONFIG_APP_PLATFORM_REAPER_PRIORITY` and
+  :kconfig:option:`CONFIG_APP_PLATFORM_REAPER_STACK_SIZE` - the platform's own
+  threads. The supervisor and the death watchers run above every application;
+  the reaper runs below the supervisor.
+
+Loader and registry
+===================
+
 * :kconfig:option:`CONFIG_APP_PLATFORM_LOADER` - load and verify signed llext
-  modules.
+  modules. It needs :kconfig:option:`CONFIG_LLEXT` and
+  :kconfig:option:`CONFIG_PSA_CRYPTO`.
+* :kconfig:option:`CONFIG_APP_PLATFORM_LOADER_FILE_IN_RAM` - verify and link a
+  module stored in a file from one private copy in RAM, rather than hashing the
+  file as a stream and linking from it.
+* :kconfig:option:`CONFIG_APP_PLATFORM_LOADER_MAX_MODULE_BYTES` - the llext
+  memory one module may take; a larger module is refused.
 * :kconfig:option:`CONFIG_APP_PLATFORM_KEYS_FILE` - the publisher keys trusted
-  to sign them, and :kconfig:option:`CONFIG_APP_PLATFORM_DEV_KEY` - whether the
-  development key is trusted too, see `Signing keys`_.
+  to sign modules, and :kconfig:option:`CONFIG_APP_PLATFORM_DEV_KEY` with
+  :kconfig:option:`CONFIG_APP_PLATFORM_DEV_KEY_FILE` - whether the development
+  key is trusted too, see `Signing keys`_.
 * :kconfig:option:`CONFIG_APP_PLATFORM_EDK` - the development kit for modules
   built outside the tree, see `Building applications outside the tree`_.
+* :kconfig:option:`CONFIG_LLEXT_EXPORT_SYMBOL_GROUP_APP_ABI` - export the module
+  interface functions, see `Module interface`_.
 * :kconfig:option:`CONFIG_APP_PLATFORM_REGISTRY` - persist which applications
-  are installed, and which start at boot.
-* :kconfig:option:`CONFIG_APP_PLATFORM_SERVICES` - the shared, capability-gated
-  service library.
-* :kconfig:option:`CONFIG_APP_PLATFORM_APP_HEAP_POOL_SIZE` - internal RAM for
-  per-application heaps. Zero leaves the feature out.
+  are installed, and which start at boot, with
+  :kconfig:option:`CONFIG_APP_PLATFORM_REGISTRY_MAX_APPS`,
+  :kconfig:option:`CONFIG_APP_PLATFORM_REGISTRY_NAME_MAX` and
+  :kconfig:option:`CONFIG_APP_PLATFORM_REGISTRY_MOUNT_POINT`.
 
-The platform requires :kconfig:option:`CONFIG_TASK_WDT`. It enables
-:kconfig:option:`CONFIG_USERSPACE` by default where the architecture supports it; see
-`Without user mode`_ for builds without it.
+Service limits
+==============
+
+The services size their buffers and tables at build time. The main limits are:
+
+* :kconfig:option:`CONFIG_APP_PLATFORM_BUS_XFER_MAX` - the largest I2C, SPI or
+  UART transfer in one call, and
+  :kconfig:option:`CONFIG_APP_PLATFORM_UART_RX_BUF` - the secondary UART receive
+  buffer.
+* :kconfig:option:`CONFIG_APP_PLATFORM_I2C_ADDRS` - I2C addresses per
+  application, and :kconfig:option:`CONFIG_APP_PLATFORM_I2C_ERROR_LIMIT` -
+  failed transfers in a row before an application loses its addresses.
+* :kconfig:option:`CONFIG_APP_PLATFORM_CAN_FILTERS` and
+  :kconfig:option:`CONFIG_APP_PLATFORM_CAN_RX_DEPTH` - CAN filters and queued
+  frames per application.
+* :kconfig:option:`CONFIG_APP_PLATFORM_EVENT_QUEUE_LEN` - events buffered per
+  application.
+* :kconfig:option:`CONFIG_APP_PLATFORM_FS_OPEN_FILES`,
+  :kconfig:option:`CONFIG_APP_PLATFORM_FS_PATH_MAX` and
+  :kconfig:option:`CONFIG_APP_PLATFORM_FS_XFER_MAX` - the file service's shared
+  open-file table, path length and transfer size.
+* :kconfig:option:`CONFIG_APP_PLATFORM_EEPROM_XFER_MAX` - the largest EEPROM
+  read or write.
+* :kconfig:option:`CONFIG_APP_PLATFORM_DISPLAY_XFER_MAX` - the display staging
+  buffer of each application.
+* :kconfig:option:`CONFIG_APP_PLATFORM_SENSOR_READ_N_MAX` - samples in one
+  multi-sample sensor read.
+* :kconfig:option:`CONFIG_APP_PLATFORM_RING_MAX_BYTES` and
+  :kconfig:option:`CONFIG_APP_PLATFORM_PSRAM_MAX_BYTES` - the largest ring and
+  external RAM region one application may map.
+* :kconfig:option:`CONFIG_APP_PLATFORM_NET_DGRAM_MAX` - the largest socket
+  datagram.
+* :kconfig:option:`CONFIG_APP_PLATFORM_BLE_GATT_MAX_SERVICES` - GATT service
+  UUIDs granted per application.
 
 API status
 **********
