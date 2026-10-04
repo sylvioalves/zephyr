@@ -95,6 +95,61 @@ Every target with user mode also builds the platform with
 :kconfig:option:`CONFIG_USERSPACE` disabled, and the same signed module runs in
 both builds, see :ref:`app_platform_abi_stability`.
 
+Cost when the platform is disabled
+**********************************
+
+With :kconfig:option:`CONFIG_APP_PLATFORM` disabled, no platform code is built.
+The platform relies on changes to shared code, though, and those are built into
+every firmware that enables the subsystem they belong to:
+
+* Memory domains: a partition the architecture refuses is removed from the
+  domain again, and the index of a released thread returns to the pool. Every
+  build with :kconfig:option:`CONFIG_USERSPACE`.
+* Arm MPU: :kconfig:option:`CONFIG_ARM_MPU` selects
+  :kconfig:option:`CONFIG_ARCH_MEM_DOMAIN_SYNCHRONOUS_API`, so a change to the
+  domain of the running thread takes effect at once rather than at its next
+  context switch. Every Arm MPU build with :kconfig:option:`CONFIG_USERSPACE`.
+* RISC-V PMP: adjacent domain partitions share entries, a partition that does
+  not fit is refused, domain changes reach the other CPUs, and user entries are
+  cleared on entry to kernel mode. Every RISC-V build with
+  :kconfig:option:`CONFIG_USERSPACE`.
+* LLEXT: the region copy is rewritten, code bound for non-executable RISC-V
+  memory is refused, and the integer division helpers of the compiler run-time
+  are exported in the ``LIBC`` symbol group, which links them into every image
+  with :kconfig:option:`CONFIG_LLEXT`.
+* The common C library: an arena too small for a heap leaves the heap
+  uninitialized and allocations fail.
+
+The table gives the growth these changes cause in firmware without the
+platform, in bytes of code and read-only data, with the growth of zero-initialized
+RAM in parentheses where there is any. Each figure compares the same build with
+and without the changes.
+
+.. list-table::
+   :header-rows: 1
+   :widths: 31 23 23 23
+
+   * - Board
+     - :zephyr:code-sample:`hello_world`
+     - ``tests/kernel/mem_protect/userspace``
+     - :zephyr:code-sample:`llext-shell-loader`
+   * - ``mps2/an385``, Armv7-M MPU
+     - 4
+     - 464
+     - 296
+   * - ``qemu_riscv32``, RISC-V PMP
+     - 12
+     - 536 (80)
+     - 458
+   * - ``qemu_cortex_a53``, AArch64 MMU
+     - 0
+     - 94
+     - 0
+
+The user mode figures are mostly the memory domain hooks of each architecture,
+and the LLEXT ones mostly the exported division helpers and the region copy.
+The figures cover size only, not execution time.
+
 Board files
 ***********
 
