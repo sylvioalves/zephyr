@@ -38,6 +38,9 @@
  * instead of being parked for ever behind a stuck request.
  */
 #define BLE_LOCK_MARGIN_MS 2000U
+/* How long a reclaim waits for the BLE lock and for a GATT link to drop. */
+#define GATT_RELEASE_LOCK_MS 5000U
+#define GATT_DROP_WAIT_MS    2000U
 
 static SVC_LOCK_DEFINE(ble_lock);
 static K_SEM_DEFINE(found_sem, 0, 1);
@@ -57,12 +60,14 @@ enum ble_op {
 	BLE_OP_OTA_FETCH,
 	BLE_OP_GATT_READ,
 	BLE_OP_GATT_WRITE,
+	BLE_OP_GATT_DROP,
 };
 
 struct ble_req {
 	enum ble_op op;
 	char        name[BLE_NAME_MAX];
 	uint32_t    timeout_ms;
+	int         owner;
 };
 
 K_MSGQ_DEFINE(ble_req_q, sizeof(struct ble_req), 1, 4);
@@ -404,6 +409,10 @@ static uint8_t gatt_value[APP_BLE_GATT_MAX];
 static size_t gatt_value_len;
 
 static struct bt_conn *gatt_conn;
+/* Peer the GATT link goes to, and the application that last used it. */
+static char gatt_peer[BLE_NAME_MAX];
+static int gatt_owner = -1;
+static K_SEM_DEFINE(gatt_gone, 0, 1);
 static char gatt_want[BLE_NAME_MAX];
 static bool gatt_connect_wanted;
 static uint16_t gatt_chr_handle;
@@ -528,6 +537,20 @@ static void gatt_disconnected(struct bt_conn *conn, uint8_t reason)
 	if (conn == gatt_conn) {
 		bt_conn_unref(gatt_conn);
 		gatt_conn = NULL;
+		gatt_owner = -1;
+		k_sem_give(&gatt_gone);
+	}
+}
+
+/* Drop the GATT link and wait for it to go. Runs on the BLE worker thread. */
+static void gatt_drop(void)
+{
+	if (gatt_conn == NULL) {
+		return;
+	}
+	k_sem_reset(&gatt_gone);
+	if (bt_conn_disconnect(gatt_conn, BT_HCI_ERR_REMOTE_USER_TERM_CONN) == 0) {
+		(void)k_sem_take(&gatt_gone, K_MSEC(GATT_DROP_WAIT_MS));
 	}
 }
 
@@ -577,13 +600,20 @@ static void gatt_scan_cb(const bt_addr_le_t *addr, int8_t rssi, uint8_t type,
 /* Connect to the named peer, discover the requested characteristic and perform
  * one exchange. Runs on the BLE worker thread.
  */
-static int ble_do_gatt(bool is_write, const char *name, uint32_t timeout_ms)
+static int ble_do_gatt(bool is_write, const char *name, uint32_t timeout_ms, int owner)
 {
 	int rc = ble_ensure_enabled();
 
 	if (rc != 0) {
 		return rc;
 	}
+	if (gatt_conn != NULL && strcmp(gatt_peer, name) != 0) {
+		gatt_drop();
+		if (gatt_conn != NULL) {
+			return -EBUSY;
+		}
+	}
+	gatt_owner = owner;
 
 	strncpy(gatt_want, name, sizeof(gatt_want) - 1);
 	gatt_want[sizeof(gatt_want) - 1] = '\0';
@@ -597,6 +627,7 @@ static int ble_do_gatt(bool is_write, const char *name, uint32_t timeout_ms)
 	if (gatt_conn == NULL) {
 		gatt_connect_wanted = true;
 		k_sem_reset(&gatt_ready);
+		memcpy(gatt_peer, gatt_want, sizeof(gatt_peer));
 
 		struct bt_le_scan_param sp = {
 			.type = BT_LE_SCAN_TYPE_ACTIVE,
@@ -683,7 +714,13 @@ static void ble_thread(void *a, void *b, void *c)
 		case BLE_OP_GATT_READ:
 		case BLE_OP_GATT_WRITE:
 			ble_result = ble_do_gatt(req.op == BLE_OP_GATT_WRITE,
-						 req.name, req.timeout_ms);
+						 req.name, req.timeout_ms, req.owner);
+			break;
+		case BLE_OP_GATT_DROP:
+			if (gatt_owner == req.owner) {
+				gatt_drop();
+			}
+			ble_result = 0;
 			break;
 #endif
 		default:
@@ -1176,6 +1213,7 @@ static int gatt_request(bool is_write, const char *name,
 	struct ble_req req = {
 		.op = is_write ? BLE_OP_GATT_WRITE : BLE_OP_GATT_READ,
 		.timeout_ms = timeout_ms,
+		.owner = app_platform_id_current(),
 	};
 
 	strncpy(req.name, name, sizeof(req.name) - 1);
@@ -1232,6 +1270,34 @@ int z_impl_app_svc_ble_gatt_write(const char *name,
 
 	return (rc > 0) ? 0 : rc;
 }
+
+/* Drop the GATT link of an application as it is reclaimed, so the peer is free
+ * for the next one. A lock left broken by the dead application means its own
+ * request may still be in flight, so the link is left alone then.
+ */
+static void ble_release(int id)
+{
+	struct ble_req req = { .op = BLE_OP_GATT_DROP, .owner = id };
+	int rc;
+
+	if (gatt_owner != id) {
+		return;
+	}
+	rc = app_service_lock_reclaim(&ble_lock, K_MSEC(GATT_RELEASE_LOCK_MS));
+	if (rc != 0) {
+		return;
+	}
+	if (k_msgq_put(&ble_req_q, &req, K_NO_WAIT) == 0) {
+		(void)k_sem_take(&ble_done, K_MSEC(GATT_DROP_WAIT_MS + BLE_LOCK_MARGIN_MS));
+	}
+	(void)app_service_unlock(&ble_lock);
+}
+
+static int ble_service_init(void)
+{
+	return app_platform_on_reclaim(ble_release);
+}
+SYS_INIT(ble_service_init, APPLICATION, 99);
 #endif /* CONFIG_APP_PLATFORM_BLE_GATT */
 
 #ifdef CONFIG_USERSPACE
