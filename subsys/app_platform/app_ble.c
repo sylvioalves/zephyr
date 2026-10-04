@@ -385,6 +385,13 @@ void app_platform_grant_ble_gatt(int id, const uint8_t *uuid, size_t uuid_len)
 	}
 }
 
+void app_platform_clear_ble_gatt_grants(int id)
+{
+	if (id >= 0 && id < MAX_APPS) {
+		(void)memset(gatt_grants[id], 0, sizeof(gatt_grants[id]));
+	}
+}
+
 bool app_platform_ble_gatt_granted(int id, const uint8_t *uuid, size_t uuid_len)
 {
 	if (id < 0 || id >= MAX_APPS) {

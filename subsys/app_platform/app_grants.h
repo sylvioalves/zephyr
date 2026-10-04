@@ -155,6 +155,15 @@ static inline void app_platform_clear_radio(int id)
 }
 #endif
 
+#ifdef CONFIG_APP_PLATFORM_BLE_GATT
+void app_platform_clear_ble_gatt_grants(int id);
+#else
+static inline void app_platform_clear_ble_gatt_grants(int id)
+{
+	ARG_UNUSED(id);
+}
+#endif
+
 #ifdef CONFIG_APP_PLATFORM_CAN
 void app_platform_clear_can(int id);
 #else

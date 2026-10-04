@@ -557,6 +557,9 @@ static void clear_grants(int id)
 	if (IS_ENABLED(CONFIG_APP_PLATFORM_RADIO)) {
 		app_platform_clear_radio(id);
 	}
+	if (IS_ENABLED(CONFIG_APP_PLATFORM_BLE_GATT)) {
+		app_platform_clear_ble_gatt_grants(id);
+	}
 	if (IS_ENABLED(CONFIG_APP_PLATFORM_SERVICES)) {
 		app_platform_clear_flash_grants(id);
 		app_platform_clear_ipc(id);
