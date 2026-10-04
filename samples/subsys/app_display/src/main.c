@@ -31,7 +31,7 @@
 
 static const struct device *const panel = DEVICE_DT_GET(PANEL_NODE);
 
-static const uint8_t display_app[] = {
+static const uint8_t display_app[] __aligned(8) = {
 #include "display_app.inc"
 };
 static const uint8_t display_app_hash[32] = {

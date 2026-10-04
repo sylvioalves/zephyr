@@ -18,19 +18,19 @@
 #include <zephyr/kernel.h>
 #include <zephyr/sys/printk.h>
 
-static const uint8_t consumer_app[] = {
+static const uint8_t consumer_app[] __aligned(8) = {
 #include "consumer.inc"
 };
 static const uint8_t consumer_hash[32] = {
 #include "consumer.sha256.inc"
 };
-static const uint8_t logger_app[] = {
+static const uint8_t logger_app[] __aligned(8) = {
 #include "logger.inc"
 };
 static const uint8_t logger_hash[32] = {
 #include "logger.sha256.inc"
 };
-static const uint8_t producer_app[] = {
+static const uint8_t producer_app[] __aligned(8) = {
 #include "producer.inc"
 };
 static const uint8_t producer_hash[32] = {

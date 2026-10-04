@@ -16,7 +16,7 @@
 #include <zephyr/kernel.h>
 #include <zephyr/sys/printk.h>
 
-static const uint8_t bench_app[] = {
+static const uint8_t bench_app[] __aligned(8) = {
 #include "bench.inc"
 };
 static const uint8_t bench_hash[32] = {

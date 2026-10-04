@@ -17,7 +17,7 @@
 
 #define RGB_APP_WAIT_MS 30000
 
-static const uint8_t rgb_app[] = {
+static const uint8_t rgb_app[] __aligned(8) = {
 #include "rgb_app.inc"
 };
 static const uint8_t rgb_app_hash[32] = {

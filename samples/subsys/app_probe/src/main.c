@@ -20,7 +20,7 @@
 #include <zephyr/kernel.h>
 #include <zephyr/sys/printk.h>
 
-static const uint8_t probe_app[] = {
+static const uint8_t probe_app[] __aligned(8) = {
 #include "probe_app.inc"
 };
 static const uint8_t probe_app_hash[32] = {

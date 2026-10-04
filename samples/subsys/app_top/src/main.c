@@ -21,7 +21,7 @@
 #include <zephyr/kernel.h>
 #include <zephyr/sys/printk.h>
 
-static const uint8_t app_bytes[] = {
+static const uint8_t app_bytes[] __aligned(8) = {
 #include "loop_app.inc"
 };
 static const uint8_t app_hash[32] = {

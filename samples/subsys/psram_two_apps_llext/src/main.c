@@ -20,7 +20,7 @@
 #include <zephyr/kernel.h>
 #include <zephyr/sys/printk.h>
 
-static const uint8_t psram_app[] = {
+static const uint8_t psram_app[] __aligned(8) = {
 #include "psram.inc"
 };
 static const uint8_t psram_hash[32] = {

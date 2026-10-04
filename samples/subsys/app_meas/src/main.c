@@ -24,7 +24,7 @@ extern struct k_heap _system_heap;
 extern struct k_heap llext_heap;
 
 
-static const uint8_t meas0_bytes[] = {
+static const uint8_t meas0_bytes[] __aligned(8) = {
 #include "meas0.inc"
 };
 static const uint8_t meas0_mf[] = {
@@ -36,7 +36,7 @@ static const uint8_t meas0_sig[] = {
 static const uint8_t meas0_sha[32] = {
 #include "meas0.sha256.inc"
 };
-static const uint8_t meas4_bytes[] = {
+static const uint8_t meas4_bytes[] __aligned(8) = {
 #include "meas4.inc"
 };
 static const uint8_t meas4_mf[] = {
@@ -48,7 +48,7 @@ static const uint8_t meas4_sig[] = {
 static const uint8_t meas4_sha[32] = {
 #include "meas4.sha256.inc"
 };
-static const uint8_t meas16_bytes[] = {
+static const uint8_t meas16_bytes[] __aligned(8) = {
 #include "meas16.inc"
 };
 static const uint8_t meas16_mf[] = {
@@ -60,7 +60,7 @@ static const uint8_t meas16_sig[] = {
 static const uint8_t meas16_sha[32] = {
 #include "meas16.sha256.inc"
 };
-static const uint8_t meas64_bytes[] = {
+static const uint8_t meas64_bytes[] __aligned(8) = {
 #include "meas64.inc"
 };
 static const uint8_t meas64_mf[] = {

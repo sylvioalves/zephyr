@@ -18,7 +18,7 @@
 #include <zephyr/kernel.h>
 #include <zephyr/sys/printk.h>
 
-static const uint8_t temp_app[] = {
+static const uint8_t temp_app[] __aligned(8) = {
 #include "temp_app.inc"
 };
 static const uint8_t temp_app_hash[32] = {

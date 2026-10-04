@@ -29,7 +29,7 @@
 /* The "downloaded" release: module bytes, the signed manifest binding name,
  * version and hash, and its signature.
  */
-static uint8_t module_buf[] = {
+static uint8_t module_buf[] __aligned(8) = {
 #include "blink_app.inc"
 };
 static const uint8_t module_manifest[] = {

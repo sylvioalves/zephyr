@@ -22,7 +22,7 @@
 
 #define APP_CAPS (APP_CAP_LOG | APP_CAP_TIME | APP_CAP_NET | APP_CAP_SOCKET)
 
-static const uint8_t net_app[] = {
+static const uint8_t net_app[] __aligned(8) = {
 #include "net_app.inc"
 };
 static const uint8_t net_hash[32] = {

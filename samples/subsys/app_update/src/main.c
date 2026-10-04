@@ -19,14 +19,14 @@
 #include <zephyr/kernel.h>
 #include <zephyr/sys/printk.h>
 
-static const uint8_t app_v1[] = {
+static const uint8_t app_v1[] __aligned(8) = {
 #include "app_v1.inc"
 };
 static const uint8_t app_v1_hash[32] = {
 #include "app_v1.sha256.inc"
 };
 
-static const uint8_t app_v2[] = {
+static const uint8_t app_v2[] __aligned(8) = {
 #include "app_v2.inc"
 };
 static const uint8_t app_v2_hash[32] = {

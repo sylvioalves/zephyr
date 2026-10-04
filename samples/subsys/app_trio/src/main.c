@@ -21,19 +21,19 @@
 #include <zephyr/kernel.h>
 #include <zephyr/sys/printk.h>
 
-static const uint8_t pub_app[] = {
+static const uint8_t pub_app[] __aligned(8) = {
 #include "pub_app.inc"
 };
 static const uint8_t pub_hash[32] = {
 #include "pub_app.sha256.inc"
 };
-static const uint8_t bridge_app[] = {
+static const uint8_t bridge_app[] __aligned(8) = {
 #include "bridge_app.inc"
 };
 static const uint8_t bridge_hash[32] = {
 #include "bridge_app.sha256.inc"
 };
-static const uint8_t print_app[] = {
+static const uint8_t print_app[] __aligned(8) = {
 #include "print_app.inc"
 };
 static const uint8_t print_hash[32] = {

@@ -29,7 +29,7 @@
 #define APP_CAPS (APP_CAP_LOG | APP_CAP_TIME)
 #define LLEXT_PSRAM_HEAP (512 * 1024)
 
-static const uint8_t loop_app[] = {
+static const uint8_t loop_app[] __aligned(8) = {
 #include "loop_app.inc"
 };
 static const uint8_t loop_hash[32] = {

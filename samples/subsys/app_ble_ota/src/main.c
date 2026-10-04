@@ -29,7 +29,7 @@
 #include <zephyr/fs/fs.h>
 #include <string.h>
 
-static const uint8_t fetcher_app[] = {
+static const uint8_t fetcher_app[] __aligned(8) = {
 #include "fetcher_app.inc"
 };
 static const uint8_t fetcher_hash[32] = {

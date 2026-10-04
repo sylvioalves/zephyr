@@ -20,7 +20,7 @@
 #include <zephyr/llext/llext.h>
 #include <zephyr/multi_heap/shared_multi_heap.h>
 
-static const uint8_t hello_app[] = {
+static const uint8_t hello_app[] __aligned(8) = {
 #include "hello.inc"
 };
 static const uint8_t hello_hash[32] = {
