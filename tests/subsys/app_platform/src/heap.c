@@ -54,6 +54,9 @@ struct heap_report {
 
 K_APP_BMEM(heap_part) static struct heap_report rep;
 
+/* Heap size of the last launch, read before the application started. */
+static size_t launched_heap;
+
 #ifdef CONFIG_USERSPACE
 /* Domains the report partition was added to. */
 static struct k_mem_domain *doms[CONFIG_APP_PLATFORM_MAX_APPS];
@@ -103,6 +106,14 @@ static bool wait_done(int ms)
 	return rep.done;
 }
 
+static size_t heap_bytes(int id)
+{
+	struct app_platform_status st;
+
+	zassert_equal(app_platform_status(id, &st), 0);
+	return st.heap_bytes;
+}
+
 static int launch(const char *name, app_entry_t entry, app_caps_t caps, size_t heap_size)
 {
 	const struct app_def def = {
@@ -126,17 +137,10 @@ static int launch(const char *name, app_entry_t entry, app_caps_t caps, size_t h
 	}
 #endif
 	if (id >= 0) {
+		launched_heap = heap_bytes(id);
 		zassert_equal(app_platform_start(id), id, "%s did not start", name);
 	}
 	return id;
-}
-
-static size_t heap_bytes(int id)
-{
-	struct app_platform_status st;
-
-	zassert_equal(app_platform_status(id, &st), 0);
-	return st.heap_bytes;
 }
 
 static bool in_region(const void *p, size_t len, uintptr_t base, size_t size)
@@ -216,7 +220,7 @@ ZTEST(memheap, test_alloc_free_calloc_realloc_aligned)
 	size_t bytes;
 
 	zassert_true(id >= 0, "launch rc %d", id);
-	bytes = heap_bytes(id);
+	bytes = launched_heap;
 	zassert_true(bytes >= HEAP_SZ + sizeof(struct app_heap_region), "heap of %zu bytes", bytes);
 	zassert_true(wait_slot_free("hbasic", 3000), "hbasic never ended");
 	zassert_equal(rep.rc[0], 0, "heap info rc %d", rep.rc[0]);
@@ -257,7 +261,7 @@ ZTEST(memheap, test_exhaustion_returns_null)
 	size_t bytes;
 
 	zassert_true(id >= 0, "launch rc %d", id);
-	bytes = heap_bytes(id);
+	bytes = launched_heap;
 	zassert_true(wait_slot_free("hfull", 3000), "hfull never ended");
 	zassert_true(rep.rc[0] > 0, "no allocation succeeded");
 	zassert_true((size_t)rep.rc[0] * 32U <= bytes, "%d blocks from %zu bytes", rep.rc[0],
@@ -387,7 +391,7 @@ ZTEST(memheap, test_no_heap_declared)
 	int id = launch("hnone", no_heap_app, APP_CAP_LOG, 0U);
 
 	zassert_true(id >= 0, "launch rc %d", id);
-	zassert_equal(heap_bytes(id), 0U);
+	zassert_equal(launched_heap, 0U);
 	zassert_true(wait_slot_free("hnone", 3000));
 	zassert_equal(rep.rc[0], -ENOENT, "heap info rc %d", rep.rc[0]);
 	zassert_equal(rep.rc[1], 0, "allocated without a heap");
@@ -466,6 +470,8 @@ ZTEST(memheap, test_loaded_module_gets_its_signed_heap)
 	struct llext *ext = NULL;
 	void *entry = NULL;
 	uint8_t *buf = k_malloc(sizeof(mod_bytes));
+	const struct app_launch_opts opts = { .stopped = true };
+	size_t bytes;
 	int id;
 
 	zassert_not_null(buf);
@@ -497,9 +503,12 @@ ZTEST(memheap, test_loaded_module_gets_its_signed_heap)
 #endif
 
 	module_watch(mf.name);
-	id = app_platform_launch_llext(mf.name, ext, (app_entry_t)entry, HEAP_PROBE, APP_CAP_LOG);
+	id = app_platform_launch_llext_opts(mf.name, ext, (app_entry_t)entry, HEAP_PROBE,
+					    APP_CAP_LOG, &opts);
 	zassert_true(id >= 0, "launch rc %d", id);
-	zassert_true(heap_bytes(id) >= mf.heap_size, "heap of %zu bytes", heap_bytes(id));
+	bytes = heap_bytes(id);
+	zassert_equal(app_platform_start(id), id, "%s did not start", mf.name);
+	zassert_true(bytes >= mf.heap_size, "heap of %zu bytes", bytes);
 	zassert_equal(module_wait_end(id, 3000), 0, "the module's heap probe failed");
 	k_free(buf);
 }
