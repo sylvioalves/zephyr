@@ -225,6 +225,8 @@ static void limit_app(void *arg)
 	rep.rc[0] = app_svc_thread_spawn(count_worker, NULL, 0);
 	for (int i = 0; i < WORKERS; i++) {
 		(void)app_svc_sem_give(s);
+	}
+	for (int i = 0; i < WORKERS; i++) {
 		(void)app_svc_thread_join(h[i], -1);
 	}
 	rep.rc[1] = app_svc_thread_spawn(count_worker, NULL, 0);
