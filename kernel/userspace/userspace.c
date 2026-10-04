@@ -718,6 +718,11 @@ static void unref_check(struct k_object *ko, uintptr_t index, bool locked)
 			(void)z_timer_cleanup((struct k_timer *)ko->name, locked);
 		}
 		break;
+	case K_OBJ_THREAD:
+		/* Return the thread index to the free pool. */
+		_thread_idx_map[ko->data.thread_id / NUM_BITS(_thread_idx_map[0])] |=
+			BIT(ko->data.thread_id % NUM_BITS(_thread_idx_map[0]));
+		break;
 	default:
 		/* Nothing to do */
 		break;
