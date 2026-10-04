@@ -227,6 +227,34 @@ ZTEST(object_validation, test_kobj_freed_when_unreferenced)
 	zassert_true(ret == -EBADF, "Dynamic kernel object not released");
 }
 
+/**
+ * @brief Test that a released dynamic thread object returns its thread index
+ *
+ * @details Each dynamic thread object holds one of the thread indexes that
+ * track object permissions. Releasing the object must return that index, or
+ * repeated allocations run out of indexes.
+ *
+ * Test steps:
+ * - Allocate a thread object and revoke the only permission on it, more times
+ *   than there are thread indexes.
+ *
+ * Expected result:
+ * - Every allocation succeeds.
+ *
+ * @see k_object_alloc()
+ * @see k_object_access_revoke()
+ */
+ZTEST(object_validation, test_kobj_thread_index_reused)
+{
+	struct k_thread *thread;
+
+	for (int i = 0; i <= CONFIG_MAX_THREAD_BYTES * 8; i++) {
+		thread = k_object_alloc(K_OBJ_THREAD);
+		zassert_not_null(thread, "thread object %d not allocated", i);
+		k_object_access_revoke(thread, _current);
+	}
+}
+
 void *object_validation_setup(void)
 {
 	k_thread_system_pool_assign(k_current_get());
