@@ -101,6 +101,8 @@ int main(void)
 			NULL, NULL, NULL, 5, K_USER, K_NO_WAIT);
 #endif
 	uint32_t last = 0;
+	int64_t start;
+	int64_t now;
 
 #ifdef TWO_BUSY
 	/* Two busy user threads, equal priority, timeslice reschedules them. */
@@ -139,11 +141,12 @@ int main(void)
 	k_timer_start(&tick, K_MSEC(POLL_MS), K_MSEC(POLL_MS));
 	k_sem_take(&never, K_FOREVER);
 #endif
-	for (uint32_t i = 0; i < 8000U / POLL_MS; i++) {
-		k_msleep(POLL_MS);
-		if ((i % (1000U / POLL_MS)) == 0) {
+	start = k_uptime_get();
+	while ((now = k_uptime_get() - start) < 8000) {
+		if (now >= (int64_t)last * 1000) {
 			printk("alive %u s\n", last++);
 		}
+		k_msleep(POLL_MS);
 	}
 	printk("*** app_lock survived 8 s, no lockup ***\n");
 	return 0;

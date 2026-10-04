@@ -1,0 +1,15 @@
+/*
+ * Copyright (c) 2026 Espressif Systems (Shanghai) Co., Ltd.
+ *
+ * SPDX-License-Identifier: Apache-2.0
+ */
+
+/* Declare the base counters so user threads may read the cycle counter on
+ * every hart.
+ */
+/ {
+	cpus {
+		riscv,isa-extensions = "i", "m", "a", "f", "d", "c", "zicsr", "zifencei", "zkr",
+				       "zicntr";
+	};
+};
