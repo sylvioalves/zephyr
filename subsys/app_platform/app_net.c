@@ -174,6 +174,8 @@ static struct sockaddr_storage broker_addr;
 static bool link_started;
 static bool link_ready;
 static bool link_failed;
+/* The access point refused the association in flight. */
+static bool assoc_refused;
 static bool broker_resolved;
 /* Set by app_svc_wifi_connect/disconnect; serviced on the supervisor net thread. */
 static bool reconnect_req;
@@ -274,11 +276,15 @@ static void ipv4_evt(struct net_mgmt_event_callback *cb, uint64_t ev,
 static void wifi_evt(struct net_mgmt_event_callback *cb, uint64_t ev,
 		     struct net_if *iface)
 {
-	ARG_UNUSED(cb);
+	const struct wifi_status *st = cb->info;
+
 	ARG_UNUSED(iface);
 
 	if (ev == NET_EVENT_WIFI_DISCONNECT_RESULT) {
 		link_lost();
+	} else if (ev == NET_EVENT_WIFI_CONNECT_RESULT && st != NULL && st->status != 0) {
+		assoc_refused = true;
+		k_sem_give(&net_ready_sem);
 	}
 }
 
@@ -294,6 +300,7 @@ static void link_events_init(void)
 	net_mgmt_add_event_callback(&ipv4_cb);
 	if (IS_ENABLED(CONFIG_APP_PLATFORM_NET_LINK_WIFI)) {
 		net_mgmt_init_event_callback(&wifi_cb, wifi_evt,
+					     NET_EVENT_WIFI_CONNECT_RESULT |
 					     NET_EVENT_WIFI_DISCONNECT_RESULT);
 		net_mgmt_add_event_callback(&wifi_cb);
 	}
@@ -553,7 +560,11 @@ static void bring_link_up(void)
 	 * point is merely busy.
 	 */
 	for (int attempt = 0; attempt < WIFI_CONNECT_TRIES && !got_ip; attempt++) {
-		int wrc = wifi_up();
+		int wrc;
+
+		assoc_refused = false;
+		k_sem_reset(&net_ready_sem);
+		wrc = wifi_up();
 
 		/* -EALREADY means the driver still has the previous connect in
 		 * flight; that attempt is what we are waiting on, so wait for
@@ -561,12 +572,12 @@ static void bring_link_up(void)
 		 */
 		if ((wrc == 0 || wrc == -EALREADY) &&
 		    k_sem_take(&net_ready_sem,
-			       K_SECONDS(WIFI_IP_WAIT_S)) == 0) {
+			       K_SECONDS(WIFI_IP_WAIT_S)) == 0 && !assoc_refused) {
 			got_ip = true;
 			break;
 		}
-		printk("net: Wi-Fi attempt %d got no IP, retrying\n",
-		       attempt + 1);
+		printk("net: Wi-Fi attempt %d %s, retrying\n", attempt + 1,
+		       assoc_refused ? "refused" : "got no IP");
 		/* The attempt is spent: clear it so the next one is a fresh
 		 * connect rather than another -EALREADY, and give the access
 		 * point a moment to release the old session.

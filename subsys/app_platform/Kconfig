@@ -540,6 +540,7 @@ choice APP_PLATFORM_NET_LINK
 config APP_PLATFORM_NET_LINK_WIFI
 	bool "Wi-Fi station"
 	depends on WIFI
+	select NET_MGMT_EVENT_INFO
 	help
 	  The platform associates the first Wi-Fi interface with the
 	  configured network and the link is up once it holds an IPv4
