@@ -150,7 +150,7 @@ int app_platform_launch(const struct app_def *def);
  * holds @p ceiling.
  *
  * @param name Application name.
- * @param ext  Loaded extension (see @ref app_platform_load).
+ * @param ext  Loaded extension (see @ref app_loader_verify_load_manifest).
  * @param entry Resolved entry symbol.
  * @param arg  Argument passed to @p entry, as for @ref app_def.arg.
  * @param ceiling Capabilities the launcher allows the application.
@@ -180,7 +180,7 @@ struct app_launch_opts {
  * As @ref app_platform_launch_llext, with the options in @p opts applied.
  *
  * @param name Application name.
- * @param ext  Loaded extension (see @ref app_platform_load).
+ * @param ext  Loaded extension (see @ref app_loader_verify_load_manifest).
  * @param entry Resolved entry symbol.
  * @param arg  Argument passed to @p entry, as for @ref app_def.arg.
  * @param ceiling Capabilities the launcher allows the application, as for
