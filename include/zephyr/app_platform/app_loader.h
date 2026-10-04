@@ -30,7 +30,7 @@
  * trusted publisher.
  *
  * @param name      Name for the loaded extension.
- * @param buf       Module bytes.
+ * @param buf       Module bytes, aligned for the ELF section headers.
  * @param len       Module length.
  * @param expect    Expected 32-byte SHA-256 of the module.
  * @param entry_sym Entry symbol name to resolve.
@@ -40,6 +40,7 @@
  * @retval 0 on success.
  * @retval -EPERM if the hash does not match.
  * @retval -ENOENT if the entry symbol is not found.
+ * @retval -EINVAL if @p buf is not aligned for the ELF section headers.
  * @retval -E2BIG if the module fails a structural bounds check.
  * @retval -EACCES if the module imports a symbol modules may not use.
  * @retval -ENOEXEC if the module was built for another floating-point ABI or
@@ -67,7 +68,7 @@ int app_loader_verify_load(const char *name, const uint8_t *buf, size_t len,
  * @param mf_len    Length of @p mf, which must equal its @c hdr_len.
  * @param sig       ECDSA P-256 signature over @p mf (raw r||s, 64 bytes).
  * @param sig_len   Length of @p sig.
- * @param buf       Module bytes.
+ * @param buf       Module bytes, aligned for the ELF section headers.
  * @param len       Module length.
  * @param entry_sym Entry symbol name to resolve.
  * @param[out] ext  Receives the loaded extension on success.
@@ -86,6 +87,7 @@ int app_loader_verify_load(const char *name, const uint8_t *buf, size_t len,
  * @retval -ENOEXEC if the manifest names another interface major version, or the
  *         module was built for another floating-point ABI or instruction set.
  * @retval -ENOENT if the entry symbol is not found.
+ * @retval -EINVAL if @p buf is not aligned for the ELF section headers.
  * @retval -E2BIG if the module fails a structural bounds check.
  * @retval -EACCES if the module imports a symbol modules may not use.
  * @retval -EALREADY if an extension with this name is already loaded.

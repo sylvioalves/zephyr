@@ -222,9 +222,14 @@ invalid:
 	return -E2BIG;
 }
 
-/* Bounds check for an image fully held in a memory buffer. */
+/* Alignment and bounds check for an image fully held in a memory buffer. */
 static int elf_bounds_ok(const char *name, const uint8_t *buf, size_t len)
 {
+	if (!IS_PTR_ALIGNED(buf, elf_shdr_t)) {
+		LOG_WRN("'%s' rejected: module buffer %p is not %zu-byte aligned", name,
+			(const void *)buf, __alignof(elf_shdr_t));
+		return -EINVAL;
+	}
 	return elf_bounds_chk(name, buf, len, len);
 }
 
